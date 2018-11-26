@@ -43,7 +43,7 @@ type tcpRConnection struct {
 }
 
 func (p *tcpRConnection) Close() error {
-	panic("implement me")
+	return p.c.Close()
 }
 
 func (p *tcpRConnection) Send(first *Frame, others ...*Frame) error {
@@ -55,8 +55,19 @@ func (p *tcpRConnection) Receive() (*Frame, error) {
 }
 
 func (p *tcpRConnection) poll() error {
-	p.decoder.sliceFrameLength()
-	return nil
+	defer func() {
+		if err := p.Close(); err != nil {
+			log.Println("close connection failed:", err)
+		}
+	}()
+	err := p.decoder.Handle(func(frame *Frame) error {
+		log.Printf("%s: %+v\n", frameTypeAlias[frame.Header.Type], frame)
+		return nil
+	})
+	if err != nil {
+		log.Println("poll stop:", err)
+	}
+	return err
 }
 
 func newTcpRConnection(c net.Conn) *tcpRConnection {
