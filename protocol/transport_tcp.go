@@ -60,8 +60,37 @@ func (p *tcpRConnection) poll() error {
 			log.Println("close connection failed:", err)
 		}
 	}()
-	err := p.decoder.Handle(func(frame *Frame) error {
-		log.Printf("%s: %+v\n", frameTypeAlias[frame.Header.Type], frame)
+	err := p.decoder.Handle(func(frame Frame) error {
+		t := frame.GetType()
+		log.Printf("-----------------%s-----------------\n", frameTypeAlias[t])
+		log.Println("streamID", frame.GetStreamID())
+		log.Println("I:", frame.IsIgnore())
+		log.Println("M:", frame.IsMetadata())
+		switch t {
+		case SETUP:
+			f := &FrameSetup{
+				Frame: frame,
+			}
+			log.Println("R:", f.IsResumeEnable())
+			log.Println("L:", f.IsLease())
+			log.Println("major:", f.GetMajor())
+			log.Println("minor", f.GetMinor())
+			log.Println("timeBetweenKeepalive:", f.GetTimeBetweenKeepalive())
+			log.Println("maxLifetime:", f.GetMaxLifetime())
+			log.Println("metadataMIME:", string(f.GetMetadataMIME()))
+			log.Println("dataMIME:", string(f.GetDataMIME()))
+			log.Println("payload:", string(f.GetPayload()))
+			log.Println("---------------------------------------")
+		case REQUEST_RESPONSE:
+			f := &FrameRequestResponse{
+				Frame: frame,
+			}
+			log.Println("F:", f.IsFollow())
+			log.Println("metadataPayload:", string(f.GetMetadataPayload()))
+			log.Println("payload:", string(f.GetPayload()))
+		default:
+			log.Println("frame:", frame)
+		}
 		return nil
 	})
 	if err != nil {

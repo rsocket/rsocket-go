@@ -42,22 +42,53 @@ var (
 	}
 )
 
-type FramePayload []byte
+type Flags uint16
 
-type FrameHeader struct {
-	StreamID   uint32
-	Type       FrameType
-	IsIgnore   bool
-	IsMetadata bool
-	Flags      uint8
+const (
+	f0 Flags = 1 << iota
+	f1
+	f2
+	f3
+	f4
+	f5
+	f6
+	f7
+	f8
+	f9
+)
+
+func (f Flags) check(mask Flags) bool {
+	return mask&f == mask
 }
 
-type Frame struct {
-	Header  FrameHeader
-	Payload *FramePayload
+type Frame []byte
+
+func (p Frame) IsIgnore() bool {
+	return p.GetFlags().check(f9)
 }
 
-type FrameHandler = func(frame *Frame) error
+func (p Frame) IsMetadata() bool {
+	return p.GetFlags().check(f8)
+}
+
+func (p Frame) GetStreamID() uint32 {
+	return byteOrder.Uint32(p[:4])
+}
+
+func (p Frame) GetType() FrameType {
+	foo := byteOrder.Uint16(p[4:6])
+	return FrameType((foo & 0xFC00) >> 10)
+}
+
+func (p Frame) GetFlags() Flags {
+	return Flags(byteOrder.Uint16(p[4:6]))
+}
+
+func FromBytes(bs []byte) (Frame, error) {
+	return Frame(bs), nil
+}
+
+type FrameHandler = func(frame Frame) error
 
 type FrameDecoder interface {
 	Handle(fn FrameHandler) error
