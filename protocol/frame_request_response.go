@@ -5,21 +5,13 @@ type FrameRequestResponse struct {
 }
 
 func (p FrameRequestResponse) IsFollow() bool {
-	return p.Frame.GetFlags().check(f7)
+	return p.Frame.Flags().check(f7)
 }
 
-func (p FrameRequestResponse) GetMetadataPayload() []byte {
-	if !p.IsMetadata() {
-		return nil
-	}
-	l := readUint24WithOffset(p.Frame, 6)
-	return p.Frame[9 : 9+l]
+func (p FrameRequestResponse) Metadata() []byte {
+	return p.Frame.sliceMetadata(frameHeaderLength)
 }
 
-func (p FrameRequestResponse) GetPayload() []byte {
-	if !p.IsMetadata() {
-		return p.Frame[6:]
-	}
-	l := readUint24WithOffset(p.Frame, 6)
-	return p.Frame[9+l:]
+func (p FrameRequestResponse) Payload() []byte {
+	return p.Frame.slicePayload(frameHeaderLength)
 }

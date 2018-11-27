@@ -7,59 +7,65 @@ type FrameSetup struct {
 }
 
 func (p FrameSetup) IsResumeEnable() bool {
-	return p.Frame.GetFlags().check(f7)
+	return p.Frame.Flags().check(f7)
 }
 
 func (p FrameSetup) IsLease() bool {
-	return p.Frame.GetFlags().check(f6)
+	return p.Frame.Flags().check(f6)
 }
 
-func (p FrameSetup) GetMajor() uint16 {
+func (p FrameSetup) Major() uint16 {
 	return byteOrder.Uint16(p.Frame[6:8])
 }
 
-func (p FrameSetup) GetMinor() uint16 {
+func (p FrameSetup) Minor() uint16 {
 	return byteOrder.Uint16(p.Frame[8:10])
 }
 
-func (p FrameSetup) GetTimeBetweenKeepalive() time.Duration {
+func (p FrameSetup) TimeBetweenKeepalive() time.Duration {
 	mills := int64(byteOrder.Uint32(p.Frame[10:14]))
 	return time.Millisecond * time.Duration(mills)
 }
 
-func (p FrameSetup) GetMaxLifetime() time.Duration {
+func (p FrameSetup) MaxLifetime() time.Duration {
 	mills := int64(byteOrder.Uint32(p.Frame[14:18]))
 	return time.Millisecond * time.Duration(mills)
 }
 
-func (p FrameSetup) GetTokenLength() uint16 {
+func (p FrameSetup) TokenLength() uint16 {
 	if !p.IsResumeEnable() {
 		return 0
 	}
 	return byteOrder.Uint16(p.Frame[18:20])
 }
 
-func (p FrameSetup) GetToken() uint16 {
+func (p FrameSetup) Token() uint16 {
 	if !p.IsResumeEnable() {
 		return 0
 	}
 	return byteOrder.Uint16(p.Frame[20:22])
 }
 
-func (p FrameSetup) GetMetadataMIME() []byte {
+func (p FrameSetup) MetadataMIME() []byte {
 	offset, length := p.indexMetadataMIME()
 	return p.Frame[offset+1 : offset+1+length]
 }
 
-func (p FrameSetup) GetDataMIME() []byte {
+func (p FrameSetup) DataMIME() []byte {
 	offset, length := p.indexDataMIME()
 	return p.Frame[offset+1 : offset+1+length]
 }
 
-func (p FrameSetup) GetPayload() []byte {
+func (p FrameSetup) Metadata() []byte {
 	o, l := p.indexDataMIME()
 	offset := o + 1 + l
-	return p.Frame[offset:]
+	return p.Frame.sliceMetadata(offset)
+}
+
+func (p FrameSetup) Payload() []byte {
+	o, l := p.indexDataMIME()
+	offset := o + 1 + l
+	return p.Frame.slicePayload(offset)
 }
 
 func (p FrameSetup) indexMetadataMIME() (offset int, length int) {

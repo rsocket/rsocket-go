@@ -1,4 +1,4 @@
 # go-rsocket
-rsocket for golang.
+Unofficial [RSocket](http://rsocket.io/) in golang.
 
 **STILL IN DEVELOP!!!**
