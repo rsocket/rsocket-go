@@ -22,52 +22,43 @@ const (
 )
 
 func (f FrameType) String() string {
-
 	switch f {
 	case RESERVED:
 		return "RESERVED"
-		SETUP:            "SETUP",
-		LEASE:            "LEASE",
-		KEEPALIVE:        "KEEPALIVE",
-		REQUEST_RESPONSE: "REQUEST_RESPONSE",
-		REQUEST_FNF:      "REQUEST_FNF",
-		REQUEST_STREAM:   "REQUEST_STREAM",
-		REQUEST_CHANNEL:  "REQUEST_CHANNEL",
-		REQUEST_IN:       "REQUEST_IN",
-		CANCEL:           "CANCEL",
-		PAYLOAD:          "PAYLOAD",
-		ERROR:            "ERROR",
-		METADATA_PUSH:    "METADATA_PUSH",
-		RESUME:           "RESUME",
-		RESUME_OK:        "RESUME_OK",
-		EXT:              "EXT",
-
-
+	case SETUP:
+		return "SETUP"
+	case LEASE:
+		return "LEASE"
+	case KEEPALIVE:
+		return "KEEPALIVE"
+	case REQUEST_RESPONSE:
+		return "REQUEST_RESPONSE"
+	case REQUEST_FNF:
+		return "REQUEST_FNF"
+	case REQUEST_STREAM:
+		return "REQUEST_STREAM"
+	case REQUEST_CHANNEL:
+		return "REQUEST_CHANNEL"
+	case REQUEST_IN:
+		return "REQUEST_IN"
+	case CANCEL:
+		return "CANCEL"
+	case PAYLOAD:
+		return "PAYLOAD"
+	case ERROR:
+		return "ERROR"
+	case METADATA_PUSH:
+		return "METADATA_PUSH"
+	case RESUME:
+		return "RESUME"
+	case RESUME_OK:
+		return "RESUME_OK"
+	case EXT:
+		return "EXT"
+	default:
+		return "UNKNOWN"
 	}
-
-	panic("implement me")
 }
-
-var (
-	frameTypeAlias = map[FrameType]string{
-		RESERVED:         "RESERVED",
-		SETUP:            "SETUP",
-		LEASE:            "LEASE",
-		KEEPALIVE:        "KEEPALIVE",
-		REQUEST_RESPONSE: "REQUEST_RESPONSE",
-		REQUEST_FNF:      "REQUEST_FNF",
-		REQUEST_STREAM:   "REQUEST_STREAM",
-		REQUEST_CHANNEL:  "REQUEST_CHANNEL",
-		REQUEST_IN:       "REQUEST_IN",
-		CANCEL:           "CANCEL",
-		PAYLOAD:          "PAYLOAD",
-		ERROR:            "ERROR",
-		METADATA_PUSH:    "METADATA_PUSH",
-		RESUME:           "RESUME",
-		RESUME_OK:        "RESUME_OK",
-		EXT:              "EXT",
-	}
-)
 
 type Flags uint16
 

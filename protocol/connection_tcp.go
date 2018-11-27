@@ -30,7 +30,7 @@ func (p *tcpRConnection) poll() error {
 	}()
 	err := p.decoder.Handle(func(frame Frame) error {
 		t := frame.Type()
-		log.Printf("-----------------%s-----------------\n", frameTypeAlias[t])
+		log.Printf("-----------------%s-----------------\n", t)
 		log.Println("streamID", frame.StreamID())
 		log.Println("I:", frame.IsIgnore())
 		log.Println("M:", frame.IsMetadata())
