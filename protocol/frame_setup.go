@@ -7,11 +7,11 @@ type FrameSetup struct {
 }
 
 func (p FrameSetup) IsResumeEnable() bool {
-	return p.Frame.Flags().check(f7)
+	return p.Frame.Flags().check(FlagFollow)
 }
 
 func (p FrameSetup) IsLease() bool {
-	return p.Frame.Flags().check(f6)
+	return p.Frame.Flags().check(FlagComplete)
 }
 
 func (p FrameSetup) Major() uint16 {

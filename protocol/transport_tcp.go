@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"context"
 	"log"
 	"net"
 )
@@ -9,24 +10,34 @@ type TcpServerTransport struct {
 	addr string
 }
 
-func (p *TcpServerTransport) Listen() {
+func (p *TcpServerTransport) Listen() error {
 	listener, err := net.Listen("tcp", p.addr)
 	if err != nil {
 		panic(err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	for {
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		default:
 			c, err := listener.Accept()
 			if err != nil {
 				log.Println("tcp listener break:", err)
 				break
 			}
-			go func(rc *tcpRConnection) {
-				if err := rc.poll(); err != nil {
+			rc := newTcpRConnection(c)
+			go func(ctx context.Context, rc *tcpRConnection) {
+				if err := rc.rcvLoop(ctx); err != nil {
 					log.Println("tcp rconnection error:", err)
 				}
-			}(newTcpRConnection(c))
+			}(ctx, rc)
+			go func(ctx context.Context, rc *tcpRConnection) {
+				if err := rc.sndLoop(ctx); err != nil {
+					log.Println("tcp rconnection error:", err)
+				}
+			}(ctx, rc)
 		}
 	}
 }

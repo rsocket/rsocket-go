@@ -5,7 +5,7 @@ type FrameRequestResponse struct {
 }
 
 func (p FrameRequestResponse) IsFollow() bool {
-	return p.Frame.Flags().check(f7)
+	return p.Frame.Flags().check(FlagFollow)
 }
 
 func (p FrameRequestResponse) Metadata() []byte {

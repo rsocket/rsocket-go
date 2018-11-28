@@ -5,15 +5,15 @@ type FrameCancel struct {
 }
 
 func (p FrameCancel) IsFollow() bool {
-	return p.Frame.Flags().check(f7)
+	return p.Frame.Flags().check(FlagFollow)
 }
 
 func (p FrameCancel) IsComplete() bool {
-	return p.Frame.Flags().check(f6)
+	return p.Frame.Flags().check(FlagComplete)
 }
 
 func (p FrameCancel) IsNext() bool {
-	return p.Frame.Flags().check(f5)
+	return p.Frame.Flags().check(FlagNext)
 }
 
 func (p FrameCancel) Metadata() []byte {

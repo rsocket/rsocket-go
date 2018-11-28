@@ -11,7 +11,7 @@ const (
 	REQUEST_FNF      FrameType = 0x05
 	REQUEST_STREAM   FrameType = 0x06
 	REQUEST_CHANNEL  FrameType = 0x07
-	REQUEST_IN       FrameType = 0x08
+	REQUEST_N        FrameType = 0x08
 	CANCEL           FrameType = 0x09
 	PAYLOAD          FrameType = 0x0A
 	ERROR            FrameType = 0x0B
@@ -39,8 +39,8 @@ func (f FrameType) String() string {
 		return "REQUEST_STREAM"
 	case REQUEST_CHANNEL:
 		return "REQUEST_CHANNEL"
-	case REQUEST_IN:
-		return "REQUEST_IN"
+	case REQUEST_N:
+		return "REQUEST_N"
 	case CANCEL:
 		return "CANCEL"
 	case PAYLOAD:
@@ -63,16 +63,15 @@ func (f FrameType) String() string {
 type Flags uint16
 
 const (
-	f0 Flags = 1 << iota
-	f1
-	f2
-	f3
-	f4
-	f5
-	f6
-	f7
-	f8
-	f9
+	FlagNext Flags = 1 << (5 + iota)
+	FlagComplete
+	FlagFollow
+	FlagMetadata
+	FlagIgnore
+
+	FlagResume  = FlagFollow
+	FlagLease   = FlagComplete
+	FlagRespond = FlagFollow
 )
 
 func (f Flags) check(mask Flags) bool {
@@ -82,11 +81,11 @@ func (f Flags) check(mask Flags) bool {
 type Frame []byte
 
 func (p Frame) IsIgnore() bool {
-	return p.Flags().check(f9)
+	return p.Flags().check(FlagIgnore)
 }
 
 func (p Frame) IsMetadata() bool {
-	return p.Flags().check(f8)
+	return p.Flags().check(FlagMetadata)
 }
 
 func (p Frame) StreamID() uint32 {

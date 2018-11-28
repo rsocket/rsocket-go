@@ -1,91 +1,169 @@
 package protocol
 
 import (
+	"context"
+	"github.com/pkg/errors"
 	"log"
 	"net"
 )
 
+var errUnknownFrame = errors.New("bad frame")
+
 type tcpRConnection struct {
 	c       net.Conn
 	decoder FrameDecoder
+	snd     chan Frame
 }
 
 func (p *tcpRConnection) Close() error {
+	close(p.snd)
 	return p.c.Close()
 }
 
-func (p *tcpRConnection) Send(first *Frame, others ...*Frame) error {
-	panic("implement me")
+func (p *tcpRConnection) Send(first Frame, others ...Frame) (err error) {
+	defer func() {
+		if e, ok := recover().(error); ok {
+			err = e
+		}
+	}()
+	p.snd <- first
+	for _, other := range others {
+		p.snd <- other
+	}
+	return
 }
 
 func (p *tcpRConnection) Receive() (*Frame, error) {
 	panic("implement me")
 }
 
-func (p *tcpRConnection) poll() error {
+func (p *tcpRConnection) sndLoop(ctx context.Context) error {
+	for frame := range p.snd {
+		frameLength := writeUint24(len(frame))
+		wrote, err := p.c.Write(frameLength)
+		if err != nil {
+			return err
+		}
+		n, err := p.c.Write(frame)
+		if err != nil {
+			return err
+		}
+		wrote += n
+		log.Println("write frame success:", n)
+	}
+	return nil
+}
+
+func (p *tcpRConnection) HandleRequestResponse(f *FrameRequestResponse) error {
+	base := &BaseFrame{
+		StreamID: f.StreamID(),
+		Flags:    FlagMetadata | FlagComplete | FlagNext,
+		Type:     PAYLOAD,
+	}
+	return p.Send(NewPayload(base, []byte("pong"), f.Metadata()))
+}
+
+func (p *tcpRConnection) HandleFNF(f *FrameFNF) error {
+	return nil
+}
+
+func (p *tcpRConnection) HandleSetup(f *FrameSetup) error {
+	return nil
+}
+
+func (p *tcpRConnection) HandleCancel(f *FrameCancel) error {
+	return nil
+}
+
+func (p *tcpRConnection) HandleError(f *FrameError) error {
+	return nil
+}
+
+func (p *tcpRConnection) HandleKeepalive(f *FrameKeepalive) error {
+	return nil
+}
+
+func (p *tcpRConnection) HandleLease(f *FrameLease) error {
+	return nil
+}
+
+func (p *tcpRConnection) HandleRequestStream(f *FrameRequestStream) error {
+	return nil
+}
+
+func (p *tcpRConnection) HandleRequestChannel(f *FrameRequestChannel) error {
+	return nil
+}
+
+func (p *tcpRConnection) HandleRequestN(f *FrameRequestN) error {
+	return nil
+}
+
+func (p *tcpRConnection) HandlePayload(f *FramePayload) error {
+	return nil
+}
+
+func (p *tcpRConnection) HandleMetadataPush(f *FrameMetadataPush) error {
+	return nil
+}
+
+func (p *tcpRConnection) HandleExtension(f *FrameExtension) error {
+	return nil
+}
+
+func (p *tcpRConnection) rcvLoop(ctx context.Context) error {
 	defer func() {
 		if err := p.Close(); err != nil {
 			log.Println("close connection failed:", err)
 		}
 	}()
-	err := p.decoder.Handle(func(frame Frame) error {
-		t := frame.Type()
-		log.Printf("-----------------%s-----------------\n", t)
-		log.Println("streamID", frame.StreamID())
-		log.Println("I:", frame.IsIgnore())
-		log.Println("M:", frame.IsMetadata())
-		switch t {
-		case SETUP:
-			f := &FrameSetup{
-				Frame: frame,
-			}
-			log.Println("R:", f.IsResumeEnable())
-			log.Println("L:", f.IsLease())
-			log.Println("major:", f.Major())
-			log.Println("minor", f.Minor())
-			log.Println("timeBetweenKeepalive:", f.TimeBetweenKeepalive())
-			log.Println("maxLifetime:", f.MaxLifetime())
-			log.Println("metadataMIME:", string(f.MetadataMIME()))
-			log.Println("dataMIME:", string(f.DataMIME()))
-			log.Println("metadata:", string(f.Metadata()))
-			log.Println("payload:", string(f.Payload()))
-		case REQUEST_RESPONSE:
-			f := &FrameRequestResponse{
-				Frame: frame,
-			}
-			log.Println("F:", f.IsFollow())
-			log.Println("metadata:", string(f.Metadata()))
-			log.Println("payload:", string(f.Payload()))
-		case CANCEL:
-			f := &FrameCancel{
-				Frame: frame,
-			}
-			log.Println("F:", f.IsFollow())
-			log.Println("C:", f.IsComplete())
-			log.Println("N:", f.IsNext())
-			log.Println("metadata:", string(f.Metadata()))
-			log.Println("payload:", string(f.Payload()))
-		case ERROR:
-			f := &FrameError{
-				Frame: frame,
-			}
-			log.Println("errorCode:", f.ErrorCode())
-			log.Println("errorData:", string(f.ErrorData()))
+	return p.decoder.Handle(func(frame Frame) (err error) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		default:
-			log.Println("frame:", frame)
+			t := frame.Type()
+			switch t {
+			case SETUP:
+				err = p.HandleSetup(&FrameSetup{frame})
+			case LEASE:
+				err = p.HandleLease(&FrameLease{frame})
+			case KEEPALIVE:
+				err = p.HandleKeepalive(&FrameKeepalive{frame})
+			case REQUEST_RESPONSE:
+				err = p.HandleRequestResponse(&FrameRequestResponse{frame})
+			case REQUEST_FNF:
+				err = p.HandleFNF(&FrameFNF{frame})
+			case REQUEST_STREAM:
+				err = p.HandleRequestStream(&FrameRequestStream{frame})
+			case REQUEST_CHANNEL:
+				err = p.HandleRequestChannel(&FrameRequestChannel{frame})
+			case REQUEST_N:
+				err = p.HandleRequestN(&FrameRequestN{frame})
+			case CANCEL:
+				err = p.HandleCancel(&FrameCancel{frame})
+			case PAYLOAD:
+				err = p.HandlePayload(&FramePayload{frame})
+			case ERROR:
+				err = p.HandleError(&FrameError{frame})
+			case METADATA_PUSH:
+				err = p.HandleMetadataPush(&FrameMetadataPush{frame})
+			case RESUME:
+			case RESUME_OK:
+			case EXT:
+				err = p.HandleExtension(&FrameExtension{frame})
+			default:
+				return errUnknownFrame
+			}
+			return
 		}
-		log.Println("---------------------------------------")
-		return nil
 	})
-	if err != nil {
-		log.Println("poll stop:", err)
-	}
-	return err
 }
 
 func newTcpRConnection(c net.Conn) *tcpRConnection {
 	return &tcpRConnection{
 		c:       c,
 		decoder: newLengthBasedFrameDecoder(c),
+		snd:     make(chan Frame, 64),
 	}
 }
