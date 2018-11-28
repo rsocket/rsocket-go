@@ -1,10 +1,12 @@
 package protocol
 
+import "context"
+
 type Transport interface {
-	Send(frame *Frame) error
 }
 
 type ServerTransport interface {
 	Transport
-	Accept(acceptor func(conn *RConnection) error)
+	Accept(acceptor func(setup *FrameSetup, conn RConnection) error)
+	Listen(ctx context.Context) error
 }

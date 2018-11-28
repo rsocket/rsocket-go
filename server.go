@@ -1,38 +1,55 @@
-package rs
+package rsocket
 
 import (
-	"bufio"
+	"context"
 	"github.com/jjeffcaii/go-rsocket/protocol"
-	"net"
 )
 
 type RSocketServer struct {
-	transport protocol.Transport
+	transport protocol.ServerTransport
+	acceptor  Acceptor
 }
 
-func (p *RSocketServer) Start() error {
-	listener, err := net.Listen("tcp", ":1943")
-	if err != nil {
-		panic(err)
-	}
-
-	for {
-		select {
-		default:
-			c, err := listener.Accept()
-			if err != nil {
-				panic(err)
-			}
-			go dispatch(c)
-		}
-	}
+func (p *RSocketServer) Start(ctx context.Context) error {
+	return p.transport.Listen(ctx)
 }
 
-func (p *RSocketServer) dispatch() {
-	reader := bufio.NewReader(c)
-	writer := bufio.NewWriter(c)
+type SetupPayload struct {
 }
 
-func NewRsocketServer() (*RSocketServer, error) {
-	return &RSocketServer{}, nil
+type RSocket struct {
+}
+
+type Acceptor = func(setup *SetupPayload, sendingSocket *RSocket) (err error)
+
+type RSocketServerBuilder interface {
+	Transport(transport protocol.ServerTransport) RSocketServerBuilder
+	Acceptor(acceptor Acceptor) RSocketServerBuilder
+	Build() (*RSocketServer, error)
+}
+
+type serverBuilder struct {
+	transport protocol.ServerTransport
+	acceptor  Acceptor
+}
+
+func (p *serverBuilder) Transport(transport protocol.ServerTransport) RSocketServerBuilder {
+	p.transport = transport
+	return p
+}
+
+func (p *serverBuilder) Acceptor(acceptor Acceptor) RSocketServerBuilder {
+	p.acceptor = acceptor
+	return p
+}
+
+func (p *serverBuilder) Build() (*RSocketServer, error) {
+	return &RSocketServer{
+		transport: p.transport,
+		acceptor:  p.acceptor,
+	}, nil
+}
+
+func Builder() RSocketServerBuilder {
+	return &serverBuilder{}
 }

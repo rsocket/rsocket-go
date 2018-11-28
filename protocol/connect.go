@@ -1,6 +1,9 @@
 package protocol
 
+import "io"
+
 type RConnection interface {
-	Send(first *Frame, others ...*Frame) error
-	Receive() (*Frame, error)
+	io.Closer
+	Send(first Frame, others ...Frame) error
+	HandleSetup(callback func(setup *FrameSetup) (err error))
 }

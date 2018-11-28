@@ -13,6 +13,12 @@ type tcpRConnection struct {
 	c       net.Conn
 	decoder FrameDecoder
 	snd     chan Frame
+
+	handlerSetup func(setup *FrameSetup) error
+}
+
+func (p *tcpRConnection) HandleSetup(h func(setup *FrameSetup) (err error)) {
+	p.handlerSetup = h
 }
 
 func (p *tcpRConnection) Close() error {
@@ -33,23 +39,6 @@ func (p *tcpRConnection) Send(first Frame, others ...Frame) (err error) {
 	return
 }
 
-func (p *tcpRConnection) Receive() (*Frame, error) {
-	panic("implement me")
-}
-
-func (p *tcpRConnection) sndLoop(ctx context.Context) error {
-	for frame := range p.snd {
-		frameLength := writeUint24(len(frame))
-		if _, err := p.c.Write(frameLength); err != nil {
-			return err
-		}
-		if _, err := p.c.Write(frame); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (p *tcpRConnection) HandleRequestResponse(f *FrameRequestResponse) error {
 	base := &BaseFrame{
 		StreamID: f.StreamID(),
@@ -63,28 +52,12 @@ func (p *tcpRConnection) HandleFNF(f *FrameFNF) error {
 	return nil
 }
 
-func (p *tcpRConnection) HandleSetup(f *FrameSetup) error {
-	log.Println("keepaliveTime:", f.TimeBetweenKeepalive())
-	log.Println("maxLifetime:", f.MaxLifetime())
-	return nil
-}
-
 func (p *tcpRConnection) HandleCancel(f *FrameCancel) error {
 	return nil
 }
 
 func (p *tcpRConnection) HandleError(f *FrameError) error {
 	return nil
-}
-
-func (p *tcpRConnection) HandleKeepalive(f *FrameKeepalive) error {
-	if !f.IsRespond() {
-		return nil
-	}
-	return p.Send(NewFrameKeepalive(&BaseFrame{
-		StreamID: 0,
-		Type:     KEEPALIVE,
-	}, false, f.LastReceivedPosition(), f.Payload()))
 }
 
 func (p *tcpRConnection) HandleLease(f *FrameLease) error {
@@ -125,11 +98,13 @@ func (p *tcpRConnection) rcvLoop(ctx context.Context) error {
 		t := frame.Type()
 		switch t {
 		case SETUP:
-			err = p.HandleSetup(&FrameSetup{frame})
+			if p.handlerSetup != nil {
+				err = p.handlerSetup(&FrameSetup{frame})
+			}
 		case LEASE:
 			err = p.HandleLease(&FrameLease{frame})
 		case KEEPALIVE:
-			err = p.HandleKeepalive(&FrameKeepalive{frame})
+			err = p.handleKeepalive(&FrameKeepalive{frame})
 		case REQUEST_RESPONSE:
 			err = p.HandleRequestResponse(&FrameRequestResponse{frame})
 		case REQUEST_FNF:
@@ -157,6 +132,29 @@ func (p *tcpRConnection) rcvLoop(ctx context.Context) error {
 		}
 		return
 	})
+}
+
+func (p *tcpRConnection) sndLoop(ctx context.Context) error {
+	for frame := range p.snd {
+		frameLength := writeUint24(len(frame))
+		if _, err := p.c.Write(frameLength); err != nil {
+			return err
+		}
+		if _, err := p.c.Write(frame); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *tcpRConnection) handleKeepalive(f *FrameKeepalive) error {
+	if !f.IsRespond() {
+		return nil
+	}
+	return p.Send(NewFrameKeepalive(&BaseFrame{
+		StreamID: 0,
+		Type:     KEEPALIVE,
+	}, false, f.LastReceivedPosition(), f.Payload()))
 }
 
 func newTcpRConnection(c net.Conn) *tcpRConnection {
