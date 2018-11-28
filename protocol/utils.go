@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -19,7 +20,7 @@ type lengthBasedFrameDecoder struct {
 	scanner *bufio.Scanner
 }
 
-func (p *lengthBasedFrameDecoder) Handle(fn FrameHandler) error {
+func (p *lengthBasedFrameDecoder) Handle(ctx context.Context, fn FrameHandler) error {
 	p.scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		if atEOF {
 			return
@@ -38,11 +39,17 @@ func (p *lengthBasedFrameDecoder) Handle(fn FrameHandler) error {
 		}
 		return
 	})
+
 	for p.scanner.Scan() {
-		data := p.scanner.Bytes()
-		f := Frame(data[3:])
-		if err := fn(f); err != nil {
-			return err
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			data := p.scanner.Bytes()
+			f := Frame(data[3:])
+			if err := fn(f); err != nil {
+				return err
+			}
 		}
 	}
 	return p.scanner.Err()

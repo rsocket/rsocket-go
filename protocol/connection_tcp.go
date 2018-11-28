@@ -40,16 +40,12 @@ func (p *tcpRConnection) Receive() (*Frame, error) {
 func (p *tcpRConnection) sndLoop(ctx context.Context) error {
 	for frame := range p.snd {
 		frameLength := writeUint24(len(frame))
-		wrote, err := p.c.Write(frameLength)
-		if err != nil {
+		if _, err := p.c.Write(frameLength); err != nil {
 			return err
 		}
-		n, err := p.c.Write(frame)
-		if err != nil {
+		if _, err := p.c.Write(frame); err != nil {
 			return err
 		}
-		wrote += n
-		log.Println("write frame success:", n)
 	}
 	return nil
 }
@@ -68,6 +64,8 @@ func (p *tcpRConnection) HandleFNF(f *FrameFNF) error {
 }
 
 func (p *tcpRConnection) HandleSetup(f *FrameSetup) error {
+	log.Println("keepaliveTime:", f.TimeBetweenKeepalive())
+	log.Println("maxLifetime:", f.MaxLifetime())
 	return nil
 }
 
@@ -80,7 +78,13 @@ func (p *tcpRConnection) HandleError(f *FrameError) error {
 }
 
 func (p *tcpRConnection) HandleKeepalive(f *FrameKeepalive) error {
-	return nil
+	if !f.IsRespond() {
+		return nil
+	}
+	return p.Send(NewFrameKeepalive(&BaseFrame{
+		StreamID: 0,
+		Type:     KEEPALIVE,
+	}, false, f.LastReceivedPosition(), f.Payload()))
 }
 
 func (p *tcpRConnection) HandleLease(f *FrameLease) error {
@@ -117,46 +121,41 @@ func (p *tcpRConnection) rcvLoop(ctx context.Context) error {
 			log.Println("close connection failed:", err)
 		}
 	}()
-	return p.decoder.Handle(func(frame Frame) (err error) {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
+	return p.decoder.Handle(ctx, func(frame Frame) (err error) {
+		t := frame.Type()
+		switch t {
+		case SETUP:
+			err = p.HandleSetup(&FrameSetup{frame})
+		case LEASE:
+			err = p.HandleLease(&FrameLease{frame})
+		case KEEPALIVE:
+			err = p.HandleKeepalive(&FrameKeepalive{frame})
+		case REQUEST_RESPONSE:
+			err = p.HandleRequestResponse(&FrameRequestResponse{frame})
+		case REQUEST_FNF:
+			err = p.HandleFNF(&FrameFNF{frame})
+		case REQUEST_STREAM:
+			err = p.HandleRequestStream(&FrameRequestStream{frame})
+		case REQUEST_CHANNEL:
+			err = p.HandleRequestChannel(&FrameRequestChannel{frame})
+		case REQUEST_N:
+			err = p.HandleRequestN(&FrameRequestN{frame})
+		case CANCEL:
+			err = p.HandleCancel(&FrameCancel{frame})
+		case PAYLOAD:
+			err = p.HandlePayload(&FramePayload{frame})
+		case ERROR:
+			err = p.HandleError(&FrameError{frame})
+		case METADATA_PUSH:
+			err = p.HandleMetadataPush(&FrameMetadataPush{frame})
+		//case RESUME:
+		//case RESUME_OK:
+		case EXT:
+			err = p.HandleExtension(&FrameExtension{frame})
 		default:
-			t := frame.Type()
-			switch t {
-			case SETUP:
-				err = p.HandleSetup(&FrameSetup{frame})
-			case LEASE:
-				err = p.HandleLease(&FrameLease{frame})
-			case KEEPALIVE:
-				err = p.HandleKeepalive(&FrameKeepalive{frame})
-			case REQUEST_RESPONSE:
-				err = p.HandleRequestResponse(&FrameRequestResponse{frame})
-			case REQUEST_FNF:
-				err = p.HandleFNF(&FrameFNF{frame})
-			case REQUEST_STREAM:
-				err = p.HandleRequestStream(&FrameRequestStream{frame})
-			case REQUEST_CHANNEL:
-				err = p.HandleRequestChannel(&FrameRequestChannel{frame})
-			case REQUEST_N:
-				err = p.HandleRequestN(&FrameRequestN{frame})
-			case CANCEL:
-				err = p.HandleCancel(&FrameCancel{frame})
-			case PAYLOAD:
-				err = p.HandlePayload(&FramePayload{frame})
-			case ERROR:
-				err = p.HandleError(&FrameError{frame})
-			case METADATA_PUSH:
-				err = p.HandleMetadataPush(&FrameMetadataPush{frame})
-			case RESUME:
-			case RESUME_OK:
-			case EXT:
-				err = p.HandleExtension(&FrameExtension{frame})
-			default:
-				return errUnknownFrame
-			}
-			return
+			return errUnknownFrame
 		}
+		return
 	})
 }
 

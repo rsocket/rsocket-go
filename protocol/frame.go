@@ -1,5 +1,7 @@
 package protocol
 
+import "context"
+
 type FrameType uint8
 
 const (
@@ -120,5 +122,5 @@ func (p Frame) slicePayload(offset int) []byte {
 type FrameHandler = func(frame Frame) error
 
 type FrameDecoder interface {
-	Handle(fn FrameHandler) error
+	Handle(ctx context.Context, fn FrameHandler) error
 }
