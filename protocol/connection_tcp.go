@@ -5,6 +5,7 @@ import (
 	"github.com/pkg/errors"
 	"log"
 	"net"
+	"time"
 )
 
 var errUnknownFrame = errors.New("bad frame")
@@ -61,7 +62,25 @@ func (p *tcpRConnection) HandleLease(f *FrameLease) error {
 }
 
 func (p *tcpRConnection) HandleRequestStream(f *FrameRequestStream) error {
-	return nil
+	log.Println("stream:", string(f.Payload()))
+	for i := 0; i < 100; i++ {
+		time.Sleep(10 * time.Millisecond)
+		ts := time.Now().Format(string(f.Payload()))
+		foo := NewPayload(&BaseFrame{
+			Type:     PAYLOAD,
+			Flags:    FlagNext,
+			StreamID: f.StreamID(),
+		}, []byte(ts), nil)
+		if err := p.Send(foo); err != nil {
+			return err
+		}
+	}
+	foo := NewPayload(&BaseFrame{
+		Type:     PAYLOAD,
+		Flags:    FlagNext | FlagMetadata | FlagComplete,
+		StreamID: f.StreamID(),
+	}, []byte("abcde"), []byte("foobar"))
+	return p.Send(foo)
 }
 
 func (p *tcpRConnection) HandleRequestChannel(f *FrameRequestChannel) error {
