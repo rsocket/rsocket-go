@@ -14,11 +14,16 @@ type tcpRConnection struct {
 	decoder FrameDecoder
 	snd     chan Frame
 
-	handlerSetup func(setup *FrameSetup) error
+	hSetup  func(*FrameSetup) error
+	hReqRes func(*FrameRequestResponse) error
+}
+
+func (p *tcpRConnection) HandleRequestResponse(callback func(frame *FrameRequestResponse) (err error)) {
+	p.hReqRes = callback
 }
 
 func (p *tcpRConnection) HandleSetup(h func(setup *FrameSetup) (err error)) {
-	p.handlerSetup = h
+	p.hSetup = h
 }
 
 func (p *tcpRConnection) Close() error {
@@ -37,15 +42,6 @@ func (p *tcpRConnection) Send(first Frame, others ...Frame) (err error) {
 		p.snd <- other
 	}
 	return
-}
-
-func (p *tcpRConnection) HandleRequestResponse(f *FrameRequestResponse) error {
-	base := &BaseFrame{
-		StreamID: f.StreamID(),
-		Flags:    FlagMetadata | FlagComplete | FlagNext,
-		Type:     PAYLOAD,
-	}
-	return p.Send(NewPayload(base, []byte("pong"), f.Metadata()))
 }
 
 func (p *tcpRConnection) HandleFNF(f *FrameFNF) error {
@@ -98,15 +94,15 @@ func (p *tcpRConnection) rcvLoop(ctx context.Context) error {
 		t := frame.Type()
 		switch t {
 		case SETUP:
-			if p.handlerSetup != nil {
-				err = p.handlerSetup(&FrameSetup{frame})
+			if p.hSetup != nil {
+				err = p.hSetup(&FrameSetup{frame})
 			}
 		case LEASE:
 			err = p.HandleLease(&FrameLease{frame})
 		case KEEPALIVE:
 			err = p.handleKeepalive(&FrameKeepalive{frame})
 		case REQUEST_RESPONSE:
-			err = p.HandleRequestResponse(&FrameRequestResponse{frame})
+			err = p.hReqRes(&FrameRequestResponse{frame})
 		case REQUEST_FNF:
 			err = p.HandleFNF(&FrameFNF{frame})
 		case REQUEST_STREAM:

@@ -1,11 +1,3 @@
-# go-rsocket
-Unofficial [RSocket](http://rsocket.io/) in golang.
-
-**STILL IN DEVELOP!!!**
-
-
-## Example
-```go
 package rsocket
 
 import (
@@ -41,5 +33,3 @@ func TestRSocketServer_Start(t *testing.T) {
 		t.Error(err)
 	}
 }
-
-```
