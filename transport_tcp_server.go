@@ -1,4 +1,4 @@
-package protocol
+package rsocket
 
 import (
 	"context"
@@ -7,8 +7,9 @@ import (
 )
 
 type TcpServerTransport struct {
-	addr     string
-	acceptor func(setup *FrameSetup, conn RConnection) error
+	addr          string
+	acceptor      func(setup *FrameSetup, conn RConnection) error
+	frameBuffSize int
 }
 
 func (p *TcpServerTransport) Accept(acceptor func(setup *FrameSetup, conn RConnection) error) {
@@ -36,7 +37,7 @@ func (p *TcpServerTransport) Listen(ctx context.Context) error {
 				log.Println("tcp listener break:", err)
 				break
 			}
-			rc := newTcpRConnection(c)
+			rc := newTcpRConnection(c, p.frameBuffSize)
 			rc.HandleSetup(func(setup *FrameSetup) (err error) {
 				if p.acceptor != nil {
 					err = p.acceptor(setup, rc)
@@ -44,12 +45,12 @@ func (p *TcpServerTransport) Listen(ctx context.Context) error {
 				return
 			})
 			go func(ctx context.Context, rc *tcpRConnection) {
-				if err := rc.rcvLoop(ctx); err != nil {
+				if err := rc.loopRcv(ctx); err != nil {
 					log.Println("tcp rconnection error:", err)
 				}
 			}(ctx, rc)
 			go func(ctx context.Context, rc *tcpRConnection) {
-				if err := rc.sndLoop(ctx); err != nil {
+				if err := rc.loopSnd(ctx); err != nil {
 					log.Println("tcp rconnection error:", err)
 				}
 			}(ctx, rc)
@@ -57,8 +58,13 @@ func (p *TcpServerTransport) Listen(ctx context.Context) error {
 	}
 }
 
-func NewTcpServerTransport(addr string) *TcpServerTransport {
+func newTCPServerTransport(addr string, frameBuffSize int) *TcpServerTransport {
+	var size = 64
+	if frameBuffSize > 0 {
+		size = frameBuffSize
+	}
 	return &TcpServerTransport{
-		addr: addr,
+		addr:          addr,
+		frameBuffSize: size,
 	}
 }

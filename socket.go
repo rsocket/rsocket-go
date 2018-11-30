@@ -1,14 +1,14 @@
 package rsocket
 
 import (
-	"github.com/jjeffcaii/go-rsocket/protocol"
 	"log"
 	"sync/atomic"
 )
 
 type RSocket struct {
-	c           protocol.RConnection
+	c           RConnection
 	handlerRQ   HandlerRQ
+	handlerRS   HandlerRS
 	outStreamID uint32
 	handlersRQ  map[uint32]HandlerRQ
 }
@@ -20,37 +20,72 @@ func (p *RSocket) RequestResponse(send *Payload, callback HandlerRQ) {
 	// TODO
 }
 
-func newRSocket(c protocol.RConnection, hRQ HandlerRQ) *RSocket {
+type emitterImpl struct {
+	c        RConnection
+	streamID uint32
+}
+
+func (p *emitterImpl) Error(err error) error {
+	out := mkError(p.streamID, ERR_APPLICATION_ERROR, []byte(err.Error()))
+	return p.c.Send(out)
+}
+
+func (p *emitterImpl) Next(payload Payload) error {
+	fg := FlagNext
+	if payload.Metadata() != nil {
+		fg |= FlagMetadata
+	}
+	return p.c.Send(mkPayload(p.streamID, payload.Metadata(), payload.Data(), fg))
+}
+
+func (p *emitterImpl) Complete(payload Payload) error {
+	fg := FlagNext | FlagComplete
+	if payload.Metadata() != nil {
+		fg |= FlagMetadata
+	}
+	return p.c.Send(mkPayload(p.streamID, payload.Metadata(), payload.Data(), fg))
+}
+
+func newRSocket(c RConnection, hRQ HandlerRQ, hRS HandlerRS) *RSocket {
 	ret := &RSocket{
 		c:           c,
 		outStreamID: 0,
 		handlerRQ:   hRQ,
+		handlerRS:   hRS,
 		handlersRQ:  make(map[uint32]HandlerRQ),
 	}
-	c.HandleRequestResponse(func(frame *protocol.FrameRequestResponse) error {
+
+	c.HandleRequestStream(func(frame *FrameRequestStream) (err error) {
+		if ret.handlerRS == nil {
+			return nil
+		}
+		go func(sid uint32, req Payload) {
+			mp := &emitterImpl{
+				c:        c,
+				streamID: sid,
+			}
+			ret.handlerRS(req, mp)
+		}(frame.StreamID(), CreatePayloadRaw(frame.Data(), frame.Metadata()))
+		return nil
+	})
+
+	c.HandleRequestResponse(func(frame *FrameRequestResponse) error {
 		if ret.handlerRQ == nil {
 			return nil
 		}
-		req := &Payload{
-			Data:     frame.Payload(),
-			Metadata: frame.Metadata(),
-		}
-		var out protocol.Frame
-		res, err := ret.handlerRQ(req)
-		if err != nil {
-			out = protocol.NewFrameError(&protocol.BaseFrame{
-				Type:     protocol.ERROR,
-				StreamID: frame.StreamID(),
-				Flags:    0,
-			}, protocol.ERR_APPLICATION_ERROR, []byte(err.Error()))
-		} else {
-			out = protocol.NewPayload(&protocol.BaseFrame{
-				StreamID: frame.StreamID(),
-				Flags:    protocol.FlagMetadata | protocol.FlagComplete | protocol.FlagNext,
-				Type:     protocol.PAYLOAD,
-			}, res.Data, res.Metadata)
-		}
-		return c.Send(out)
+		go func(sid uint32, req Payload) {
+			mh := &emitterImpl{
+				streamID: sid,
+				c:        c,
+			}
+			res, err := ret.handlerRQ(req)
+			if err != nil {
+				_ = mh.Error(err)
+			} else {
+				_ = mh.Complete(res)
+			}
+		}(frame.StreamID(), CreatePayloadRaw(frame.Data(), frame.Metadata()))
+		return nil
 	})
 	return ret
 }

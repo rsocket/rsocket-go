@@ -1,6 +1,10 @@
-package protocol
+package rsocket
 
-import "context"
+import (
+	"context"
+	"encoding/binary"
+	"fmt"
+)
 
 type FrameType uint8
 
@@ -76,51 +80,67 @@ const (
 	FlagRespond = FlagFollow
 )
 
-func (f Flags) check(mask Flags) bool {
+func (f Flags) Check(mask Flags) bool {
 	return mask&f == mask
 }
 
-type Frame []byte
-
-func (p Frame) IsIgnore() bool {
-	return p.Flags().check(FlagIgnore)
+type Frame interface {
+	Bytes() []byte
 }
 
-func (p Frame) IsMetadata() bool {
-	return p.Flags().check(FlagMetadata)
-}
-
-func (p Frame) StreamID() uint32 {
-	return byteOrder.Uint32(p[:4])
-}
-
-func (p Frame) Type() FrameType {
-	foo := byteOrder.Uint16(p[4:6])
-	return FrameType((foo & 0xFC00) >> 10)
-}
-
-func (p Frame) Flags() Flags {
-	return Flags(byteOrder.Uint16(p[4:6]))
-}
-
-func (p Frame) sliceMetadata(offset int) []byte {
-	if !p.IsMetadata() {
-		return nil
-	}
-	l := readUint24(p, offset)
-	offset += 3
-	return p[offset : offset+l]
-}
-
-func (p Frame) slicePayload(offset int) []byte {
-	if p.IsMetadata() {
-		offset += 3 + readUint24(p, offset)
-	}
-	return p[offset:]
-}
-
-type FrameHandler = func(frame Frame) error
+type FrameHandler = func(h *Header, raw []byte) error
 
 type FrameDecoder interface {
 	Handle(ctx context.Context, fn FrameHandler) error
+}
+
+type Header struct {
+	streamID  uint32
+	frameType FrameType
+	flags     Flags
+}
+
+func (p *Header) String() string {
+	return fmt.Sprintf("Header{StreamID=%d, Type=%s, Flags=%X}", p.streamID, p.frameType, p.flags)
+}
+
+func (p *Header) StreamID() uint32 {
+	return p.streamID
+}
+
+func (p *Header) Type() FrameType {
+	return p.frameType
+}
+
+func (p *Header) Flags() Flags {
+	return p.flags
+}
+
+func (p *Header) Bytes() []byte {
+	bs := make([]byte, 6)
+	binary.BigEndian.PutUint32(bs, p.streamID)
+	binary.BigEndian.PutUint16(bs[4:], uint16(p.frameType)<<10|uint16(p.flags))
+	return bs
+}
+
+func asHeader(bs []byte) (*Header, error) {
+	id := binary.BigEndian.Uint32(bs[:4])
+	n := binary.BigEndian.Uint16(bs[4:6])
+	return &Header{
+		streamID:  id,
+		frameType: FrameType((n & 0xFC00) >> 10),
+		flags:     Flags(n & 0x03FF),
+	}, nil
+}
+
+func mkHeader(sid uint32, t FrameType, f ...Flags) *Header {
+	var fg uint16
+	for _, it := range f {
+		fg |= uint16(it)
+	}
+	return &Header{
+		streamID:  sid,
+		flags:     Flags(fg),
+		frameType: t,
+	}
 }

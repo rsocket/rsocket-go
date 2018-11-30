@@ -1,7 +1,7 @@
-package protocol
+package rsocket
 
 import (
-	"io"
+	"encoding/binary"
 )
 
 type ErrorCode uint32
@@ -51,50 +51,44 @@ const (
 )
 
 type FrameError struct {
-	Frame
+	*Header
+	code ErrorCode
+	data []byte
 }
 
-func (p FrameError) ErrorCode() ErrorCode {
-	return ErrorCode(byteOrder.Uint32(p.Frame[frameHeaderLength : frameHeaderLength+4]))
-}
-
-func (p FrameError) ErrorData() []byte {
-	return p.Frame[frameHeaderLength+4:]
-}
-
-type BaseFrame struct {
-	StreamID uint32
-	Type     FrameType
-	Flags    Flags
-}
-
-func (p *BaseFrame) WriteTo(w io.Writer) (n int64, err error) {
-	wrote, err := w.Write(p.asBytes())
-	n = int64(wrote)
-	return
-}
-
-func (p *BaseFrame) UnsetFlag(f Flags) {
-	p.Flags &= ^f
-}
-
-func (p *BaseFrame) SetFlag(f Flags) {
-	p.Flags |= f
-}
-
-func (p *BaseFrame) asBytes() []byte {
-	bs := make([]byte, 6)
-	byteOrder.PutUint32(bs, p.StreamID)
-	byteOrder.PutUint16(bs[4:], uint16(p.Type)<<10|uint16(p.Flags))
+func (p *FrameError) Bytes() []byte {
+	bs := p.Header.Bytes()
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, uint32(p.ErrorCode()))
+	bs = append(bs, b...)
+	if p.data != nil {
+		bs = append(bs, p.data...)
+	}
 	return bs
 }
 
-func NewFrameError(base *BaseFrame, errorCode ErrorCode, errorData []byte) Frame {
-	b := make([]byte, 4)
-	byteOrder.PutUint32(b, uint32(errorCode))
-	bs := make([]byte, 0)
-	bs = append(bs, base.asBytes()...)
-	bs = append(bs, b...)
-	bs = append(bs, errorData...)
-	return Frame(bs)
+func (p *FrameError) ErrorCode() ErrorCode {
+	return p.code
+}
+
+func (p *FrameError) ErrorData() []byte {
+	return p.data
+}
+
+func asError(h *Header, bs []byte) *FrameError {
+	code := binary.BigEndian.Uint32(bs[frameHeaderLength : frameHeaderLength+4])
+	data := bs[frameHeaderLength+4:]
+	return &FrameError{
+		Header: h,
+		data:   data,
+		code:   ErrorCode(code),
+	}
+}
+
+func mkError(sid uint32, code ErrorCode, data []byte) *FrameError {
+	return &FrameError{
+		Header: mkHeader(sid, ERROR),
+		code:   code,
+		data:   data,
+	}
 }
