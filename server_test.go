@@ -11,7 +11,11 @@ func TestRSocketServer_Start(t *testing.T) {
 	server, err := NewServer(
 		WithTransportTCP("127.0.0.1:8000"),
 		WithAcceptor(func(setup SetupPayload, rs *RSocket) (err error) {
-			log.Println("SETUP:", setup)
+			log.Printf("SETUP: version=%s, data=%s, metadata=%s\n", setup.Version(), string(setup.Data()), string(setup.Metadata()))
+			return nil
+		}),
+		WithFireAndForget(func(req Payload) error {
+			log.Println("GOT FNF:", req)
 			return nil
 		}),
 		WithRequestResponseHandler(func(req Payload) (res Payload, err error) {

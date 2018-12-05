@@ -9,6 +9,7 @@ type RSocket struct {
 	c           RConnection
 	handlerRQ   HandlerRQ
 	handlerRS   HandlerRS
+	handlerFNF  HandlerFNF
 	outStreamID uint32
 	handlersRQ  map[uint32]HandlerRQ
 }
@@ -46,14 +47,27 @@ func (p *emitterImpl) Complete(payload Payload) error {
 	return p.c.Send(mkPayload(p.streamID, payload.Metadata(), payload.Data(), fg))
 }
 
-func newRSocket(c RConnection, hRQ HandlerRQ, hRS HandlerRS) *RSocket {
+func newRSocket(c RConnection, hRQ HandlerRQ, hRS HandlerRS, hFNF HandlerFNF) *RSocket {
 	ret := &RSocket{
 		c:           c,
 		outStreamID: 0,
 		handlerRQ:   hRQ,
 		handlerRS:   hRS,
+		handlerFNF:  hFNF,
 		handlersRQ:  make(map[uint32]HandlerRQ),
 	}
+
+	c.HandleFNF(func(frame *FrameFNF) (err error) {
+		if ret.handlerFNF == nil {
+			return nil
+		}
+		go func(sid uint32, payload Payload) {
+			if err := ret.handlerFNF(payload); err != nil {
+				log.Println("handle fnf failed:", err)
+			}
+		}(frame.StreamID(), CreatePayloadRaw(frame.Data(), frame.Metadata()))
+		return nil
+	})
 
 	c.HandleRequestStream(func(frame *FrameRequestStream) (err error) {
 		if ret.handlerRS == nil {

@@ -44,16 +44,7 @@ func (p *TcpServerTransport) Listen(ctx context.Context) error {
 				}
 				return
 			})
-			go func(ctx context.Context, rc *tcpRConnection) {
-				if err := rc.loopRcv(ctx); err != nil {
-					log.Println("tcp rconnection error:", err)
-				}
-			}(ctx, rc)
-			go func(ctx context.Context, rc *tcpRConnection) {
-				if err := rc.loopSnd(ctx); err != nil {
-					log.Println("tcp rconnection error:", err)
-				}
-			}(ctx, rc)
+			rc.PostFlight(ctx)
 		}
 	}
 }

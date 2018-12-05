@@ -17,29 +17,28 @@ type Emitter interface {
 type Acceptor = func(setup SetupPayload, sendingSocket *RSocket) (err error)
 type HandlerRQ = func(req Payload) (res Payload, err error)
 type HandlerRS = func(req Payload, emitter Emitter)
+type HandlerFNF = func(req Payload) error
 
 type Server struct {
-	transport ServerTransport
-	acceptor  Acceptor
-	handlerRQ HandlerRQ
-	handlerRS HandlerRS
+	opts *serverOptions
 }
 
 func (p *Server) Start(ctx context.Context) error {
-	p.transport.Accept(func(setup *FrameSetup, conn RConnection) error {
-		rs := newRSocket(conn, p.handlerRQ, p.handlerRS)
+	p.opts.transport.Accept(func(setup *FrameSetup, conn RConnection) error {
+		rs := newRSocket(conn, p.opts.handlerRQ, p.opts.handlerRS, p.opts.handlerFNF)
 		var v Version = [2]uint16{setup.Major(), setup.Minor()}
 		sp := newSetupPayload(v, setup.Data(), setup.Metadata())
-		return p.acceptor(sp, rs)
+		return p.opts.acceptor(sp, rs)
 	})
-	return p.transport.Listen(ctx)
+	return p.opts.transport.Listen(ctx)
 }
 
 type serverOptions struct {
-	transport ServerTransport
-	acceptor  Acceptor
-	handlerRQ HandlerRQ
-	handlerRS HandlerRS
+	transport  ServerTransport
+	acceptor   Acceptor
+	handlerRQ  HandlerRQ
+	handlerRS  HandlerRS
+	handlerFNF HandlerFNF
 }
 
 type ServerOption func(o *serverOptions)
@@ -68,6 +67,12 @@ func WithRequestStreamHandler(h HandlerRS) ServerOption {
 	}
 }
 
+func WithFireAndForget(h HandlerFNF) ServerOption {
+	return func(o *serverOptions) {
+		o.handlerFNF = h
+	}
+}
+
 func NewServer(opts ...ServerOption) (*Server, error) {
 	o := &serverOptions{}
 	for _, it := range opts {
@@ -76,10 +81,5 @@ func NewServer(opts ...ServerOption) (*Server, error) {
 	if o.transport == nil {
 		return nil, errMissingTransport
 	}
-	return &Server{
-		transport: o.transport,
-		acceptor:  o.acceptor,
-		handlerRQ: o.handlerRQ,
-		handlerRS: o.handlerRS,
-	}, nil
+	return &Server{opts: o,}, nil
 }

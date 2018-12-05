@@ -18,6 +18,24 @@ type tcpRConnection struct {
 	hReqRes    func(*FrameRequestResponse) error
 	hReqStream func(*FrameRequestStream) error
 	hPayload   func(*FramePayload) error
+	hFNF       func(*FrameFNF) error
+}
+
+func (p *tcpRConnection) HandleFNF(callback func(frame *FrameFNF) (err error)) {
+	p.hFNF = callback
+}
+
+func (p *tcpRConnection) PostFlight(ctx context.Context) {
+	go func() {
+		if err := p.loopSnd(ctx); err != nil {
+			log.Println("loop snd stopped:", err)
+		}
+	}()
+	go func() {
+		if err := p.loopRcv(ctx); err != nil {
+			log.Println("loop rcv stopped:", err)
+		}
+	}()
 }
 
 func (p *tcpRConnection) HandleRequestStream(callback func(frame *FrameRequestStream) (err error)) {
@@ -48,10 +66,6 @@ func (p *tcpRConnection) Send(first Frame, others ...Frame) (err error) {
 		p.snd <- other
 	}
 	return
-}
-
-func (p *tcpRConnection) HandleFNF(f *FrameFNF) error {
-	return nil
 }
 
 func (p *tcpRConnection) HandleCancel(f *FrameCancel) error {
@@ -102,7 +116,9 @@ func (p *tcpRConnection) loopRcv(ctx context.Context) error {
 		case REQUEST_RESPONSE:
 			err = p.hReqRes(asRequestResponse(h, raw))
 		case REQUEST_FNF:
-			err = p.HandleFNF(asFNF(h, raw))
+			if p.hFNF != nil {
+				err = p.hFNF(asFNF(h, raw))
+			}
 		case REQUEST_STREAM:
 			err = p.hReqStream(asRequestStream(h, raw))
 		case REQUEST_CHANNEL:
