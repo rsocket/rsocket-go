@@ -18,20 +18,30 @@ import (
 func TestRSocketServer_Start(t *testing.T) {
 	server, err := NewServer(
 		WithTransportTCP("127.0.0.1:8000"),
-		WithAcceptor(func(setup *SetupPayload, rs *RSocket) (err error) {
-			log.Println("SETUP:", setup)
+		WithAcceptor(func(setup SetupPayload, rs *RSocket) (err error) {
+			log.Printf("SETUP: version=%s, data=%s, metadata=%s\n", setup.Version(), string(setup.Data()), string(setup.Metadata()))
 			return nil
 		}),
-		WithRequestResponseHandler(func(request *Payload) (reponse *Payload, err error) {
-			log.Println("RQ:", request)
-			foo := string(request.Data)
-			if foo == "ping" {
-				return &Payload{
-					Data:     []byte("pong"),
-					Metadata: request.Metadata,
-				}, nil
+		WithFireAndForget(func(req Payload) error {
+			log.Println("GOT FNF:", req)
+			return nil
+		}),
+		WithRequestResponseHandler(func(req Payload) (res Payload, err error) {
+			// just echo
+			return req, nil
+		}),
+		WithRequestStreamHandler(func(req Payload, emitter Emitter) {
+			totals := 1000
+			for i := 0; i < totals; i++ {
+				payload := CreatePayloadString(fmt.Sprintf("%d", i), "")
+				if err := emitter.Next(payload); err != nil {
+					log.Println("process stream failed:", err)
+				}
 			}
-			return nil, fmt.Errorf("invalid data: %s", foo)
+			payload := CreatePayloadString(fmt.Sprintf("%d", totals), "")
+			if err := emitter.Complete(payload); err != nil {
+				log.Println("process stream failed:", err)
+			}
 		}),
 	)
 	if err != nil {

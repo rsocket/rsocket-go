@@ -19,6 +19,7 @@ func TestRSocketServer_Start(t *testing.T) {
 			return nil
 		}),
 		WithRequestResponseHandler(func(req Payload) (res Payload, err error) {
+			// just echo
 			return req, nil
 		}),
 		WithRequestStreamHandler(func(req Payload, emitter Emitter) {
@@ -41,24 +42,4 @@ func TestRSocketServer_Start(t *testing.T) {
 	if err := server.Start(context.Background()); err != nil {
 		t.Error(err)
 	}
-}
-
-type CCC []byte
-
-func (p CCC) String() string {
-	return string(p)
-}
-
-func TestFoobar(t *testing.T) {
-	bs := []byte("abcdefg")
-	cc := CCC(bs)
-	println("cc:", cc.String())
-	s := string(bs)
-	println(s)
-	sp := bs[:4]
-	bs[1] = '?'
-	println(s)
-	println(string(bs))
-	println(string(sp))
-	println("cc:", cc.String())
 }
