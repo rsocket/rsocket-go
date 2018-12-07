@@ -35,7 +35,8 @@ func (p *lengthBasedFrameDecoder) Handle(ctx context.Context, fn FrameHandler) e
 		}
 		return
 	})
-
+	buf := make([]byte, 0, 64*1024)
+	p.scanner.Buffer(buf, 16*1024*1024+3)
 	for p.scanner.Scan() {
 		select {
 		case <-ctx.Done():

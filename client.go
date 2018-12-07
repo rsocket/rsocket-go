@@ -2,8 +2,7 @@ package rsocket
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -12,15 +11,14 @@ type Client struct {
 	opts        *clientOpts
 	c           RConnection
 	sndStreamID uint32
-
-	hReqRes map[uint32]func(Payload)
+	hReqRes     *sync.Map //map[uint32]
 }
 
 func (p *Client) Close() error {
 	return p.c.Close()
 }
 
-func (p *Client) RequestResponse(req Payload, handler func(res Payload)) error {
+func (p *Client) RequestResponse(req Payload, handler func(res Payload, err error)) error {
 	var sid uint32
 	if atomic.CompareAndSwapUint32(&p.sndStreamID, 0, 1) {
 		sid = 1
@@ -35,26 +33,22 @@ func (p *Client) RequestResponse(req Payload, handler func(res Payload)) error {
 	if err != nil {
 		return err
 	}
-	p.hReqRes[sid] = handler
+	p.hReqRes.Store(sid, handler)
 	return nil
 }
 
 func (p *Client) Start(ctx context.Context) (err error) {
-	p.c, err = p.opts.tp.Connect(fmt.Sprintf("%s:%d", p.opts.host, p.opts.port))
+	p.c, err = p.opts.tp.Connect()
 	if err != nil {
 		return
 	}
-	defer func() {
-		if err := p.Close(); err != nil {
-			log.Println("close client failed:", err)
-		}
-	}()
-
 	p.c.HandlePayload(func(frame *FramePayload) (err error) {
 		sid := frame.StreamID()
-		if h, ok := p.hReqRes[sid]; ok {
-			delete(p.hReqRes, sid)
-			h(CreatePayloadRaw(frame.data, frame.metadata))
+		if value, ok := p.hReqRes.Load(sid); ok {
+			fn := value.(func(Payload, error))
+			p.hReqRes.Delete(sid)
+			payload := CreatePayloadRaw(frame.data, frame.metadata)
+			fn(payload, nil)
 		}
 		return nil
 	})
@@ -66,8 +60,6 @@ func (p *Client) Start(ctx context.Context) (err error) {
 }
 
 type clientOpts struct {
-	host          string
-	port          int
 	tp            Transport
 	setupData     []byte
 	setupMetadata []byte
@@ -82,10 +74,8 @@ type clientOpts struct {
 
 type ClientOption func(o *clientOpts)
 
-func NewClient(host string, port int, options ...ClientOption) (*Client, error) {
+func NewClient(options ...ClientOption) (*Client, error) {
 	o := &clientOpts{
-		host: host,
-		port: port,
 	}
 	for _, it := range options {
 		it(o)
@@ -94,8 +84,15 @@ func NewClient(host string, port int, options ...ClientOption) (*Client, error) 
 		return nil, errMissingTransport
 	}
 	return &Client{
-		opts: o,
+		opts:    o,
+		hReqRes: &sync.Map{},
 	}, nil
+}
+
+func WithTCPTransport(host string, port int) ClientOption {
+	return func(o *clientOpts) {
+		o.tp = newTCPClientTransport(host, port)
+	}
 }
 
 func WithSetupPayload(data []byte, metadata []byte) ClientOption {

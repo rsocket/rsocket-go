@@ -5,6 +5,7 @@ import (
 	"github.com/pkg/errors"
 	"io"
 	"log"
+	"sync"
 )
 
 var errUnsupportedFrame = errors.New("unsupported frame")
@@ -19,6 +20,7 @@ type tcpRConnection struct {
 	hReqStream func(*FrameRequestStream) error
 	hPayload   func(*FramePayload) error
 	hFNF       func(*FrameFNF) error
+	once       *sync.Once
 }
 
 func (p *tcpRConnection) HandleFNF(callback func(frame *FrameFNF) (err error)) {
@@ -50,9 +52,12 @@ func (p *tcpRConnection) HandleSetup(h func(setup *FrameSetup) (err error)) {
 	p.hSetup = h
 }
 
-func (p *tcpRConnection) Close() error {
-	close(p.snd)
-	return p.c.Close()
+func (p *tcpRConnection) Close() (err error) {
+	p.once.Do(func() {
+		close(p.snd)
+		err = p.c.Close()
+	})
+	return
 }
 
 func (p *tcpRConnection) Send(first Frame, others ...Frame) (err error) {
@@ -96,8 +101,10 @@ func (p *tcpRConnection) HandleMetadataPush(f *FrameMetadataPush) error {
 	return nil
 }
 
-func (p *tcpRConnection) loopRcv(ctx context.Context) error {
+func (p *tcpRConnection) loopRcv(c context.Context) error {
+	ctx, cancel := context.WithCancel(c)
 	defer func() {
+		cancel()
 		if err := p.Close(); err != nil {
 			log.Println("close connection failed:", err)
 		}
@@ -173,5 +180,6 @@ func newTcpRConnection(c io.ReadWriteCloser, buffSize int) *tcpRConnection {
 		decoder: newLengthBasedFrameDecoder(c),
 		snd:     make(chan Frame, buffSize),
 		rcv:     make(chan Frame, buffSize),
+		once:    &sync.Once{},
 	}
 }

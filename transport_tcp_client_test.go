@@ -8,31 +8,24 @@ import (
 )
 
 func TestTCPClientTransport_Connect(t *testing.T) {
-	tp := newTCPClientTransport()
-	c, err := tp.Connect("127.0.0.1:7878")
+	tp := newTCPClientTransport("127.0.0.1", 8000)
+	c, err := tp.Connect()
 	if err != nil {
 		t.Error(err)
 	}
 
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
 	c.HandlePayload(func(payload *FramePayload) error {
+		defer wg.Done()
 		log.Println("data:", string(payload.Data()))
 		return nil
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := c.loopRcv(ctx); err != nil {
-			log.Println(err)
-		}
-	}()
-	go func() {
-		if err := c.loopSnd(ctx); err != nil {
-			log.Println(err)
-		}
-	}()
+
+	c.PostFlight(ctx)
 
 	setup := mkSetup([]byte("foo"), []byte("bar"), "binary", "binary", FlagMetadata)
 	if err := c.Send(setup); err != nil {
@@ -41,7 +34,6 @@ func TestTCPClientTransport_Connect(t *testing.T) {
 	if err := c.Send(mkRequestResponse(1, []byte("ping~"), []byte("ping"), FlagMetadata)); err != nil {
 		t.Error(err)
 	}
-
 	wg.Wait()
 	cancel()
 }
