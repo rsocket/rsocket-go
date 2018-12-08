@@ -7,13 +7,13 @@ type FrameMetadataPush struct {
 
 func (p *FrameMetadataPush) Metadata() []byte {
 	return p.metadata
-	//return p.Frame[frameHeaderLength:]
+	//return p.Frame[headerLen:]
 }
 
 func asMetadataPush(h *Header, raw []byte) *FrameMetadataPush {
 	return &FrameMetadataPush{
 		Header:   h,
-		metadata: sliceMetadata(h, raw, frameHeaderLength),
+		metadata: sliceMetadata(h, raw, headerLen),
 	}
 }
 

@@ -30,8 +30,8 @@ func (p *FrameKeepalive) Data() []byte {
 }
 
 func asKeepalive(h *Header, raw []byte) *FrameKeepalive {
-	pos := binary.BigEndian.Uint64(raw[frameHeaderLength : frameHeaderLength+8])
-	data := raw[frameHeaderLength+8:]
+	pos := binary.BigEndian.Uint64(raw[headerLen : headerLen+8])
+	data := raw[headerLen+8:]
 	return &FrameKeepalive{
 		Header:               h,
 		lastReceivedPosition: pos,

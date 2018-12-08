@@ -9,7 +9,9 @@ import (
 )
 
 const (
-	frameHeaderLength int = 6
+	headerLen       = 6
+	defaultBuffSize = 64 * 1024
+	maxBuffSize     = 16*1024*1024 + 3
 )
 
 type lengthBasedFrameDecoder struct {
@@ -35,22 +37,20 @@ func (p *lengthBasedFrameDecoder) Handle(ctx context.Context, fn FrameHandler) e
 		}
 		return
 	})
-	buf := make([]byte, 0, 64*1024)
-	p.scanner.Buffer(buf, 16*1024*1024+3)
+	buf := make([]byte, 0, defaultBuffSize)
+	p.scanner.Buffer(buf, maxBuffSize)
 	for p.scanner.Scan() {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 			p.scanner.Bytes()
-			data := p.scanner.Bytes()
-			clone := make([]byte, len(data)-3)
-			copy(clone, data[3:])
-			h, err := asHeader(clone)
+			data := p.scanner.Bytes()[3:]
+			h, err := asHeader(data)
 			if err != nil {
 				return err
 			}
-			if err := fn(h, clone); err != nil {
+			if err := fn(h, data); err != nil {
 				return err
 			}
 		}
@@ -76,11 +76,19 @@ func encodeU24(n int) []byte {
 
 func sliceMetadataAndData(header *Header, raw []byte, offset int) (metadata []byte, data []byte) {
 	if !header.Flags().Check(FlagMetadata) {
-		return nil, raw[offset:]
+		foo := raw[offset:]
+		data = make([]byte, len(foo))
+		copy(data, foo)
+		return
 	}
 	l := decodeU24(raw, offset)
 	offset += 3
-	return raw[offset : offset+l], raw[offset+l:]
+	metadata = make([]byte, l)
+	copy(metadata, raw[offset:offset+l])
+	foo := raw[offset+l:]
+	data = make([]byte, len(foo))
+	copy(data, foo)
+	return
 }
 
 func sliceMetadata(header *Header, raw []byte, offset int) []byte {
@@ -89,12 +97,8 @@ func sliceMetadata(header *Header, raw []byte, offset int) []byte {
 	}
 	l := decodeU24(raw, offset)
 	offset += 3
-	return raw[offset : offset+l]
-}
-
-func sliceData(header *Header, raw []byte, offset int) []byte {
-	if header.Flags().Check(FlagMetadata) {
-		offset += 3 + decodeU24(raw, offset)
-	}
-	return raw[offset:]
+	foo := raw[offset : offset+l]
+	ret := make([]byte, len(foo))
+	copy(ret, foo)
+	return ret
 }

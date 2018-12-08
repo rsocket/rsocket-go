@@ -22,11 +22,12 @@ func (p FrameRequestStream) Data() []byte {
 }
 
 func asRequestStream(h *Header, raw []byte) *FrameRequestStream {
+	m, d := sliceMetadataAndData(h, raw, headerLen+4)
 	return &FrameRequestStream{
 		Header:          h,
-		initialRequestN: binary.BigEndian.Uint32(raw[frameHeaderLength : frameHeaderLength+4]),
-		metadata:        sliceMetadata(h, raw, frameHeaderLength+4),
-		data:            sliceData(h, raw, frameHeaderLength+4),
+		initialRequestN: binary.BigEndian.Uint32(raw[headerLen : headerLen+4]),
+		metadata:        m,
+		data:            d,
 	}
 }
 

@@ -49,6 +49,7 @@ func TestNewClient(t *testing.T) {
 	wg := &sync.WaitGroup{}
 	for i := 0; i < totals; i++ {
 		wg.Add(1)
+		// send 4k data
 		send := CreatePayloadString(strings.Repeat("A", 4096), "benchmark")
 		if err := cli.RequestResponse(send, func(res Payload, err error) {
 			if !bytes.Equal(res.Data(), send.Data()) {

@@ -27,10 +27,11 @@ func (p *FramePayload) Bytes() []byte {
 }
 
 func asPayload(h *Header, raw []byte) *FramePayload {
+	m, d := sliceMetadataAndData(h, raw, headerLen)
 	return &FramePayload{
 		Header:   h,
-		metadata: sliceMetadata(h, raw, frameHeaderLength),
-		data:     sliceData(h, raw, frameHeaderLength),
+		metadata: m,
+		data:     d,
 	}
 }
 

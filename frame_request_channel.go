@@ -22,11 +22,12 @@ func (p *FrameRequestChannel) Payload() []byte {
 }
 
 func asRequestChannel(h *Header, raw []byte) *FrameRequestChannel {
+	m, d := sliceMetadataAndData(h, raw, headerLen+4)
 	return &FrameRequestChannel{
 		Header:          h,
-		initialRequestN: binary.BigEndian.Uint32(raw[frameHeaderLength : frameHeaderLength+4]),
-		meatadata:       sliceMetadata(h, raw, frameHeaderLength+4),
-		data:            sliceData(h, raw, frameHeaderLength+4),
+		initialRequestN: binary.BigEndian.Uint32(raw[headerLen : headerLen+4]),
+		meatadata:       m,
+		data:            d,
 	}
 }
 

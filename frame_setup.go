@@ -80,7 +80,7 @@ func (p *FrameSetup) Bytes() []byte {
 }
 
 func asSetup(h *Header, raw []byte) *FrameSetup {
-	var offset = frameHeaderLength
+	var offset = headerLen
 	major := binary.BigEndian.Uint16(raw[offset : offset+2])
 	offset += 2
 	minor := binary.BigEndian.Uint16(raw[offset : offset+2])
@@ -93,16 +93,19 @@ func asSetup(h *Header, raw []byte) *FrameSetup {
 	if h.Flags().Check(FlagResume) {
 		tokenLength := int(binary.BigEndian.Uint16(raw[offset : offset+2]))
 		offset += 2
-		token = raw[offset : offset+tokenLength]
+		token = make([]byte, tokenLength)
+		copy(token, raw[offset:offset+tokenLength])
 		offset += tokenLength
 	}
 	mimeMetadataLen := int(raw[offset])
 	offset += 1
-	mimeMetadata := raw[offset : offset+mimeMetadataLen]
+	mimeMetadata := make([]byte, mimeMetadataLen)
+	copy(mimeMetadata, raw[offset:offset+mimeMetadataLen])
 	offset += mimeMetadataLen
 	mimeDataLen := int(raw[offset])
 	offset += 1
-	mimeData := raw[offset : offset+mimeDataLen]
+	mimeData := make([]byte, mimeDataLen)
+	copy(mimeData, raw[offset:offset+mimeDataLen])
 	offset += mimeDataLen
 	metadata, data := sliceMetadataAndData(h, raw, offset)
 	return &FrameSetup{

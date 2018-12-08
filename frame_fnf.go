@@ -15,9 +15,10 @@ func (p *FrameFNF) Data() []byte {
 }
 
 func asFNF(h *Header, raw []byte) *FrameFNF {
+	m, d := sliceMetadataAndData(h, raw, headerLen)
 	return &FrameFNF{
 		Header:   h,
-		metadata: sliceMetadata(h, raw, frameHeaderLength),
-		data:     sliceData(h, raw, frameHeaderLength),
+		metadata: m,
+		data:     d,
 	}
 }

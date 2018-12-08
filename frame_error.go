@@ -76,8 +76,8 @@ func (p *FrameError) ErrorData() []byte {
 }
 
 func asError(h *Header, bs []byte) *FrameError {
-	code := binary.BigEndian.Uint32(bs[frameHeaderLength : frameHeaderLength+4])
-	data := bs[frameHeaderLength+4:]
+	code := binary.BigEndian.Uint32(bs[headerLen : headerLen+4])
+	data := bs[headerLen+4:]
 	return &FrameError{
 		Header: h,
 		data:   data,

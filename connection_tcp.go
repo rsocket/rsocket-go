@@ -1,6 +1,7 @@
 package rsocket
 
 import (
+	"bufio"
 	"context"
 	"github.com/pkg/errors"
 	"io"
@@ -154,13 +155,17 @@ func (p *tcpRConnection) loopRcv(c context.Context) error {
 }
 
 func (p *tcpRConnection) loopSnd(ctx context.Context) error {
+	w := bufio.NewWriterSize(p.c, defaultBuffSize)
 	for frame := range p.snd {
 		bs := frame.Bytes()
 		frameLength := encodeU24(len(bs))
-		if _, err := p.c.Write(frameLength); err != nil {
+		if _, err := w.Write(frameLength); err != nil {
 			return err
 		}
-		if _, err := p.c.Write(bs); err != nil {
+		if _, err := w.Write(bs); err != nil {
+			return err
+		}
+		if err := w.Flush(); err != nil {
 			return err
 		}
 	}
@@ -176,7 +181,8 @@ func (p *tcpRConnection) handleKeepalive(f *FrameKeepalive) error {
 
 func newTcpRConnection(c io.ReadWriteCloser, buffSize int) *tcpRConnection {
 	return &tcpRConnection{
-		c:       c,
+		c: c,
+
 		decoder: newLengthBasedFrameDecoder(c),
 		snd:     make(chan Frame, buffSize),
 		rcv:     make(chan Frame, buffSize),

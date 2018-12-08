@@ -25,13 +25,13 @@ func (p *FrameLease) Metadata() []byte {
 }
 
 func asLease(h *Header, raw []byte) *FrameLease {
-	t1 := binary.BigEndian.Uint32(raw[frameHeaderLength : frameHeaderLength+4])
-	n := binary.BigEndian.Uint32(raw[frameHeaderLength+4 : frameHeaderLength+8])
+	t1 := binary.BigEndian.Uint32(raw[headerLen : headerLen+4])
+	n := binary.BigEndian.Uint32(raw[headerLen+4 : headerLen+8])
 	return &FrameLease{
 		Header:           h,
 		timeToLive:       time.Millisecond * time.Duration(t1),
 		numberOfRequests: n,
-		metadata:         sliceMetadata(h, raw, frameHeaderLength+8),
+		metadata:         sliceMetadata(h, raw, headerLen+8),
 	}
 }
 

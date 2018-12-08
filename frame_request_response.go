@@ -33,10 +33,11 @@ func (p *FrameRequestResponse) Bytes() []byte {
 }
 
 func asRequestResponse(h *Header, raw []byte) *FrameRequestResponse {
+	m, d := sliceMetadataAndData(h, raw, headerLen)
 	return &FrameRequestResponse{
 		Header:   h,
-		metadata: sliceMetadata(h, raw, frameHeaderLength),
-		data:     sliceData(h, raw, frameHeaderLength),
+		metadata: m,
+		data:     d,
 	}
 }
 
