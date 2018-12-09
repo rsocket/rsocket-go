@@ -1,9 +1,10 @@
-package rsocket
+package benchmark
 
 import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/jjeffcaii/go-rsocket"
 	"log"
 	"strings"
 	"sync"
@@ -12,29 +13,29 @@ import (
 )
 
 func runEchoServer(ctx context.Context) {
-	server, err := NewServer(
-		WithTransportTCP("127.0.0.1:8000"),
-		WithAcceptor(func(setup SetupPayload, rs *RSocket) (err error) {
+	server, err := rsocket.NewServer(
+		rsocket.WithTransportTCP("127.0.0.1:8000"),
+		rsocket.WithAcceptor(func(setup rsocket.SetupPayload, rs *rsocket.RSocket) (err error) {
 			log.Printf("SETUP: version=%s, data=%s, metadata=%s\n", setup.Version(), string(setup.Data()), string(setup.Metadata()))
 			return nil
 		}),
-		WithFireAndForget(func(req Payload) error {
+		rsocket.WithFireAndForget(func(req rsocket.Payload) error {
 			log.Println("GOT FNF:", req)
 			return nil
 		}),
-		WithRequestResponseHandler(func(req Payload) (res Payload, err error) {
+		rsocket.WithRequestResponseHandler(func(req rsocket.Payload) (res rsocket.Payload, err error) {
 			// just echo
 			return req, nil
 		}),
-		WithRequestStreamHandler(func(req Payload, emitter Emitter) {
+		rsocket.WithRequestStreamHandler(func(req rsocket.Payload, emitter rsocket.Emitter) {
 			totals := 1000
 			for i := 0; i < totals; i++ {
-				payload := CreatePayloadString(fmt.Sprintf("%d", i), "")
+				payload := rsocket.CreatePayloadString(fmt.Sprintf("%d", i), "")
 				if err := emitter.Next(payload); err != nil {
 					log.Println("process stream failed:", err)
 				}
 			}
-			payload := CreatePayloadString(fmt.Sprintf("%d", totals), "")
+			payload := rsocket.CreatePayloadString(fmt.Sprintf("%d", totals), "")
 			if err := emitter.Complete(payload); err != nil {
 				log.Println("process stream failed:", err)
 			}
@@ -58,12 +59,12 @@ func TestClient_Benchmark(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	cli, err := NewClient(
-		WithTCPTransport("127.0.0.1", 8000),
-		WithSetupPayload([]byte("你好"), []byte("世界")),
-		WithKeepalive(2*time.Second, 3*time.Second, 3),
-		WithMetadataMimeType("application/binary"),
-		WithDataMimeType("application/binary"),
+	cli, err := rsocket.NewClient(
+		rsocket.WithTCPTransport("127.0.0.1", 8000),
+		rsocket.WithSetupPayload([]byte("你好"), []byte("世界")),
+		rsocket.WithKeepalive(2*time.Second, 3*time.Second, 3),
+		rsocket.WithMetadataMimeType("application/binary"),
+		rsocket.WithDataMimeType("application/binary"),
 	)
 	if err != nil {
 		t.Error(err)
@@ -82,8 +83,8 @@ func TestClient_Benchmark(t *testing.T) {
 	wg.Add(totals)
 	for i := 0; i < totals; i++ {
 		// send 4k data
-		send := CreatePayloadString(strings.Repeat("A", 4096), fmt.Sprintf("benchmark_%d", i))
-		if err := cli.RequestResponse(send, func(res Payload, err error) {
+		send := rsocket.CreatePayloadString(strings.Repeat("A", 4096), fmt.Sprintf("benchmark_%d", i))
+		if err := cli.RequestResponse(send, func(res rsocket.Payload, err error) {
 			if !bytes.Equal(res.Data(), send.Data()) {
 				t.Error("data doesn't match")
 			}
