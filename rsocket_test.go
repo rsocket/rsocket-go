@@ -77,7 +77,7 @@ func TestClient_Benchmark(t *testing.T) {
 		t.Error(err)
 	}
 	begin := time.Now()
-	totals := 100000
+	totals := 10000
 	wg := &sync.WaitGroup{}
 	wg.Add(totals)
 	for i := 0; i < totals; i++ {
