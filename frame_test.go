@@ -5,29 +5,22 @@ import (
 	"testing"
 )
 
-func TestHeader_DEC(t *testing.T) {
-	h := mkHeader(134, PAYLOAD, FlagMetadata|FlagComplete|FlagNext)
-	bs := h.Bytes()
+func TestHeader_MarshallAndUnmarshall(t *testing.T) {
+	h1 := mkHeader(134, PAYLOAD, FlagMetadata|FlagComplete|FlagNext)
+	bs := h1.Bytes()
 	h2, err := asHeader(bs)
 	if err != nil {
 		t.Error(err)
 	}
-	log.Printf("h1: %+v\n", h)
+	log.Printf("h1: %+v\n", h1)
 	log.Printf("h2: %+v\n", h2)
-}
-
-func TestName(t *testing.T) {
-	foo := mkPayload(1, []byte("mmm"), []byte("ddd"), FlagNext, FlagComplete, FlagMetadata)
-	raw := foo.Bytes()
-
-	h, err := asHeader(raw)
-	if err != nil {
-		t.Error(err)
+	if h1.StreamID() != h2.StreamID() {
+		t.Errorf("streamID doesn't matched")
 	}
-
-	bar := asPayload(h, raw)
-
-	log.Printf("%+v\n", foo)
-	log.Printf("%+v\n", bar)
-
+	if h1.Type() != h2.Type() {
+		t.Errorf("type doesn't matched")
+	}
+	if h1.Flags() != h2.Flags() {
+		t.Errorf("flags doesn't matched")
+	}
 }

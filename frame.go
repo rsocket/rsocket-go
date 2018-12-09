@@ -1,8 +1,6 @@
 package rsocket
 
 import (
-	"encoding/binary"
-	"fmt"
 	"io"
 )
 
