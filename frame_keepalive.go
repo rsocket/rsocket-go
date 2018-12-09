@@ -18,9 +18,9 @@ func (p *FrameKeepalive) WriteTo(w io.Writer) (n int64, err error) {
 	if err != nil {
 		return
 	}
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, p.lastReceivedPosition)
-	wrote, err = w.Write(b)
+	b8 := make([]byte, 8)
+	binary.BigEndian.PutUint64(b8, p.lastReceivedPosition)
+	wrote, err = w.Write(b8)
 	n += int64(wrote)
 	if err != nil {
 		return

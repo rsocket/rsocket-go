@@ -10,8 +10,8 @@ type FrameSetup struct {
 	*Header
 	major                uint16
 	minor                uint16
-	timeBetweenKeepalive time.Duration
-	maxLifetime          time.Duration
+	timeBetweenKeepalive uint32
+	maxLifetime          uint32
 	token                []byte
 	mimeMetadata         []byte
 	mimeData             []byte
@@ -28,11 +28,11 @@ func (p *FrameSetup) Minor() uint16 {
 }
 
 func (p *FrameSetup) TimeBetweenKeepalive() time.Duration {
-	return p.timeBetweenKeepalive
+	return time.Millisecond * time.Duration(p.timeBetweenKeepalive)
 }
 
 func (p *FrameSetup) MaxLifetime() time.Duration {
-	return p.maxLifetime
+	return time.Millisecond * time.Duration(p.maxLifetime)
 }
 
 func (p *FrameSetup) Token() []byte {
@@ -79,35 +79,35 @@ func (p *FrameSetup) WriteTo(w io.Writer) (n int64, err error) {
 	if err != nil {
 		return
 	}
-	v := make([]byte, 2)
-	binary.BigEndian.PutUint16(v, p.major)
-	wrote, err = w.Write(v)
+	b2 := make([]byte, 2)
+	binary.BigEndian.PutUint16(b2, p.major)
+	wrote, err = w.Write(b2)
 	n += int64(wrote)
 	if err != nil {
 		return
 	}
-	binary.BigEndian.PutUint16(v, p.minor)
-	wrote, err = w.Write(v)
+	binary.BigEndian.PutUint16(b2, p.minor)
+	wrote, err = w.Write(b2)
 	n += int64(wrote)
 	if err != nil {
 		return
 	}
-	t := make([]byte, 4)
-	binary.BigEndian.PutUint32(t, uint32(p.timeBetweenKeepalive.Nanoseconds()/1000000))
-	wrote, err = w.Write(t)
+	b4 := make([]byte, 4)
+	binary.BigEndian.PutUint32(b4, p.timeBetweenKeepalive)
+	wrote, err = w.Write(b4)
 	n += int64(wrote)
 	if err != nil {
 		return
 	}
-	binary.BigEndian.PutUint32(t, uint32(p.maxLifetime.Nanoseconds()/1000000))
-	wrote, err = w.Write(t)
+	binary.BigEndian.PutUint32(b4, p.maxLifetime)
+	wrote, err = w.Write(b4)
 	n += int64(wrote)
 	if err != nil {
 		return
 	}
 	if p.Header.Flags().Check(FlagResume) {
-		binary.BigEndian.PutUint16(v, uint16(len(p.token)))
-		wrote, err = w.Write(v)
+		binary.BigEndian.PutUint16(b2, uint16(len(p.token)))
+		wrote, err = w.Write(b2)
 		n += int64(wrote)
 		if err != nil {
 			return
@@ -195,8 +195,8 @@ func asSetup(h *Header, raw []byte) *FrameSetup {
 		Header:               h,
 		major:                major,
 		minor:                minor,
-		timeBetweenKeepalive: time.Millisecond * time.Duration(keepalive),
-		maxLifetime:          time.Millisecond * time.Duration(maxLifetime),
+		timeBetweenKeepalive: keepalive,
+		maxLifetime:          maxLifetime,
 		token:                token,
 		mimeMetadata:         mimeMetadata,
 		mimeData:             mimeData,
@@ -215,7 +215,7 @@ func mkSetup(meatadata []byte, data []byte, mimeMetadata []byte, mimeData []byte
 		mimeData:             mimeData,
 		major:                1,
 		minor:                0,
-		maxLifetime:          90 * time.Second,
-		timeBetweenKeepalive: 30 * time.Second,
+		maxLifetime:          90000,
+		timeBetweenKeepalive: 30000,
 	}
 }

@@ -2,11 +2,6 @@ package rsocket
 
 import (
 	"context"
-	"errors"
-)
-
-var (
-	errMissingTransport = errors.New("missing transport")
 )
 
 type Emitter interface {
@@ -79,7 +74,7 @@ func NewServer(opts ...ServerOption) (*Server, error) {
 		it(o)
 	}
 	if o.transport == nil {
-		return nil, errMissingTransport
+		return nil, ErrInvalidTransport
 	}
 	return &Server{opts: o,}, nil
 }

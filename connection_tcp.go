@@ -3,13 +3,10 @@ package rsocket
 import (
 	"bufio"
 	"context"
-	"github.com/pkg/errors"
 	"io"
 	"log"
 	"sync"
 )
-
-var errUnsupportedFrame = errors.New("unsupported frame")
 
 type tcpRConnection struct {
 	c          io.ReadWriteCloser
@@ -144,7 +141,7 @@ func (p *tcpRConnection) loopRcv(ctx context.Context) error {
 		//case EXT:
 		//	err = p.HandleExtension(&FrameExtension{frame})
 		default:
-			return errUnsupportedFrame
+			return ErrInvalidFrame
 		}
 		return
 	})

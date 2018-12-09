@@ -8,11 +8,19 @@ type FrameMetadataPush struct {
 }
 
 func (p *FrameMetadataPush) WriteTo(w io.Writer) (n int64, err error) {
-	panic("implement me")
+	var wrote int
+	wrote, err = w.Write(p.Header.Bytes())
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
+	wrote, err = w.Write(p.metadata)
+	n += int64(wrote)
+	return
 }
 
 func (p *FrameMetadataPush) Size() int {
-	panic("implement me")
+	return headerLen + len(p.metadata)
 }
 
 func (p *FrameMetadataPush) Metadata() []byte {
@@ -20,9 +28,12 @@ func (p *FrameMetadataPush) Metadata() []byte {
 }
 
 func asMetadataPush(h *Header, raw []byte) *FrameMetadataPush {
+	m := raw[headerLen:]
+	clone := make([]byte, len(m))
+	copy(clone, m)
 	return &FrameMetadataPush{
 		Header:   h,
-		metadata: sliceMetadata(h, raw, headerLen),
+		metadata: clone,
 	}
 }
 

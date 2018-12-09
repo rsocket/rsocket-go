@@ -72,9 +72,9 @@ func (p *FrameError) WriteTo(w io.Writer) (n int64, err error) {
 	if err != nil {
 		return
 	}
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint32(b, uint32(p.ErrorCode()))
-	wrote, err = w.Write(b)
+	b4 := make([]byte, 4)
+	binary.BigEndian.PutUint32(b4, uint32(p.ErrorCode()))
+	wrote, err = w.Write(b4)
 	n += int64(wrote)
 	if err != nil {
 		return
@@ -85,17 +85,6 @@ func (p *FrameError) WriteTo(w io.Writer) (n int64, err error) {
 	wrote, err = w.Write(p.data)
 	n += int64(wrote)
 	return
-}
-
-func (p *FrameError) Bytes() []byte {
-	bs := p.Header.Bytes()
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint32(b, uint32(p.ErrorCode()))
-	bs = append(bs, b...)
-	if p.data != nil {
-		bs = append(bs, p.data...)
-	}
-	return bs
 }
 
 func (p *FrameError) ErrorCode() ErrorCode {

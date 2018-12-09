@@ -11,11 +11,21 @@ type FrameRequestN struct {
 }
 
 func (p *FrameRequestN) WriteTo(w io.Writer) (n int64, err error) {
-	panic("implement me")
+	var wrote int
+	wrote, err = w.Write(p.Header.Bytes())
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
+	b4 := make([]byte, 4)
+	binary.BigEndian.PutUint32(b4, p.n)
+	wrote, err = w.Write(b4)
+	n += int64(wrote)
+	return
 }
 
 func (p *FrameRequestN) Size() int {
-	panic("implement me")
+	return headerLen + 4
 }
 
 func (p *FrameRequestN) RequestN() uint32 {

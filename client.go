@@ -81,7 +81,7 @@ func NewClient(options ...ClientOption) (*Client, error) {
 		it(o)
 	}
 	if o.tp == nil {
-		return nil, errMissingTransport
+		return nil, ErrInvalidTransport
 	}
 	return &Client{
 		opts:    o,

@@ -23,11 +23,17 @@ func (p *FrameFNF) WriteTo(w io.Writer) (n int64, err error) {
 		if err != nil {
 			return
 		}
-	}
-	if p.data != nil {
-		wrote, err = w.Write(p.data)
+		wrote, err = w.Write(p.metadata)
 		n += int64(wrote)
+		if err != nil {
+			return
+		}
 	}
+	if p.data == nil {
+		return
+	}
+	wrote, err = w.Write(p.data)
+	n += int64(wrote)
 	return
 }
 

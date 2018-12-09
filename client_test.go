@@ -46,7 +46,7 @@ func TestNewClient(t *testing.T) {
 		t.Error(err)
 	}
 	begin := time.Now()
-	totals := 200000
+	totals := 500000
 	wg := &sync.WaitGroup{}
 	wg.Add(totals)
 	for i := 0; i < totals; i++ {

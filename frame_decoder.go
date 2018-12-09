@@ -3,7 +3,6 @@ package rsocket
 import (
 	"bufio"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +15,12 @@ const (
 	defaultBuffSize = 64 * 1024
 	maxBuffSize     = 16*1024*1024 + 3
 )
+
+type FrameHandler = func(h *Header, raw []byte) error
+
+type FrameDecoder interface {
+	Handle(ctx context.Context, fn FrameHandler) error
+}
 
 type lengthBasedFrameDecoder struct {
 	scanner *bufio.Scanner
@@ -72,43 +77,4 @@ func newLengthBasedFrameDecoder(r io.Reader) *lengthBasedFrameDecoder {
 	return &lengthBasedFrameDecoder{
 		scanner: bufio.NewScanner(r),
 	}
-}
-
-func decodeU24(bs []byte, offset int) int {
-	return int(bs[offset])<<16 + int(bs[offset+1])<<8 + int(bs[offset+2])
-}
-
-func encodeU24(n int) []byte {
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint32(b, uint32(n))
-	return b[1:]
-}
-
-func sliceMetadataAndData(header *Header, raw []byte, offset int) (metadata []byte, data []byte) {
-	if !header.Flags().Check(FlagMetadata) {
-		foo := raw[offset:]
-		data = make([]byte, len(foo))
-		copy(data, foo)
-		return
-	}
-	l := decodeU24(raw, offset)
-	offset += 3
-	metadata = make([]byte, l)
-	copy(metadata, raw[offset:offset+l])
-	foo := raw[offset+l:]
-	data = make([]byte, len(foo))
-	copy(data, foo)
-	return
-}
-
-func sliceMetadata(header *Header, raw []byte, offset int) []byte {
-	if !header.Flags().Check(FlagMetadata) {
-		return nil
-	}
-	l := decodeU24(raw, offset)
-	offset += 3
-	foo := raw[offset : offset+l]
-	ret := make([]byte, len(foo))
-	copy(ret, foo)
-	return ret
 }

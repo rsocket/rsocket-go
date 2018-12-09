@@ -13,11 +13,49 @@ type FrameRequestChannel struct {
 }
 
 func (p *FrameRequestChannel) WriteTo(w io.Writer) (n int64, err error) {
-	panic("implement me")
+	var wrote int
+	wrote, err = w.Write(p.Header.Bytes())
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
+	b4 := make([]byte, 4)
+	binary.BigEndian.PutUint32(b4, p.initialRequestN)
+	wrote, err = w.Write(b4)
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
+
+	if p.Header.Flags().Check(FlagMetadata) {
+		wrote, err = w.Write(encodeU24(len(p.meatadata)))
+		n += int64(wrote)
+		if err != nil {
+			return
+		}
+		wrote, err = w.Write(p.meatadata)
+		n += int64(wrote)
+		if err != nil {
+			return
+		}
+	}
+	if p.data == nil {
+		return
+	}
+	wrote, err = w.Write(p.data)
+	n += int64(wrote)
+	return
 }
 
 func (p *FrameRequestChannel) Size() int {
-	panic("implement me")
+	size := headerLen + 4
+	if p.Header.Flags().Check(FlagMetadata) {
+		size += 3 + len(p.meatadata)
+	}
+	if p.data != nil {
+		size += len(p.data)
+	}
+	return size
 }
 
 func (p *FrameRequestChannel) InitialRequestN() uint32 {
