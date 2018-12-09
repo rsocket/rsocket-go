@@ -15,7 +15,6 @@ type tcpRConnection struct {
 	c          io.ReadWriteCloser
 	decoder    FrameDecoder
 	snd        chan Frame
-	rcv        chan Frame
 	hSetup     func(*FrameSetup) error
 	hReqRes    func(*FrameRequestResponse) error
 	hReqStream func(*FrameRequestStream) error
@@ -111,8 +110,8 @@ func (p *tcpRConnection) loopRcv(c context.Context) error {
 		}
 	}()
 	return p.decoder.Handle(ctx, func(h *Header, raw []byte) (err error) {
-		t := h.Type()
-		switch t {
+		log.Println("---> rcv:", h.Type())
+		switch h.Type() {
 		case SETUP:
 			if p.hSetup != nil {
 				err = p.hSetup(asSetup(h, raw))
@@ -181,11 +180,9 @@ func (p *tcpRConnection) handleKeepalive(f *FrameKeepalive) error {
 
 func newTcpRConnection(c io.ReadWriteCloser, buffSize int) *tcpRConnection {
 	return &tcpRConnection{
-		c: c,
-
+		c:       c,
 		decoder: newLengthBasedFrameDecoder(c),
 		snd:     make(chan Frame, buffSize),
-		rcv:     make(chan Frame, buffSize),
 		once:    &sync.Once{},
 	}
 }

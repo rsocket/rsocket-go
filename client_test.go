@@ -3,6 +3,7 @@ package rsocket
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -45,15 +46,18 @@ func TestNewClient(t *testing.T) {
 		t.Error(err)
 	}
 	begin := time.Now()
-	totals := 100000
+	totals := 100
 	wg := &sync.WaitGroup{}
+	wg.Add(totals)
 	for i := 0; i < totals; i++ {
-		wg.Add(1)
 		// send 4k data
-		send := CreatePayloadString(strings.Repeat("A", 4096), "benchmark")
+		send := CreatePayloadString(strings.Repeat("A", 4096), fmt.Sprintf("benchmark_%d", i))
 		if err := cli.RequestResponse(send, func(res Payload, err error) {
 			if !bytes.Equal(res.Data(), send.Data()) {
-				t.Error("doesn't match")
+				t.Error("data doesn't match")
+			}
+			if !bytes.Equal(res.Metadata(), send.Metadata()) {
+				t.Error("metadata doesn't match")
 			}
 			wg.Done()
 		}); err != nil {

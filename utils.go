@@ -6,6 +6,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
+	"net"
+	"strings"
 )
 
 const (
@@ -55,7 +58,14 @@ func (p *lengthBasedFrameDecoder) Handle(ctx context.Context, fn FrameHandler) e
 			}
 		}
 	}
-	return p.scanner.Err()
+	if err := p.scanner.Err(); err != nil {
+		if foo, ok := err.(*net.OpError); ok && strings.EqualFold(foo.Err.Error(), "use of closed network connection") {
+			return nil
+		}
+		log.Println("scanner err:", err)
+		return err
+	}
+	return nil
 }
 
 func newLengthBasedFrameDecoder(r io.Reader) *lengthBasedFrameDecoder {
