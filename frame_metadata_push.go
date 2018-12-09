@@ -1,13 +1,22 @@
 package rsocket
 
+import "io"
+
 type FrameMetadataPush struct {
 	*Header
 	metadata []byte
 }
 
+func (p *FrameMetadataPush) WriteTo(w io.Writer) (n int64, err error) {
+	panic("implement me")
+}
+
+func (p *FrameMetadataPush) Size() int {
+	panic("implement me")
+}
+
 func (p *FrameMetadataPush) Metadata() []byte {
 	return p.metadata
-	//return p.Frame[headerLen:]
 }
 
 func asMetadataPush(h *Header, raw []byte) *FrameMetadataPush {

@@ -1,8 +1,6 @@
 package rsocket
 
-import (
-	"fmt"
-)
+import "io"
 
 type FrameRequestResponse struct {
 	*Header
@@ -10,8 +8,42 @@ type FrameRequestResponse struct {
 	data     []byte
 }
 
-func (p *FrameRequestResponse) String() string {
-	return fmt.Sprintf("FrameRequestResponse{Headeer=%+v, metadata=%s, data=%s}", p.Header, string(p.metadata), string(p.data))
+func (p *FrameRequestResponse) Size() int {
+	size := headerLen
+	if p.Header.Flags().Check(FlagMetadata) {
+		size += 3 + len(p.metadata)
+	}
+	if p.data != nil {
+		size += len(p.data)
+	}
+	return size
+}
+
+func (p *FrameRequestResponse) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int
+	wrote, err = w.Write(p.Header.Bytes())
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
+	if p.Header.Flags().Check(FlagMetadata) {
+		wrote, err = w.Write(encodeU24(len(p.metadata)))
+		n += int64(wrote)
+		if err != nil {
+			return
+		}
+		wrote, err = w.Write(p.metadata)
+		n += int64(wrote)
+		if err != nil {
+			return
+		}
+	}
+	if p.data == nil {
+		return
+	}
+	wrote, err = w.Write(p.data)
+	n += int64(wrote)
+	return
 }
 
 func (p *FrameRequestResponse) Metadata() []byte {

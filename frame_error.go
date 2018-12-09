@@ -2,6 +2,7 @@ package rsocket
 
 import (
 	"encoding/binary"
+	"io"
 )
 
 type ErrorCode uint32
@@ -54,6 +55,36 @@ type FrameError struct {
 	*Header
 	code ErrorCode
 	data []byte
+}
+
+func (p *FrameError) Size() int {
+	size := headerLen + 4
+	if p.data != nil {
+		size += len(p.data)
+	}
+	return size
+}
+
+func (p *FrameError) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int
+	wrote, err = w.Write(p.Header.Bytes())
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, uint32(p.ErrorCode()))
+	wrote, err = w.Write(b)
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
+	if p.data == nil {
+		return
+	}
+	wrote, err = w.Write(p.data)
+	n += int64(wrote)
+	return
 }
 
 func (p *FrameError) Bytes() []byte {

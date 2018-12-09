@@ -68,8 +68,8 @@ type clientOpts struct {
 	ackTimeout time.Duration
 	missedAcks int
 
-	mimeData     string
-	mimeMetadata string
+	mimeData     []byte
+	mimeMetadata []byte
 }
 
 type ClientOption func(o *clientOpts)
@@ -112,12 +112,12 @@ func WithKeepalive(tickPeriod time.Duration, ackTimeout time.Duration, missedAck
 
 func WithDataMimeType(mime string) ClientOption {
 	return func(o *clientOpts) {
-		o.mimeData = mime
+		o.mimeData = []byte(mime)
 	}
 }
 
 func WithMetadataMimeType(mime string) ClientOption {
 	return func(o *clientOpts) {
-		o.mimeMetadata = mime
+		o.mimeMetadata = []byte(mime)
 	}
 }

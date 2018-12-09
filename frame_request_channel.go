@@ -1,12 +1,23 @@
 package rsocket
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"io"
+)
 
 type FrameRequestChannel struct {
 	*Header
 	initialRequestN uint32
 	meatadata       []byte
 	data            []byte
+}
+
+func (p *FrameRequestChannel) WriteTo(w io.Writer) (n int64, err error) {
+	panic("implement me")
+}
+
+func (p *FrameRequestChannel) Size() int {
+	panic("implement me")
 }
 
 func (p *FrameRequestChannel) InitialRequestN() uint32 {

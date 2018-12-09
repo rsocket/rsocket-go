@@ -2,6 +2,7 @@ package rsocket
 
 import (
 	"encoding/binary"
+	"io"
 	"time"
 )
 
@@ -10,6 +11,14 @@ type FrameLease struct {
 	timeToLive       time.Duration
 	numberOfRequests uint32
 	metadata         []byte
+}
+
+func (p *FrameLease) WriteTo(w io.Writer) (n int64, err error) {
+	panic("implement me")
+}
+
+func (p *FrameLease) Size() int {
+	panic("implement me")
 }
 
 func (p *FrameLease) TimeToLive() time.Duration {

@@ -101,16 +101,13 @@ func (p *tcpRConnection) HandleMetadataPush(f *FrameMetadataPush) error {
 	return nil
 }
 
-func (p *tcpRConnection) loopRcv(c context.Context) error {
-	ctx, cancel := context.WithCancel(c)
+func (p *tcpRConnection) loopRcv(ctx context.Context) error {
 	defer func() {
-		cancel()
 		if err := p.Close(); err != nil {
 			log.Println("close connection failed:", err)
 		}
 	}()
 	return p.decoder.Handle(ctx, func(h *Header, raw []byte) (err error) {
-		log.Println("---> rcv:", h.Type())
 		switch h.Type() {
 		case SETUP:
 			if p.hSetup != nil {
@@ -156,12 +153,10 @@ func (p *tcpRConnection) loopRcv(c context.Context) error {
 func (p *tcpRConnection) loopSnd(ctx context.Context) error {
 	w := bufio.NewWriterSize(p.c, defaultBuffSize)
 	for frame := range p.snd {
-		bs := frame.Bytes()
-		frameLength := encodeU24(len(bs))
-		if _, err := w.Write(frameLength); err != nil {
+		if _, err := w.Write(encodeU24(frame.Size())); err != nil {
 			return err
 		}
-		if _, err := w.Write(bs); err != nil {
+		if _, err := frame.WriteTo(w); err != nil {
 			return err
 		}
 		if err := w.Flush(); err != nil {

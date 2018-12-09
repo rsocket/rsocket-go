@@ -27,7 +27,7 @@ func TestTCPClientTransport_Connect(t *testing.T) {
 
 	c.PostFlight(ctx)
 
-	setup := mkSetup([]byte("foo"), []byte("bar"), "binary", "binary", FlagMetadata)
+	setup := mkSetup([]byte("foo"), []byte("bar"), []byte("binary"), []byte("binary"), FlagMetadata)
 	if err := c.Send(setup); err != nil {
 		t.Error(err)
 	}

@@ -10,7 +10,12 @@ type FrameCancel struct {
 
 func (p *FrameCancel) WriteTo(w io.Writer) (n int64, err error) {
 	wrote, err := w.Write(p.Header.Bytes())
-	return int64(wrote), err
+	n = int64(wrote)
+	return
+}
+
+func (p *FrameCancel) Size() int {
+	return headerLen
 }
 
 func asCancel(h *Header, raw []byte) *FrameCancel {

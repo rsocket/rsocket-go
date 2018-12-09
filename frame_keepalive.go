@@ -2,6 +2,7 @@ package rsocket
 
 import (
 	"encoding/binary"
+	"io"
 )
 
 type FrameKeepalive struct {
@@ -10,15 +11,34 @@ type FrameKeepalive struct {
 	data                 []byte
 }
 
-func (p *FrameKeepalive) Bytes() []byte {
-	bs := p.Header.Bytes()
+func (p *FrameKeepalive) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int
+	wrote, err = w.Write(p.Header.Bytes())
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, p.lastReceivedPosition)
-	bs = append(bs, b...)
-	if p.data != nil {
-		bs = append(bs, p.data...)
+	wrote, err = w.Write(b)
+	n += int64(wrote)
+	if err != nil {
+		return
 	}
-	return bs
+	if p.data == nil {
+		return
+	}
+	wrote, err = w.Write(p.data)
+	n += int64(wrote)
+	return
+}
+
+func (p *FrameKeepalive) Size() int {
+	size := headerLen + 8
+	if p.data != nil {
+		size += len(p.data)
+	}
+	return size
 }
 
 func (p *FrameKeepalive) LastReceivedPosition() uint64 {

@@ -2,6 +2,7 @@ package rsocket
 
 import (
 	"encoding/binary"
+	"io"
 	"time"
 )
 
@@ -12,8 +13,8 @@ type FrameSetup struct {
 	timeBetweenKeepalive time.Duration
 	maxLifetime          time.Duration
 	token                []byte
-	mimeMetadata         string
-	mimeData             string
+	mimeMetadata         []byte
+	mimeData             []byte
 	metadata             []byte
 	data                 []byte
 }
@@ -38,11 +39,11 @@ func (p *FrameSetup) Token() []byte {
 	return p.token
 }
 
-func (p *FrameSetup) MetadataMIME() string {
+func (p *FrameSetup) MetadataMIME() []byte {
 	return p.mimeMetadata
 }
 
-func (p *FrameSetup) DataMIME() string {
+func (p *FrameSetup) DataMIME() []byte {
 	return p.mimeData
 }
 
@@ -54,29 +55,111 @@ func (p *FrameSetup) Data() []byte {
 	return p.data
 }
 
-func (p *FrameSetup) Bytes() []byte {
-	bs := p.Header.Bytes()
+func (p *FrameSetup) Size() int {
+	size := headerLen + 12
+	if p.Header.Flags().Check(FlagResume) {
+		size += 2
+		size += len(p.token)
+	}
+	size += 1 + len(p.mimeMetadata)
+	size += 1 + len(p.mimeData)
+	if p.Header.Flags().Check(FlagMetadata) {
+		size += 3 + len(p.metadata)
+	}
+	if p.data != nil {
+		size += len(p.data)
+	}
+	return size
+}
+
+func (p *FrameSetup) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int
+	wrote, err = w.Write(p.Header.Bytes())
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
 	v := make([]byte, 2)
 	binary.BigEndian.PutUint16(v, p.major)
-	bs = append(bs, v...)
+	wrote, err = w.Write(v)
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
 	binary.BigEndian.PutUint16(v, p.minor)
-	bs = append(bs, v...)
+	wrote, err = w.Write(v)
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
 	t := make([]byte, 4)
 	binary.BigEndian.PutUint32(t, uint32(p.timeBetweenKeepalive.Nanoseconds()/1000000))
-	bs = append(bs, t...)
-	binary.BigEndian.PutUint32(t, uint32(p.maxLifetime.Nanoseconds()/1000000))
-	bs = append(bs, t...)
-	// TODO: token if present
-	bs = append(bs, byte(len(p.mimeMetadata)))
-	bs = append(bs, p.mimeMetadata...)
-	bs = append(bs, byte(len(p.mimeData)))
-	bs = append(bs, p.mimeData...)
-	if p.Header.Flags().Check(FlagMetadata) {
-		bs = append(bs, encodeU24(len(p.metadata))...)
-		bs = append(bs, p.metadata...)
+	wrote, err = w.Write(t)
+	n += int64(wrote)
+	if err != nil {
+		return
 	}
-	bs = append(bs, p.data...)
-	return bs
+	binary.BigEndian.PutUint32(t, uint32(p.maxLifetime.Nanoseconds()/1000000))
+	wrote, err = w.Write(t)
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
+	if p.Header.Flags().Check(FlagResume) {
+		binary.BigEndian.PutUint16(v, uint16(len(p.token)))
+		wrote, err = w.Write(v)
+		n += int64(wrote)
+		if err != nil {
+			return
+		}
+		wrote, err = w.Write(p.token)
+		n += int64(wrote)
+		if err != nil {
+			return
+		}
+	}
+	b := make([]byte, 1)
+	b[0] = byte(len(p.mimeMetadata))
+	wrote, err = w.Write(b)
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
+	wrote, err = w.Write(p.mimeMetadata)
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
+	b[0] = byte(len(p.mimeData))
+	wrote, err = w.Write(b)
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
+	wrote, err = w.Write(p.mimeData)
+	n += int64(wrote)
+	if err != nil {
+		return
+	}
+
+	if p.Header.Flags().Check(FlagMetadata) {
+		wrote, err = w.Write(encodeU24(len(p.metadata)))
+		n += int64(wrote)
+		if err != nil {
+			return
+		}
+		wrote, err = w.Write(p.metadata)
+		n += int64(wrote)
+		if err != nil {
+			return
+		}
+	}
+	if p.data == nil {
+		return
+	}
+	wrote, err = w.Write(p.data)
+	n += int64(wrote)
+	return
 }
 
 func asSetup(h *Header, raw []byte) *FrameSetup {
@@ -115,14 +198,14 @@ func asSetup(h *Header, raw []byte) *FrameSetup {
 		timeBetweenKeepalive: time.Millisecond * time.Duration(keepalive),
 		maxLifetime:          time.Millisecond * time.Duration(maxLifetime),
 		token:                token,
-		mimeMetadata:         string(mimeMetadata),
-		mimeData:             string(mimeData),
+		mimeMetadata:         mimeMetadata,
+		mimeData:             mimeData,
 		metadata:             metadata,
 		data:                 data,
 	}
 }
 
-func mkSetup(meatadata []byte, data []byte, mimeMetadata string, mimeData string, f ...Flags) *FrameSetup {
+func mkSetup(meatadata []byte, data []byte, mimeMetadata []byte, mimeData []byte, f ...Flags) *FrameSetup {
 	h := mkHeader(0, SETUP, f...)
 	return &FrameSetup{
 		Header:               h,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 )
 
 type FrameType uint8
@@ -85,7 +86,8 @@ func (f Flags) Check(mask Flags) bool {
 }
 
 type Frame interface {
-	Bytes() []byte
+	io.WriterTo
+	Size() int
 }
 
 type FrameHandler = func(h *Header, raw []byte) error
@@ -117,7 +119,7 @@ func (p *Header) Flags() Flags {
 }
 
 func (p *Header) Bytes() []byte {
-	bs := make([]byte, 6)
+	bs := make([]byte, headerLen)
 	binary.BigEndian.PutUint32(bs, p.streamID)
 	binary.BigEndian.PutUint16(bs[4:], uint16(p.frameType)<<10|uint16(p.flags))
 	return bs
