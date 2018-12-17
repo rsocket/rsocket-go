@@ -27,14 +27,13 @@ func (p *FrameMetadataPush) Metadata() []byte {
 	return p.metadata
 }
 
-func asMetadataPush(h *Header, raw []byte) *FrameMetadataPush {
-	m := raw[headerLen:]
+func (p *FrameMetadataPush) Parse(h *Header, bs []byte) error {
+	p.Header = h
+	m := bs[headerLen:]
 	clone := make([]byte, len(m))
 	copy(clone, m)
-	return &FrameMetadataPush{
-		Header:   h,
-		metadata: clone,
-	}
+	p.metadata = clone
+	return nil
 }
 
 func mkMetadataPush(sid uint32, metadata []byte, f ...Flags) *FrameMetadataPush {

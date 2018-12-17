@@ -54,23 +54,10 @@ func (p *FrameRequestResponse) Data() []byte {
 	return p.data
 }
 
-func (p *FrameRequestResponse) Bytes() []byte {
-	bs := p.Header.Bytes()
-	if p.Header.Flags().Check(FlagMetadata) {
-		bs = append(bs, encodeU24(len(p.metadata))...)
-		bs = append(bs, p.metadata...)
-	}
-	bs = append(bs, p.data...)
-	return bs
-}
-
-func asRequestResponse(h *Header, raw []byte) *FrameRequestResponse {
-	m, d := sliceMetadataAndData(h, raw, headerLen)
-	return &FrameRequestResponse{
-		Header:   h,
-		metadata: m,
-		data:     d,
-	}
+func (p *FrameRequestResponse) Parse(h *Header, bs []byte) error {
+	p.Header = h
+	p.metadata, p.data = sliceMetadataAndData(p.Header, bs, headerLen)
+	return nil
 }
 
 func mkRequestResponse(sid uint32, metadata []byte, data []byte, f ...Flags) *FrameRequestResponse {

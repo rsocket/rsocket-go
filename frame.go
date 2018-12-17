@@ -82,7 +82,6 @@ func (f Flags) Check(mask Flags) bool {
 	return mask&f == mask
 }
 
-
 func sliceMetadataAndData(header *Header, raw []byte, offset int) (metadata []byte, data []byte) {
 	if !header.Flags().Check(FlagMetadata) {
 		foo := raw[offset:]
@@ -103,4 +102,5 @@ func sliceMetadataAndData(header *Header, raw []byte, offset int) (metadata []by
 type Frame interface {
 	io.WriterTo
 	Size() int
+	Parse(h *Header, bs []byte) error
 }

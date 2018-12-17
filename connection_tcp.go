@@ -9,19 +9,32 @@ import (
 )
 
 type tcpRConnection struct {
-	c          io.ReadWriteCloser
-	decoder    FrameDecoder
-	snd        chan Frame
-	hSetup     func(*FrameSetup) error
-	hReqRes    func(*FrameRequestResponse) error
-	hReqStream func(*FrameRequestStream) error
-	hPayload   func(*FramePayload) error
-	hFNF       func(*FrameFNF) error
-	once       *sync.Once
+	c        io.ReadWriteCloser
+	decoder  FrameDecoder
+	snd      chan Frame
+	rcv      chan Frame
+	handlers map[FrameType]interface{}
+	once     *sync.Once
 }
 
-func (p *tcpRConnection) HandleFNF(callback func(frame *FrameFNF) (err error)) {
-	p.hFNF = callback
+func (p *tcpRConnection) HandleFNF(h func(frame *FrameFNF) (err error)) {
+	p.handlers[REQUEST_FNF] = h
+}
+
+func (p *tcpRConnection) HandlePayload(h func(*FramePayload) error) {
+	p.handlers[PAYLOAD] = h
+}
+
+func (p *tcpRConnection) HandleRequestStream(h func(frame *FrameRequestStream) (err error)) {
+	p.handlers[REQUEST_STREAM] = h
+}
+
+func (p *tcpRConnection) HandleRequestResponse(h func(frame *FrameRequestResponse) (err error)) {
+	p.handlers[REQUEST_RESPONSE] = h
+}
+
+func (p *tcpRConnection) HandleSetup(h func(setup *FrameSetup) (err error)) {
+	p.handlers[SETUP] = h
 }
 
 func (p *tcpRConnection) PostFlight(ctx context.Context) {
@@ -37,26 +50,6 @@ func (p *tcpRConnection) PostFlight(ctx context.Context) {
 	}()
 }
 
-func (p *tcpRConnection) HandleRequestStream(callback func(frame *FrameRequestStream) (err error)) {
-	p.hReqStream = callback
-}
-
-func (p *tcpRConnection) HandleRequestResponse(callback func(frame *FrameRequestResponse) (err error)) {
-	p.hReqRes = callback
-}
-
-func (p *tcpRConnection) HandleSetup(h func(setup *FrameSetup) (err error)) {
-	p.hSetup = h
-}
-
-func (p *tcpRConnection) Close() (err error) {
-	p.once.Do(func() {
-		close(p.snd)
-		err = p.c.Close()
-	})
-	return
-}
-
 func (p *tcpRConnection) Send(first Frame, others ...Frame) (err error) {
 	defer func() {
 		if e, ok := recover().(error); ok {
@@ -70,32 +63,13 @@ func (p *tcpRConnection) Send(first Frame, others ...Frame) (err error) {
 	return
 }
 
-func (p *tcpRConnection) HandleCancel(f *FrameCancel) error {
-	return nil
-}
-
-func (p *tcpRConnection) HandleError(f *FrameError) error {
-	return nil
-}
-
-func (p *tcpRConnection) HandleLease(f *FrameLease) error {
-	return nil
-}
-
-func (p *tcpRConnection) HandleRequestChannel(f *FrameRequestChannel) error {
-	return nil
-}
-
-func (p *tcpRConnection) HandleRequestN(f *FrameRequestN) error {
-	return nil
-}
-
-func (p *tcpRConnection) HandlePayload(h func(*FramePayload) error) {
-	p.hPayload = h
-}
-
-func (p *tcpRConnection) HandleMetadataPush(f *FrameMetadataPush) error {
-	return nil
+func (p *tcpRConnection) Close() (err error) {
+	p.once.Do(func() {
+		close(p.rcv)
+		close(p.snd)
+		err = p.c.Close()
+	})
+	return
 }
 
 func (p *tcpRConnection) loopRcv(ctx context.Context) error {
@@ -104,63 +78,155 @@ func (p *tcpRConnection) loopRcv(ctx context.Context) error {
 			log.Println("close connection failed:", err)
 		}
 	}()
-	return p.decoder.Handle(ctx, func(h *Header, raw []byte) (err error) {
+	return p.decoder.Handle(ctx, func(h *Header, raw []byte) error {
 		switch h.Type() {
 		case SETUP:
-			if p.hSetup != nil {
-				err = p.hSetup(asSetup(h, raw))
+			f := &FrameSetup{}
+			if err := f.Parse(h, raw); err != nil {
+				return err
 			}
-		case LEASE:
-			err = p.HandleLease(asLease(h, raw))
+			if h, ok := p.handlers[SETUP]; ok {
+				if err := h.(func(*FrameSetup) error)(f); err != nil {
+					return err
+				}
+			}
 		case KEEPALIVE:
-			err = p.handleKeepalive(asKeepalive(h, raw))
+			f := &FrameKeepalive{}
+			if err := f.Parse(h, raw); err != nil {
+				return err
+			}
+			if h, ok := p.handlers[KEEPALIVE]; ok {
+				if err := h.(func(*FrameKeepalive) error)(f); err != nil {
+					return err
+				}
+			}
 		case REQUEST_RESPONSE:
-			err = p.hReqRes(asRequestResponse(h, raw))
+			f := &FrameRequestResponse{}
+			if err := f.Parse(h, raw); err != nil {
+				return err
+			}
+			if h, ok := p.handlers[REQUEST_RESPONSE]; ok {
+				if err := h.(func(*FrameRequestResponse) error)(f); err != nil {
+					return err
+				}
+			}
 		case REQUEST_FNF:
-			if p.hFNF != nil {
-				err = p.hFNF(asFNF(h, raw))
+			f := &FrameFNF{}
+			if err := f.Parse(h, raw); err != nil {
+				return err
+			}
+			if h, ok := p.handlers[REQUEST_FNF]; ok {
+				if err := h.(func(*FrameFNF) error)(f); err != nil {
+					return err
+				}
 			}
 		case REQUEST_STREAM:
-			err = p.hReqStream(asRequestStream(h, raw))
+			f := &FrameRequestStream{}
+			if err := f.Parse(h, raw); err != nil {
+				return err
+			}
+			if h, ok := p.handlers[REQUEST_STREAM]; ok {
+				if err := h.(func(*FrameRequestStream) error)(f); err != nil {
+					return err
+				}
+			}
 		case REQUEST_CHANNEL:
-			err = p.HandleRequestChannel(asRequestChannel(h, raw))
+			f := &FrameRequestChannel{}
+			if err := f.Parse(h, raw); err != nil {
+				return err
+			}
+			if h, ok := p.handlers[REQUEST_CHANNEL]; ok {
+				if err := h.(func(*FrameRequestChannel) error)(f); err != nil {
+					return err
+				}
+			}
 		case REQUEST_N:
-			err = p.HandleRequestN(asRequestN(h, raw))
+			f := &FrameRequestN{}
+			if err := f.Parse(h, raw); err != nil {
+				return err
+			}
+			if h, ok := p.handlers[REQUEST_N]; ok {
+				if err := h.(func(*FrameRequestN) error)(f); err != nil {
+					return err
+				}
+			}
 		case CANCEL:
-			err = p.HandleCancel(asCancel(h, raw))
+			f := &FrameCancel{}
+			if err := f.Parse(h, raw); err != nil {
+				return err
+			}
+			if h, ok := p.handlers[CANCEL]; ok {
+				if err := h.(func(*FrameCancel) error)(f); err != nil {
+					return err
+				}
+			}
 		case PAYLOAD:
-			if p.hPayload != nil {
-				err = p.hPayload(asPayload(h, raw))
+			f := &FramePayload{}
+			if err := f.Parse(h, raw); err != nil {
+				return err
+			}
+			if h, ok := p.handlers[PAYLOAD]; ok {
+				if err := h.(func(*FramePayload) error)(f); err != nil {
+					return err
+				}
 			}
 		case ERROR:
-			err = p.HandleError(asError(h, raw))
+			f := &FrameError{}
+			if err := f.Parse(h, raw); err != nil {
+				return err
+			}
+			if h, ok := p.handlers[ERROR]; ok {
+				if err := h.(func(*FrameError) error)(f); err != nil {
+					return err
+				}
+			}
 		case METADATA_PUSH:
-			err = p.HandleMetadataPush(asMetadataPush(h, raw))
-		//case RESUME:
-		//case RESUME_OK:
-		//case EXT:
-		//	err = p.HandleExtension(&FrameExtension{frame})
+			f := &FrameMetadataPush{}
+			if err := f.Parse(h, raw); err != nil {
+				return err
+			}
+			if h, ok := p.handlers[METADATA_PUSH]; ok {
+				if err := h.(func(*FrameMetadataPush) error)(f); err != nil {
+					return err
+				}
+			}
+		case RESUME:
+			panic("implement me")
+		case RESUME_OK:
+			panic("implement me")
+		case EXT:
+			panic("implement me")
 		default:
 			return ErrInvalidFrame
 		}
-		return
+		return nil
 	})
 }
 
 func (p *tcpRConnection) loopSnd(ctx context.Context) error {
+	if ctx == nil {
+		return ErrInvalidContext
+	}
 	w := bufio.NewWriterSize(p.c, defaultBuffSize)
-	for frame := range p.snd {
-		if _, err := w.Write(encodeU24(frame.Size())); err != nil {
-			return err
-		}
-		if _, err := frame.WriteTo(w); err != nil {
-			return err
-		}
-		if err := w.Flush(); err != nil {
-			return err
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case frame, ok := <-p.snd:
+			if !ok {
+				return nil
+			}
+			if _, err := w.Write(encodeU24(frame.Size())); err != nil {
+				return err
+			}
+			if _, err := frame.WriteTo(w); err != nil {
+				return err
+			}
+			if err := w.Flush(); err != nil {
+				return err
+			}
 		}
 	}
-	return nil
 }
 
 func (p *tcpRConnection) handleKeepalive(f *FrameKeepalive) error {
@@ -170,11 +236,15 @@ func (p *tcpRConnection) handleKeepalive(f *FrameKeepalive) error {
 	return p.Send(mkKeepalive(0, f.LastReceivedPosition(), f.Data()))
 }
 
-func newTcpRConnection(c io.ReadWriteCloser, buffSize int) *tcpRConnection {
-	return &tcpRConnection{
-		c:       c,
-		decoder: newLengthBasedFrameDecoder(c),
-		snd:     make(chan Frame, buffSize),
-		once:    &sync.Once{},
+func newTcpRConnection(c io.ReadWriteCloser, buffSize int) (tc *tcpRConnection) {
+	tc = &tcpRConnection{
+		c:        c,
+		decoder:  newLengthBasedFrameDecoder(c),
+		snd:      make(chan Frame, buffSize),
+		rcv:      make(chan Frame, buffSize),
+		once:     &sync.Once{},
+		handlers: make(map[FrameType]interface{}),
 	}
+	tc.handlers[KEEPALIVE] = tc.handleKeepalive
+	return
 }

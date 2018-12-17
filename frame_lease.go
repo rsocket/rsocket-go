@@ -61,21 +61,20 @@ func (p *FrameLease) Metadata() []byte {
 	return p.metadata
 }
 
-func asLease(h *Header, raw []byte) *FrameLease {
-	t1 := binary.BigEndian.Uint32(raw[headerLen : headerLen+4])
-	n := binary.BigEndian.Uint32(raw[headerLen+4 : headerLen+8])
+func (p *FrameLease) Parse(h *Header, bs []byte) error {
+	p.Header = h
+	t1 := binary.BigEndian.Uint32(bs[headerLen : headerLen+4])
+	n := binary.BigEndian.Uint32(bs[headerLen+4 : headerLen+8])
 	var metadata []byte
-	if h.Flags().Check(FlagMetadata) {
-		foo := raw[headerLen+8:]
+	if p.Header.Flags().Check(FlagMetadata) {
+		foo := bs[headerLen+8:]
 		metadata = make([]byte, len(foo))
 		copy(metadata, foo)
 	}
-	return &FrameLease{
-		Header:           h,
-		timeToLive:       t1,
-		numberOfRequests: n,
-		metadata:         metadata,
-	}
+	p.timeToLive = t1
+	p.numberOfRequests = n
+	p.metadata = metadata
+	return nil
 }
 
 func mkLease(sid uint32, ttl time.Duration, requests uint32, meatadata []byte, f ...Flags) *FrameLease {

@@ -12,55 +12,59 @@ import (
 	"time"
 )
 
-func runEchoServer(ctx context.Context) {
+func runEchoServer(host string, port int) *rsocket.Server {
 	server, err := rsocket.NewServer(
-		rsocket.WithTransportTCP("127.0.0.1:8000"),
+		rsocket.WithTCPServerTransport(fmt.Sprintf("%s:%d", host, port)),
 		rsocket.WithAcceptor(func(setup rsocket.SetupPayload, rs *rsocket.RSocket) (err error) {
-			log.Printf("SETUP: version=%s, data=%s, metadata=%s\n", setup.Version(), string(setup.Data()), string(setup.Metadata()))
-			return nil
-		}),
-		rsocket.WithFireAndForget(func(req rsocket.Payload) error {
-			log.Println("GOT FNF:", req)
-			return nil
-		}),
-		rsocket.WithRequestResponseHandler(func(req rsocket.Payload) (res rsocket.Payload, err error) {
-			// just echo
-			return req, nil
-		}),
-		rsocket.WithRequestStreamHandler(func(req rsocket.Payload, emitter rsocket.Emitter) {
-			totals := 1000
-			for i := 0; i < totals; i++ {
-				payload := rsocket.CreatePayloadString(fmt.Sprintf("%d", i), "")
-				if err := emitter.Next(payload); err != nil {
+
+			rs.HandleFireAndForget(func(req rsocket.Payload) error {
+				log.Println("GOT FNF:", req)
+				return nil
+			})
+			rs.HandleRequestResponse(func(req rsocket.Payload) (res rsocket.Payload, err error) {
+				// just echo
+				return req, nil
+			})
+
+			rs.HandleRequestStream(func(req rsocket.Payload, emitter rsocket.Emitter) {
+				totals := 1000
+				for i := 0; i < totals; i++ {
+					payload := rsocket.CreatePayloadString(fmt.Sprintf("%d", i), "")
+					if err := emitter.Next(payload); err != nil {
+						log.Println("process stream failed:", err)
+					}
+				}
+				payload := rsocket.CreatePayloadString(fmt.Sprintf("%d", totals), "")
+				if err := emitter.Complete(payload); err != nil {
 					log.Println("process stream failed:", err)
 				}
-			}
-			payload := rsocket.CreatePayloadString(fmt.Sprintf("%d", totals), "")
-			if err := emitter.Complete(payload); err != nil {
-				log.Println("process stream failed:", err)
-			}
+			})
+			return nil
 		}),
 	)
 	if err != nil {
 		panic(err)
 	}
-	go func(ctx context.Context) {
-		if err := server.Start(ctx); err != nil {
-			log.Println("server stopped:", err)
-		}
-	}(ctx)
+	return server
 }
 
 func TestClient_Benchmark(t *testing.T) {
+	host := "127.0.0.1"
+	port := 8000
+
+	server := runEchoServer(host, port)
+
+	go server.Serve()
+
 	ctx, cancel := context.WithCancel(context.Background())
-	runEchoServer(ctx)
 
-	defer cancel()
-
-	time.Sleep(1 * time.Second)
+	defer func() {
+		cancel()
+		_ = server.Close()
+	}()
 
 	cli, err := rsocket.NewClient(
-		rsocket.WithTCPTransport("127.0.0.1", 8000),
+		rsocket.WithTCPTransport(host, port),
 		rsocket.WithSetupPayload([]byte("你好"), []byte("世界")),
 		rsocket.WithKeepalive(2*time.Second, 3*time.Second, 3),
 		rsocket.WithMetadataMimeType("application/binary"),
@@ -78,7 +82,7 @@ func TestClient_Benchmark(t *testing.T) {
 		t.Error(err)
 	}
 	begin := time.Now()
-	totals := 10000
+	totals := 200000
 	wg := &sync.WaitGroup{}
 	wg.Add(totals)
 	for i := 0; i < totals; i++ {

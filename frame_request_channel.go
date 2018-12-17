@@ -70,14 +70,11 @@ func (p *FrameRequestChannel) Payload() []byte {
 	return p.data
 }
 
-func asRequestChannel(h *Header, raw []byte) *FrameRequestChannel {
-	m, d := sliceMetadataAndData(h, raw, headerLen+4)
-	return &FrameRequestChannel{
-		Header:          h,
-		initialRequestN: binary.BigEndian.Uint32(raw[headerLen : headerLen+4]),
-		meatadata:       m,
-		data:            d,
-	}
+func (p *FrameRequestChannel) Parse(h *Header, bs []byte) error {
+	p.Header = h
+	p.meatadata, p.data = sliceMetadataAndData(p.Header, bs, headerLen+4)
+	p.initialRequestN = binary.BigEndian.Uint32(bs[headerLen : headerLen+4])
+	return nil
 }
 
 func mkRequestChannel(sid uint32, initalRequestN uint32, metadata []byte, data []byte, f ...Flags) *FrameRequestChannel {

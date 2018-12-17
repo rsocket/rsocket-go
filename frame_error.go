@@ -95,14 +95,17 @@ func (p *FrameError) ErrorData() []byte {
 	return p.data
 }
 
-func asError(h *Header, bs []byte) *FrameError {
-	code := binary.BigEndian.Uint32(bs[headerLen : headerLen+4])
+func (p *FrameError) Parse(h *Header, bs []byte) error {
+	p.Header = h
+	p.code = ErrorCode(binary.BigEndian.Uint32(bs[headerLen : headerLen+4]))
 	data := bs[headerLen+4:]
-	return &FrameError{
-		Header: h,
-		data:   data,
-		code:   ErrorCode(code),
+	if data == nil {
+		p.data = nil
+	} else {
+		p.data = make([]byte, len(data))
+		copy(p.data, data)
 	}
+	return nil
 }
 
 func mkError(sid uint32, code ErrorCode, data []byte) *FrameError {

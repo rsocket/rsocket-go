@@ -34,14 +34,12 @@ func (p *Header) Bytes() []byte {
 	return bs
 }
 
-func asHeader(bs []byte) (*Header, error) {
-	id := binary.BigEndian.Uint32(bs[:4])
+func (p *Header) Parse(bs []byte) error {
+	p.streamID = binary.BigEndian.Uint32(bs[:4])
 	n := binary.BigEndian.Uint16(bs[4:6])
-	return &Header{
-		streamID:  id,
-		frameType: FrameType((n & 0xFC00) >> 10),
-		flags:     Flags(n & 0x03FF),
-	}, nil
+	p.frameType = FrameType((n & 0xFC00) >> 10)
+	p.flags = Flags(n & 0x03FF)
+	return nil
 }
 
 func mkHeader(sid uint32, t FrameType, f ...Flags) *Header {

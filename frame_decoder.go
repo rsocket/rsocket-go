@@ -3,9 +3,7 @@ package rsocket
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"io"
-	"log"
 	"net"
 	"strings"
 )
@@ -36,7 +34,7 @@ func (p *lengthBasedFrameDecoder) Handle(ctx context.Context, fn FrameHandler) e
 		}
 		frameLength := decodeU24(data, 0)
 		if frameLength < 1 {
-			err = fmt.Errorf("bad frame length: %d", frameLength)
+			err = ErrInvalidFrameLength
 			return
 		}
 		frameSize := frameLength + 3
@@ -54,8 +52,8 @@ func (p *lengthBasedFrameDecoder) Handle(ctx context.Context, fn FrameHandler) e
 		default:
 			p.scanner.Bytes()
 			data := p.scanner.Bytes()[3:]
-			h, err := asHeader(data)
-			if err != nil {
+			h := &Header{}
+			if err := h.Parse(data); err != nil {
 				return err
 			}
 			if err := fn(h, data); err != nil {
@@ -67,7 +65,6 @@ func (p *lengthBasedFrameDecoder) Handle(ctx context.Context, fn FrameHandler) e
 		if foo, ok := err.(*net.OpError); ok && strings.EqualFold(foo.Err.Error(), "use of closed network connection") {
 			return nil
 		}
-		log.Println("scanner err:", err)
 		return err
 	}
 	return nil

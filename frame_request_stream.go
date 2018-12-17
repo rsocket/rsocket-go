@@ -70,14 +70,11 @@ func (p FrameRequestStream) Data() []byte {
 	return p.data
 }
 
-func asRequestStream(h *Header, raw []byte) *FrameRequestStream {
-	m, d := sliceMetadataAndData(h, raw, headerLen+4)
-	return &FrameRequestStream{
-		Header:          h,
-		initialRequestN: binary.BigEndian.Uint32(raw[headerLen : headerLen+4]),
-		metadata:        m,
-		data:            d,
-	}
+func (p FrameRequestStream) Parse(h *Header, bs []byte) error {
+	p.Header = h
+	p.metadata, p.data = sliceMetadataAndData(p.Header, bs, headerLen+4)
+	p.initialRequestN = binary.BigEndian.Uint32(bs[headerLen : headerLen+4])
+	return nil
 }
 
 func mkRequestStream(sid uint32, n uint32, metadata []byte, data []byte, f ...Flags) *FrameRequestStream {

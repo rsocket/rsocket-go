@@ -56,13 +56,10 @@ func (p *FramePayload) Data() []byte {
 	return p.data
 }
 
-func asPayload(h *Header, raw []byte) *FramePayload {
-	m, d := sliceMetadataAndData(h, raw, headerLen)
-	return &FramePayload{
-		Header:   h,
-		metadata: m,
-		data:     d,
-	}
+func (p *FramePayload) Parse(h *Header, bs []byte) error {
+	p.Header = h
+	p.metadata, p.data = sliceMetadataAndData(p.Header, bs, headerLen)
+	return nil
 }
 
 func mkPayload(sid uint32, metadata []byte, data []byte, f ...Flags) *FramePayload {

@@ -1,9 +1,5 @@
 package rsocket
 
-import (
-	"context"
-)
-
 type Emitter interface {
 	Next(payload Payload) error
 	Complete(payload Payload) error
@@ -18,27 +14,28 @@ type Server struct {
 	opts *serverOptions
 }
 
-func (p *Server) Start(ctx context.Context) error {
+func (p *Server) Close() error {
+	return p.opts.transport.Close()
+}
+
+func (p *Server) Serve() error {
 	p.opts.transport.Accept(func(setup *FrameSetup, conn RConnection) error {
-		rs := newRSocket(conn, p.opts.handlerRQ, p.opts.handlerRS, p.opts.handlerFNF)
+		rs := newRSocket(conn)
 		var v Version = [2]uint16{setup.Major(), setup.Minor()}
 		sp := newSetupPayload(v, setup.Data(), setup.Metadata())
 		return p.opts.acceptor(sp, rs)
 	})
-	return p.opts.transport.Listen(ctx)
+	return p.opts.transport.Listen()
 }
 
 type serverOptions struct {
-	transport  ServerTransport
-	acceptor   Acceptor
-	handlerRQ  HandlerRQ
-	handlerRS  HandlerRS
-	handlerFNF HandlerFNF
+	transport ServerTransport
+	acceptor  Acceptor
 }
 
 type ServerOption func(o *serverOptions)
 
-func WithTransportTCP(addr string) ServerOption {
+func WithTCPServerTransport(addr string) ServerOption {
 	return func(o *serverOptions) {
 		o.transport = newTCPServerTransport(addr, 0)
 	}
@@ -47,24 +44,6 @@ func WithTransportTCP(addr string) ServerOption {
 func WithAcceptor(acceptor Acceptor) ServerOption {
 	return func(o *serverOptions) {
 		o.acceptor = acceptor
-	}
-}
-
-func WithRequestResponseHandler(h HandlerRQ) ServerOption {
-	return func(o *serverOptions) {
-		o.handlerRQ = h
-	}
-}
-
-func WithRequestStreamHandler(h HandlerRS) ServerOption {
-	return func(o *serverOptions) {
-		o.handlerRS = h
-	}
-}
-
-func WithFireAndForget(h HandlerFNF) ServerOption {
-	return func(o *serverOptions) {
-		o.handlerFNF = h
 	}
 }
 

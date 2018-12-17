@@ -49,14 +49,13 @@ func (p *FrameKeepalive) Data() []byte {
 	return p.data
 }
 
-func asKeepalive(h *Header, raw []byte) *FrameKeepalive {
-	pos := binary.BigEndian.Uint64(raw[headerLen : headerLen+8])
-	data := raw[headerLen+8:]
-	return &FrameKeepalive{
-		Header:               h,
-		lastReceivedPosition: pos,
-		data:                 data,
-	}
+func (p *FrameKeepalive) Parse(h *Header, bs []byte) error {
+	p.Header = h
+	p.lastReceivedPosition = binary.BigEndian.Uint64(bs[headerLen : headerLen+8])
+	data := bs[headerLen+8:]
+	p.data = make([]byte, len(data))
+	copy(p.data, data)
+	return nil
 }
 
 func mkKeepalive(sid uint32, pos uint64, data []byte, f ...Flags) *FrameKeepalive {

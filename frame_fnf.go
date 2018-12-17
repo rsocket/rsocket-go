@@ -56,11 +56,8 @@ func (p *FrameFNF) Data() []byte {
 	return p.data
 }
 
-func asFNF(h *Header, raw []byte) *FrameFNF {
-	m, d := sliceMetadataAndData(h, raw, headerLen)
-	return &FrameFNF{
-		Header:   h,
-		metadata: m,
-		data:     d,
-	}
+func (p *FrameFNF) Parse(h *Header, bs []byte) error {
+	p.Header = h
+	p.metadata, p.data = sliceMetadataAndData(p.Header, bs, headerLen)
+	return nil
 }

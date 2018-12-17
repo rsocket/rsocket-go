@@ -14,6 +14,18 @@ type RSocket struct {
 	handlersRQ  map[uint32]HandlerRQ
 }
 
+func (p *RSocket) HandleRequestResponse(h HandlerRQ) {
+	p.handlerRQ = h
+}
+
+func (p *RSocket) HandleRequestStream(h HandlerRS) {
+	p.handlerRS = h
+}
+
+func (p *RSocket) HandleFireAndForget(h HandlerFNF) {
+	p.handlerFNF = h
+}
+
 func (p *RSocket) RequestResponse(send *Payload, callback HandlerRQ) {
 	sid := atomic.AddUint32(&p.outStreamID, 2)
 	log.Printf("SND: streamID=%d\n", sid)
@@ -47,13 +59,10 @@ func (p *emitterImpl) Complete(payload Payload) error {
 	return p.c.Send(mkPayload(p.streamID, payload.Metadata(), payload.Data(), fg))
 }
 
-func newRSocket(c RConnection, hRQ HandlerRQ, hRS HandlerRS, hFNF HandlerFNF) *RSocket {
+func newRSocket(c RConnection) *RSocket {
 	ret := &RSocket{
 		c:           c,
 		outStreamID: 0,
-		handlerRQ:   hRQ,
-		handlerRS:   hRS,
-		handlerFNF:  hFNF,
 		handlersRQ:  make(map[uint32]HandlerRQ),
 	}
 

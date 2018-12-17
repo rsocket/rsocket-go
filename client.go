@@ -12,6 +12,7 @@ type Client struct {
 	c           RConnection
 	sndStreamID uint32
 	hReqRes     *sync.Map //map[uint32]
+	fragmenter  Fragmenter
 }
 
 func (p *Client) Close() error {
@@ -29,8 +30,7 @@ func (p *Client) RequestResponse(req Payload, handler func(res Payload, err erro
 	if req.Metadata() != nil {
 		fg |= FlagMetadata
 	}
-	err := p.c.Send(mkRequestResponse(sid, req.Metadata(), req.Data(), fg))
-	if err != nil {
+	if err := p.c.Send(mkRequestResponse(sid, req.Metadata(), req.Data(), fg)); err != nil {
 		return err
 	}
 	p.hReqRes.Store(sid, handler)
@@ -42,7 +42,12 @@ func (p *Client) Start(ctx context.Context) (err error) {
 	if err != nil {
 		return
 	}
-	p.c.HandlePayload(func(frame *FramePayload) (err error) {
+
+	p.c.HandlePayload(func(f *FramePayload) (err error) {
+		frame := p.fragmenter.Fragment(f)
+		if frame == nil {
+			return nil
+		}
 		sid := frame.StreamID()
 		if value, ok := p.hReqRes.Load(sid); ok {
 			fn := value.(func(Payload, error))

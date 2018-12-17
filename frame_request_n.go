@@ -32,12 +32,10 @@ func (p *FrameRequestN) RequestN() uint32 {
 	return p.n
 }
 
-func asRequestN(h *Header, raw []byte) *FrameRequestN {
-	n := binary.BigEndian.Uint32(raw[headerLen : headerLen+4])
-	return &FrameRequestN{
-		Header: h,
-		n:      n,
-	}
+func (p *FrameRequestN) Parse(h *Header, bs []byte) error {
+	p.Header = h
+	p.n = binary.BigEndian.Uint32(bs[headerLen : headerLen+4])
+	return nil
 }
 
 func mkRequestN(sid uint32, n uint32, f ...Flags) *FrameRequestN {

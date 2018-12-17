@@ -162,47 +162,38 @@ func (p *FrameSetup) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func asSetup(h *Header, raw []byte) *FrameSetup {
+func (p *FrameSetup) Parse(h *Header, raw []byte) error {
+	p.Header = h
 	var offset = headerLen
-	major := binary.BigEndian.Uint16(raw[offset : offset+2])
+	p.major = binary.BigEndian.Uint16(raw[offset : offset+2])
 	offset += 2
-	minor := binary.BigEndian.Uint16(raw[offset : offset+2])
+	p.minor = binary.BigEndian.Uint16(raw[offset : offset+2])
 	offset += 2
-	keepalive := binary.BigEndian.Uint32(raw[offset : offset+4])
+	p.timeBetweenKeepalive = binary.BigEndian.Uint32(raw[offset : offset+4])
 	offset += 4
-	maxLifetime := binary.BigEndian.Uint32(raw[offset : offset+4])
+	p.maxLifetime = binary.BigEndian.Uint32(raw[offset : offset+4])
 	offset += 4
-	var token []byte
-	if h.Flags().Check(FlagResume) {
+	if p.Header.Flags().Check(FlagResume) {
 		tokenLength := int(binary.BigEndian.Uint16(raw[offset : offset+2]))
 		offset += 2
-		token = make([]byte, tokenLength)
-		copy(token, raw[offset:offset+tokenLength])
+		p.token = make([]byte, tokenLength)
+		copy(p.token, raw[offset:offset+tokenLength])
 		offset += tokenLength
+	} else {
+		p.token = nil
 	}
 	mimeMetadataLen := int(raw[offset])
 	offset += 1
-	mimeMetadata := make([]byte, mimeMetadataLen)
-	copy(mimeMetadata, raw[offset:offset+mimeMetadataLen])
+	p.mimeMetadata = make([]byte, mimeMetadataLen)
+	copy(p.mimeMetadata, raw[offset:offset+mimeMetadataLen])
 	offset += mimeMetadataLen
 	mimeDataLen := int(raw[offset])
 	offset += 1
-	mimeData := make([]byte, mimeDataLen)
-	copy(mimeData, raw[offset:offset+mimeDataLen])
+	p.mimeData = make([]byte, mimeDataLen)
+	copy(p.mimeData, raw[offset:offset+mimeDataLen])
 	offset += mimeDataLen
-	metadata, data := sliceMetadataAndData(h, raw, offset)
-	return &FrameSetup{
-		Header:               h,
-		major:                major,
-		minor:                minor,
-		timeBetweenKeepalive: keepalive,
-		maxLifetime:          maxLifetime,
-		token:                token,
-		mimeMetadata:         mimeMetadata,
-		mimeData:             mimeData,
-		metadata:             metadata,
-		data:                 data,
-	}
+	p.metadata, p.data = sliceMetadataAndData(p.Header, raw, offset)
+	return nil
 }
 
 func mkSetup(meatadata []byte, data []byte, mimeMetadata []byte, mimeData []byte, f ...Flags) *FrameSetup {
