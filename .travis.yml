@@ -3,5 +3,9 @@ language: go
 go:
   - 1.11
 
+before_install:
+  - go get -u github.com/golang/dep/cmd/dep
+  - dep ensure
+
 script:
   - go test . -v
