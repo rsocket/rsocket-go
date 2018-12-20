@@ -9,5 +9,5 @@ type Transport interface {
 type ServerTransport interface {
 	io.Closer
 	Accept(acceptor func(setup *FrameSetup, conn RConnection) error)
-	Listen() error
+	Listen(onReady ...func()) error
 }

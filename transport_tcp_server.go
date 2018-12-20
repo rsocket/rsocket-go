@@ -29,7 +29,7 @@ func (p *tcpServerTransport) Close() (err error) {
 	return
 }
 
-func (p *tcpServerTransport) Listen() (err error) {
+func (p *tcpServerTransport) Listen(onReady ...func()) (err error) {
 	p.listener, err = net.Listen("tcp", p.addr)
 	if err != nil {
 		return
@@ -39,6 +39,12 @@ func (p *tcpServerTransport) Listen() (err error) {
 		cancel()
 		if err == nil {
 			err = p.Close()
+		}
+	}()
+
+	go func() {
+		for _, v := range onReady {
+			v()
 		}
 	}()
 
