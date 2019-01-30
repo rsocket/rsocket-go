@@ -16,6 +16,9 @@ type Client struct {
 }
 
 func (p *Client) Close() error {
+	if p.c == nil {
+		return nil
+	}
 	return p.c.Close()
 }
 
