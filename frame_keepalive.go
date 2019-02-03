@@ -2,67 +2,42 @@ package rsocket
 
 import (
 	"encoding/binary"
-	"io"
+	"fmt"
 )
 
-type FrameKeepalive struct {
-	*Header
-	lastReceivedPosition uint64
-	data                 []byte
+type frameKeepalive struct {
+	*baseFrame
 }
 
-func (p *FrameKeepalive) WriteTo(w io.Writer) (n int64, err error) {
-	var wrote int
-	wrote, err = w.Write(p.Header.Bytes())
-	n += int64(wrote)
-	if err != nil {
-		return
+func (p *frameKeepalive) String() string {
+	return fmt.Sprintf("FrameKeepalive{respond=%t,lastReceivedPosition=%d,data=%s}", p.header.Flag().Check(FlagRespond), p.LastReceivedPosition(), string(p.Data()))
+}
+
+func (p *frameKeepalive) LastReceivedPosition() uint64 {
+	return binary.BigEndian.Uint64(p.body.Bytes())
+}
+
+func (p *frameKeepalive) Data() []byte {
+	return p.body.Bytes()[8:]
+}
+
+func createKeepalive(position uint64, data []byte, respond bool) *frameKeepalive {
+	var fg Flags
+	if respond {
+		fg |= FlagRespond
 	}
-	b8 := make([]byte, 8)
-	binary.BigEndian.PutUint64(b8, p.lastReceivedPosition)
-	wrote, err = w.Write(b8)
-	n += int64(wrote)
-	if err != nil {
-		return
+	bf := borrowByteBuffer()
+	for i := 0; i < 8; i++ {
+		_ = bf.WriteByte(0)
 	}
-	if p.data == nil {
-		return
+	binary.BigEndian.PutUint64(bf.Bytes(), position)
+	if len(data) > 0 {
+		_, _ = bf.Write(data)
 	}
-	wrote, err = w.Write(p.data)
-	n += int64(wrote)
-	return
-}
-
-func (p *FrameKeepalive) Size() int {
-	size := headerLen + 8
-	if p.data != nil {
-		size += len(p.data)
-	}
-	return size
-}
-
-func (p *FrameKeepalive) LastReceivedPosition() uint64 {
-	return p.lastReceivedPosition
-}
-
-func (p *FrameKeepalive) Data() []byte {
-	return p.data
-}
-
-func (p *FrameKeepalive) Parse(h *Header, bs []byte) error {
-	p.Header = h
-	p.lastReceivedPosition = binary.BigEndian.Uint64(bs[headerLen : headerLen+8])
-	data := bs[headerLen+8:]
-	p.data = make([]byte, len(data))
-	copy(p.data, data)
-	return nil
-}
-
-func mkKeepalive(sid uint32, pos uint64, data []byte, f ...Flags) *FrameKeepalive {
-	h := mkHeader(sid, KEEPALIVE, f...)
-	return &FrameKeepalive{
-		Header:               h,
-		lastReceivedPosition: pos,
-		data:                 data,
+	return &frameKeepalive{
+		&baseFrame{
+			header: createHeader(0, tKeepalive, fg),
+			body:   bf,
+		},
 	}
 }

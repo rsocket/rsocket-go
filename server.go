@@ -1,14 +1,11 @@
 package rsocket
 
-type Emitter interface {
-	Next(payload Payload) error
-	Complete(payload Payload) error
-}
-
 type Acceptor = func(setup SetupPayload, sendingSocket *RSocket) (err error)
 type HandlerRQ = func(req Payload) (res Payload, err error)
-type HandlerRS = func(req Payload, emitter Emitter)
-type HandlerFNF = func(req Payload) error
+type HandlerRS = func(req Payload) (res Flux)
+type HandlerRC = func(req Flux) (res Flux)
+type HandlerFNF = func(req Payload)
+type HandlerMetadataPush = func(metadata []byte)
 
 type Server struct {
 	opts *serverOptions
@@ -19,25 +16,34 @@ func (p *Server) Close() error {
 }
 
 func (p *Server) Serve() error {
-	p.opts.transport.Accept(func(setup *FrameSetup, conn RConnection) error {
-		rs := newRSocket(conn)
-		var v Version = [2]uint16{setup.Major(), setup.Minor()}
-		sp := newSetupPayload(v, setup.Data(), setup.Metadata())
-		return p.opts.acceptor(sp, rs)
+	wp := newWorkerPool(p.opts.workerPoolSize)
+	defer func() {
+		_ = wp.Close()
+	}()
+	p.opts.transport.Accept(func(setup *frameSetup, conn RConnection) error {
+		rs := newRSocket(conn, wp)
+		return p.opts.acceptor(setup, rs)
 	})
 	return p.opts.transport.Listen()
 }
 
 type serverOptions struct {
-	transport ServerTransport
-	acceptor  Acceptor
+	workerPoolSize int
+	transport      ServerTransport
+	acceptor       Acceptor
 }
 
 type ServerOption func(o *serverOptions)
 
+func WithServerWorkerPoolSize(n int) ServerOption {
+	return func(o *serverOptions) {
+		o.workerPoolSize = n
+	}
+}
+
 func WithTCPServerTransport(addr string) ServerOption {
 	return func(o *serverOptions) {
-		o.transport = newTCPServerTransport(addr, 0)
+		o.transport = newTCPServerTransport(addr)
 	}
 }
 
@@ -55,5 +61,5 @@ func NewServer(opts ...ServerOption) (*Server, error) {
 	if o.transport == nil {
 		return nil, ErrInvalidTransport
 	}
-	return &Server{opts: o,}, nil
+	return &Server{opts: o}, nil
 }

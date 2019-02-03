@@ -2,62 +2,63 @@ package rsocket
 
 import (
 	"io"
+	"strings"
 )
 
 type FrameType uint8
 
 const (
-	RESERVED         FrameType = 0x00
-	SETUP            FrameType = 0x01
-	LEASE            FrameType = 0x02
-	KEEPALIVE        FrameType = 0x03
-	REQUEST_RESPONSE FrameType = 0x04
-	REQUEST_FNF      FrameType = 0x05
-	REQUEST_STREAM   FrameType = 0x06
-	REQUEST_CHANNEL  FrameType = 0x07
-	REQUEST_N        FrameType = 0x08
-	CANCEL           FrameType = 0x09
-	PAYLOAD          FrameType = 0x0A
-	ERROR            FrameType = 0x0B
-	METADATA_PUSH    FrameType = 0x0C
-	RESUME           FrameType = 0x0D
-	RESUME_OK        FrameType = 0x0E
-	EXT              FrameType = 0x3F
+	tReserved        FrameType = 0x00
+	tSetup           FrameType = 0x01
+	tLease           FrameType = 0x02
+	tKeepalive       FrameType = 0x03
+	tRequestResponse FrameType = 0x04
+	tRequestFNF      FrameType = 0x05
+	tRequestStream   FrameType = 0x06
+	tRequestChannel  FrameType = 0x07
+	tRequestN        FrameType = 0x08
+	tCancel          FrameType = 0x09
+	tPayload         FrameType = 0x0A
+	tError           FrameType = 0x0B
+	tMetadataPush    FrameType = 0x0C
+	tResume          FrameType = 0x0D
+	tResumeOK        FrameType = 0x0E
+	tExt             FrameType = 0x3F
 )
 
 func (f FrameType) String() string {
 	switch f {
-	case RESERVED:
+	case tReserved:
 		return "RESERVED"
-	case SETUP:
+	case tSetup:
 		return "SETUP"
-	case LEASE:
+	case tLease:
 		return "LEASE"
-	case KEEPALIVE:
+	case tKeepalive:
 		return "KEEPALIVE"
-	case REQUEST_RESPONSE:
+	case tRequestResponse:
 		return "REQUEST_RESPONSE"
-	case REQUEST_FNF:
+	case tRequestFNF:
 		return "REQUEST_FNF"
-	case REQUEST_STREAM:
+	case tRequestStream:
 		return "REQUEST_STREAM"
-	case REQUEST_CHANNEL:
+	case tRequestChannel:
 		return "REQUEST_CHANNEL"
-	case REQUEST_N:
+	case tRequestN:
 		return "REQUEST_N"
-	case CANCEL:
+	case tCancel:
 		return "CANCEL"
-	case PAYLOAD:
+	case tPayload:
 		return "PAYLOAD"
-	case ERROR:
+	case tError:
 		return "ERROR"
-	case METADATA_PUSH:
+	case tMetadataPush:
 		return "METADATA_PUSH"
-	case RESUME:
+	case tResume:
 		return "RESUME"
-	case RESUME_OK:
+	case tResumeOK:
 		return "RESUME_OK"
-	case EXT:
+	case tExt:
 		return "EXT"
 	default:
 		return "UNKNOWN"
@@ -65,6 +66,26 @@ func (f FrameType) String() string {
 }
 
 type Flags uint16
+
+func (f Flags) String() string {
+	foo := make([]string, 0)
+	if f.Check(FlagNext) {
+		foo = append(foo, "N")
+	}
+	if f.Check(FlagComplete) {
+		foo = append(foo, "CL")
+	}
+	if f.Check(FlagFollow) {
+		foo = append(foo, "FRS)")
+	}
+	if f.Check(FlagMetadata) {
+		foo = append(foo, "M")
+	}
+	if f.Check(FlagIgnore) {
+		foo = append(foo, "I")
+	}
+	return strings.Join(foo, "|")
+}
 
 const (
 	FlagNext Flags = 1 << (5 + iota)
@@ -82,25 +103,58 @@ func (f Flags) Check(mask Flags) bool {
 	return mask&f == mask
 }
 
-func sliceMetadataAndData(header *Header, raw []byte, offset int) (metadata []byte, data []byte) {
-	if !header.Flags().Check(FlagMetadata) {
-		foo := raw[offset:]
-		data = make([]byte, len(foo))
-		copy(data, foo)
-		return
+func newFlags(flags ...Flags) Flags {
+	var fg Flags
+	for _, it := range flags {
+		fg |= it
 	}
-	l := decodeU24(raw, offset)
-	offset += 3
-	metadata = make([]byte, l)
-	copy(metadata, raw[offset:offset+l])
-	foo := raw[offset+l:]
-	data = make([]byte, len(foo))
-	copy(data, foo)
-	return
+	return fg
 }
 
 type Frame interface {
 	io.WriterTo
-	Size() int
-	Parse(h *Header, bs []byte) error
+	setHeader(h header)
+	Header() header
+	Release()
+	Len() int
+}
+
+type baseFrame struct {
+	header header
+	body   *ByteBuffer
+}
+
+func (p *baseFrame) Header() header {
+	return p.header
+}
+
+func (p *baseFrame) setHeader(h header) {
+	p.header = h
+}
+
+func (p *baseFrame) Len() int {
+	return headerLen + p.body.Len()
+}
+
+func (p *baseFrame) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int64
+	wrote, err = p.header.WriteTo(w)
+	if err != nil {
+		return
+	}
+	n += wrote
+	wrote, err = p.body.WriteTo(w)
+	if err != nil {
+		return
+	}
+	n += wrote
+	return
+}
+
+func (p *baseFrame) Release() {
+	if p.body == nil {
+		return
+	}
+	returnByteBuffer(p.body)
+	p.body = nil
 }

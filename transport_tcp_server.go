@@ -8,14 +8,13 @@ import (
 )
 
 type tcpServerTransport struct {
-	addr          string
-	acceptor      func(setup *FrameSetup, conn RConnection) error
-	frameBuffSize int
-	listener      net.Listener
-	once          *sync.Once
+	addr      string
+	acceptor  func(setup *frameSetup, conn RConnection) error
+	listener  net.Listener
+	onceClose *sync.Once
 }
 
-func (p *tcpServerTransport) Accept(acceptor func(setup *FrameSetup, conn RConnection) error) {
+func (p *tcpServerTransport) Accept(acceptor func(setup *frameSetup, conn RConnection) error) {
 	p.acceptor = acceptor
 }
 
@@ -23,7 +22,7 @@ func (p *tcpServerTransport) Close() (err error) {
 	if p.listener == nil {
 		return
 	}
-	p.once.Do(func() {
+	p.onceClose.Do(func() {
 		err = p.listener.Close()
 	})
 	return
@@ -54,8 +53,9 @@ func (p *tcpServerTransport) Listen(onReady ...func()) (err error) {
 			log.Println("tcp listener break:", err)
 			return err
 		}
-		rc := newTcpRConnection(c, p.frameBuffSize)
-		rc.HandleSetup(func(setup *FrameSetup) (err error) {
+		rc := newTcpRConnection(c, 0)
+		rc.HandleSetup(func(setup *frameSetup) (err error) {
+			defer setup.Release()
 			if p.acceptor != nil {
 				err = p.acceptor(setup, rc)
 			}
@@ -65,14 +65,9 @@ func (p *tcpServerTransport) Listen(onReady ...func()) (err error) {
 	}
 }
 
-func newTCPServerTransport(addr string, frameBuffSize int) *tcpServerTransport {
-	var size = 64
-	if frameBuffSize > 0 {
-		size = frameBuffSize
-	}
+func newTCPServerTransport(addr string) *tcpServerTransport {
 	return &tcpServerTransport{
-		addr:          addr,
-		frameBuffSize: size,
-		once:          &sync.Once{},
+		addr:      addr,
+		onceClose: &sync.Once{},
 	}
 }
