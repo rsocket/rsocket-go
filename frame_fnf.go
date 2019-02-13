@@ -1,63 +1,32 @@
 package rsocket
 
-import (
-	"io"
-)
-
-type FrameFNF struct {
-	*Header
-	metadata []byte
-	data     []byte
+type frameFNF struct {
+	*baseFrame
 }
 
-func (p *FrameFNF) WriteTo(w io.Writer) (n int64, err error) {
-	var wrote int
-	wrote, err = w.Write(p.Header.Bytes())
-	n += int64(wrote)
-	if err != nil {
-		return
-	}
-	if p.Header.Flags().Check(FlagMetadata) {
-		wrote, err = w.Write(encodeU24(len(p.metadata)))
-		n += int64(wrote)
-		if err != nil {
-			return
-		}
-		wrote, err = w.Write(p.metadata)
-		n += int64(wrote)
-		if err != nil {
-			return
-		}
-	}
-	if p.data == nil {
-		return
-	}
-	wrote, err = w.Write(p.data)
-	n += int64(wrote)
-	return
+func (p *frameFNF) Metadata() []byte {
+	metadata, _ := extractMetadataAndData(p.header, p.body.Bytes())
+	return metadata
 }
 
-func (p *FrameFNF) Size() int {
-	size := headerLen
-	if p.Header.Flags().Check(FlagMetadata) {
-		size += 3 + len(p.metadata)
+func (p *frameFNF) Data() []byte {
+	_, data := extractMetadataAndData(p.header, p.body.Bytes())
+	return data
+}
+
+func createFNF(sid uint32, data, metadata []byte, flags ...Flags) *frameFNF {
+	fg := newFlags(flags...)
+	bf := borrowByteBuffer()
+	if len(metadata) > 0 {
+		fg |= FlagMetadata
+		_ = bf.WriteUint24(len(metadata))
+		_, _ = bf.Write(metadata)
 	}
-	if p.data != nil {
-		size += len(p.data)
+	_, _ = bf.Write(data)
+	return &frameFNF{
+		&baseFrame{
+			header: createHeader(sid, tRequestFNF, fg),
+			body:   bf,
+		},
 	}
-	return size
-}
-
-func (p *FrameFNF) Metadata() []byte {
-	return p.metadata
-}
-
-func (p *FrameFNF) Data() []byte {
-	return p.data
-}
-
-func (p *FrameFNF) Parse(h *Header, bs []byte) error {
-	p.Header = h
-	p.metadata, p.data = sliceMetadataAndData(p.Header, bs, headerLen)
-	return nil
 }

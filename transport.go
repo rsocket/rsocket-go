@@ -1,13 +1,16 @@
 package rsocket
 
-import "io"
+import (
+	"io"
+	"time"
+)
 
 type Transport interface {
-	Connect() (conn RConnection, err error)
+	Connect(keepaliveInterval time.Duration) (conn RConnection, err error)
 }
 
 type ServerTransport interface {
 	io.Closer
-	Accept(acceptor func(setup *FrameSetup, conn RConnection) error)
+	Accept(acceptor func(setup *frameSetup, conn RConnection) error)
 	Listen(onReady ...func()) error
 }

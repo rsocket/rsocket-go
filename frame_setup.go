@@ -2,211 +2,125 @@ package rsocket
 
 import (
 	"encoding/binary"
-	"io"
 	"time"
 )
 
-type FrameSetup struct {
-	*Header
-	major                uint16
-	minor                uint16
-	timeBetweenKeepalive uint32
-	maxLifetime          uint32
-	token                []byte
-	mimeMetadata         []byte
-	mimeData             []byte
-	metadata             []byte
-	data                 []byte
+type frameSetup struct {
+	*baseFrame
 }
 
-func (p *FrameSetup) Major() uint16 {
-	return p.major
+func (p *frameSetup) Version() Version {
+	major := binary.BigEndian.Uint16(p.body.Bytes())
+	minor := binary.BigEndian.Uint16(p.body.Bytes()[2:])
+	return [2]uint16{major, minor}
 }
 
-func (p *FrameSetup) Minor() uint16 {
-	return p.minor
+func (p *frameSetup) TimeBetweenKeepalive() time.Duration {
+	return time.Millisecond * time.Duration(binary.BigEndian.Uint32(p.body.Bytes()[4:]))
 }
 
-func (p *FrameSetup) TimeBetweenKeepalive() time.Duration {
-	return time.Millisecond * time.Duration(p.timeBetweenKeepalive)
+func (p *frameSetup) MaxLifetime() time.Duration {
+	return time.Millisecond * time.Duration(binary.BigEndian.Uint32(p.body.Bytes()[8:]))
 }
 
-func (p *FrameSetup) MaxLifetime() time.Duration {
-	return time.Millisecond * time.Duration(p.maxLifetime)
+func (p *frameSetup) Token() []byte {
+	if !p.header.Flag().Check(FlagResume) {
+		return nil
+	}
+	raw := p.body.Bytes()
+	tokenLength := binary.BigEndian.Uint16(raw[12:])
+	return raw[14 : 14+tokenLength]
 }
 
-func (p *FrameSetup) Token() []byte {
-	return p.token
+func (p *frameSetup) DataMimeType() string {
+	_, b := p.MIME()
+	return string(b)
 }
 
-func (p *FrameSetup) MetadataMIME() []byte {
-	return p.mimeMetadata
+func (p *frameSetup) MetadataMimeType() string {
+	a, _ := p.MIME()
+	return string(a)
 }
 
-func (p *FrameSetup) DataMIME() []byte {
-	return p.mimeData
-}
-
-func (p *FrameSetup) Metadata() []byte {
-	return p.metadata
-}
-
-func (p *FrameSetup) Data() []byte {
-	return p.data
-}
-
-func (p *FrameSetup) Size() int {
-	size := headerLen + 12
-	if p.Header.Flags().Check(FlagResume) {
-		size += 2
-		size += len(p.token)
-	}
-	size += 1 + len(p.mimeMetadata)
-	size += 1 + len(p.mimeData)
-	if p.Header.Flags().Check(FlagMetadata) {
-		size += 3 + len(p.metadata)
-	}
-	if p.data != nil {
-		size += len(p.data)
-	}
-	return size
-}
-
-func (p *FrameSetup) WriteTo(w io.Writer) (n int64, err error) {
-	var wrote int
-	wrote, err = w.Write(p.Header.Bytes())
-	n += int64(wrote)
-	if err != nil {
-		return
-	}
-	b2 := make([]byte, 2)
-	binary.BigEndian.PutUint16(b2, p.major)
-	wrote, err = w.Write(b2)
-	n += int64(wrote)
-	if err != nil {
-		return
-	}
-	binary.BigEndian.PutUint16(b2, p.minor)
-	wrote, err = w.Write(b2)
-	n += int64(wrote)
-	if err != nil {
-		return
-	}
-	b4 := make([]byte, 4)
-	binary.BigEndian.PutUint32(b4, p.timeBetweenKeepalive)
-	wrote, err = w.Write(b4)
-	n += int64(wrote)
-	if err != nil {
-		return
-	}
-	binary.BigEndian.PutUint32(b4, p.maxLifetime)
-	wrote, err = w.Write(b4)
-	n += int64(wrote)
-	if err != nil {
-		return
-	}
-	if p.Header.Flags().Check(FlagResume) {
-		binary.BigEndian.PutUint16(b2, uint16(len(p.token)))
-		wrote, err = w.Write(b2)
-		n += int64(wrote)
-		if err != nil {
-			return
-		}
-		wrote, err = w.Write(p.token)
-		n += int64(wrote)
-		if err != nil {
-			return
-		}
-	}
-	b := make([]byte, 1)
-	b[0] = byte(len(p.mimeMetadata))
-	wrote, err = w.Write(b)
-	n += int64(wrote)
-	if err != nil {
-		return
-	}
-	wrote, err = w.Write(p.mimeMetadata)
-	n += int64(wrote)
-	if err != nil {
-		return
-	}
-	b[0] = byte(len(p.mimeData))
-	wrote, err = w.Write(b)
-	n += int64(wrote)
-	if err != nil {
-		return
-	}
-	wrote, err = w.Write(p.mimeData)
-	n += int64(wrote)
-	if err != nil {
-		return
-	}
-
-	if p.Header.Flags().Check(FlagMetadata) {
-		wrote, err = w.Write(encodeU24(len(p.metadata)))
-		n += int64(wrote)
-		if err != nil {
-			return
-		}
-		wrote, err = w.Write(p.metadata)
-		n += int64(wrote)
-		if err != nil {
-			return
-		}
-	}
-	if p.data == nil {
-		return
-	}
-	wrote, err = w.Write(p.data)
-	n += int64(wrote)
-	return
-}
-
-func (p *FrameSetup) Parse(h *Header, raw []byte) error {
-	p.Header = h
-	var offset = headerLen
-	p.major = binary.BigEndian.Uint16(raw[offset : offset+2])
-	offset += 2
-	p.minor = binary.BigEndian.Uint16(raw[offset : offset+2])
-	offset += 2
-	p.timeBetweenKeepalive = binary.BigEndian.Uint32(raw[offset : offset+4])
-	offset += 4
-	p.maxLifetime = binary.BigEndian.Uint32(raw[offset : offset+4])
-	offset += 4
-	if p.Header.Flags().Check(FlagResume) {
-		tokenLength := int(binary.BigEndian.Uint16(raw[offset : offset+2]))
-		offset += 2
-		p.token = make([]byte, tokenLength)
-		copy(p.token, raw[offset:offset+tokenLength])
-		offset += tokenLength
-	} else {
-		p.token = nil
-	}
-	mimeMetadataLen := int(raw[offset])
+func (p *frameSetup) MIME() (metadata []byte, data []byte) {
+	offset := p.seekMIME()
+	raw := p.body.Bytes()
+	l1 := int(raw[offset])
 	offset += 1
-	p.mimeMetadata = make([]byte, mimeMetadataLen)
-	copy(p.mimeMetadata, raw[offset:offset+mimeMetadataLen])
-	offset += mimeMetadataLen
-	mimeDataLen := int(raw[offset])
+	m1 := raw[offset : offset+l1]
+	offset += l1
+	l2 := int(raw[offset])
 	offset += 1
-	p.mimeData = make([]byte, mimeDataLen)
-	copy(p.mimeData, raw[offset:offset+mimeDataLen])
-	offset += mimeDataLen
-	p.metadata, p.data = sliceMetadataAndData(p.Header, raw, offset)
-	return nil
+	m2 := raw[offset : offset+l2]
+	return m1, m2
 }
 
-func mkSetup(meatadata []byte, data []byte, mimeMetadata []byte, mimeData []byte, f ...Flags) *FrameSetup {
-	h := mkHeader(0, SETUP, f...)
-	return &FrameSetup{
-		Header:               h,
-		metadata:             meatadata,
-		data:                 data,
-		mimeMetadata:         mimeMetadata,
-		mimeData:             mimeData,
-		major:                1,
-		minor:                0,
-		maxLifetime:          90000,
-		timeBetweenKeepalive: 30000,
+func (p *frameSetup) Metadata() []byte {
+	if !p.header.Flag().Check(FlagMetadata) {
+		return nil
+	}
+	raw := p.body.Bytes()
+	offset := p.seekMetadata()
+	m, _ := extractMetadataAndData(p.header, raw[offset:])
+	return m
+}
+
+func (p *frameSetup) Data() []byte {
+	offset := p.seekMetadata()
+	_, d := extractMetadataAndData(p.header, p.body.Bytes()[offset:])
+	return d
+}
+
+func (p *frameSetup) seekMIME() int {
+	if !p.header.Flag().Check(FlagResume) {
+		return 12
+	}
+	l := binary.BigEndian.Uint16(p.body.Bytes()[12:])
+	return 14 + int(l)
+}
+
+func (p *frameSetup) seekMetadata() int {
+	offset := p.seekMIME()
+	m1, m2 := p.MIME()
+	offset += 2 + len(m1) + len(m2)
+	return offset
+}
+
+func createSetup(version Version, timeBetweenKeepalive, maxLifetime time.Duration, token, mimeMetadata, mimeData, metadata, data []byte) *frameSetup {
+	var fg Flags
+	bf := borrowByteBuffer()
+	_, _ = bf.Write(version.Bytes())
+	b4 := borrowByteBuffer()
+	defer returnByteBuffer(b4)
+	for i := 0; i < 4; i++ {
+		_ = b4.WriteByte(0)
+	}
+	binary.BigEndian.PutUint32(b4.Bytes(), uint32(timeBetweenKeepalive.Nanoseconds()/1e6))
+	_, _ = b4.WriteTo(bf)
+	binary.BigEndian.PutUint32(b4.Bytes(), uint32(maxLifetime.Nanoseconds()/1e6))
+	_, _ = b4.WriteTo(bf)
+	if len(token) > 0 {
+		fg |= FlagResume
+		binary.BigEndian.PutUint16(b4.Bytes(), uint16(len(token)))
+		_, _ = bf.Write(b4.Bytes()[:2])
+		_, _ = bf.Write(token)
+	}
+	_ = bf.WriteByte(byte(len(mimeMetadata)))
+	_, _ = bf.Write(mimeMetadata)
+	_ = bf.WriteByte(byte(len(mimeData)))
+	_, _ = bf.Write(mimeData)
+	if len(metadata) > 0 {
+		fg |= FlagMetadata
+		_ = bf.WriteUint24(len(metadata))
+		_, _ = bf.Write(metadata)
+	}
+	if len(data) > 0 {
+		_, _ = bf.Write(data)
+	}
+	return &frameSetup{
+		&baseFrame{
+			header: createHeader(0, tSetup, fg),
+			body:   bf,
+		},
 	}
 }
