@@ -3,7 +3,7 @@ package benchmark
 import (
 	"context"
 	"fmt"
-	"github.com/jjeffcaii/go-rsocket"
+	"github.com/rsocket/rsocket-go"
 	"log"
 	_ "net/http/pprof"
 	"strings"
@@ -22,7 +22,7 @@ func TestEchoServe(t *testing.T) {
 	defer func() {
 		_ = server.Close()
 	}()
-	server.Serve()
+	_ = server.Serve()
 }
 
 func TestClient_Benchmark(t *testing.T) {

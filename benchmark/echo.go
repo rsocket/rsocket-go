@@ -2,7 +2,7 @@ package benchmark
 
 import (
 	"fmt"
-	"github.com/jjeffcaii/go-rsocket"
+	"github.com/rsocket/rsocket-go"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
