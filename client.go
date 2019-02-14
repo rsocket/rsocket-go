@@ -2,182 +2,120 @@ package rsocket
 
 import (
 	"context"
-	"fmt"
-	"sync"
-	"sync/atomic"
+	"io"
+	"net"
 	"time"
 )
 
-type Client struct {
-	opts        *clientOpts
-	c           RConnection
-	sndStreamID uint32
-	hReqRes     *sync.Map // map[uint32]
-	wp          workerPool
-	onceClose   *sync.Once
+type ClientSocket interface {
+	io.Closer
+	RSocket
 }
 
-func (p *Client) Close() (err error) {
-	p.onceClose.Do(func() {
-		_ = p.wp.Close()
-		if p.c != nil {
-			err = p.c.Close()
-			p.c = nil
-		}
-	})
-	return
+type ClientSocketAcceptor = func(socket RSocket) RSocket
+
+type ClientStarter interface {
+	Start() (ClientSocket, error)
 }
 
-func (p *Client) FireAndForget(data, metadata []byte) error {
-	sid := p.nextStreamID()
-	f := createFNF(sid, data, metadata)
-	return p.c.Send(f)
+type ClientBuilder interface {
+	KeepAlive(tickPeriod, ackTimeout time.Duration, missedAcks int) ClientBuilder
+	DataMimeType(mime string) ClientBuilder
+	MetadataMimeType(mime string) ClientBuilder
+	SetupPayload(setup Payload) ClientBuilder
+	Transport(transport string) ClientStarter
+	Acceptor(acceptor ClientSocketAcceptor) ClientTransportBuilder
 }
 
-func (p *Client) MetadataPush(metadata []byte) error {
-	return p.c.Send(createMetadataPush(metadata))
+type ClientTransportBuilder interface {
+	Transport(transport string) ClientStarter
 }
 
-func (p *Client) RequestResponse(data, metadata []byte, handler func(res Payload, err error)) error {
-	sid := p.nextStreamID()
-	p.hReqRes.Store(sid, handler)
-	err := p.c.Send(createRequestResponse(sid, data, metadata))
+func Connect() ClientBuilder {
+	return &implClientBuilder{
+		keepaliveInteval:     20 * time.Second,
+		keepaliveMaxLifetime: 90 * time.Second,
+		dataMimeType:         MimeTypeBinary,
+		metadataMimeType:     MimeTypeBinary,
+	}
+}
+
+type implClientBuilder struct {
+	addr                 string
+	keepaliveInteval     time.Duration
+	keepaliveMaxLifetime time.Duration
+	dataMimeType         []byte
+	metadataMimeType     []byte
+	setupData            []byte
+	setupMetadata        []byte
+	acceptor             ClientSocketAcceptor
+}
+
+func (p *implClientBuilder) KeepAlive(tickPeriod, ackTimeout time.Duration, missedAcks int) ClientBuilder {
+	p.keepaliveInteval = tickPeriod
+	p.keepaliveMaxLifetime = time.Duration(missedAcks) * ackTimeout
+	return p
+}
+
+func (p *implClientBuilder) DataMimeType(mime string) ClientBuilder {
+	p.dataMimeType = []byte(mime)
+	return p
+}
+
+func (p *implClientBuilder) MetadataMimeType(mime string) ClientBuilder {
+	p.metadataMimeType = []byte(mime)
+	return p
+}
+
+func (p *implClientBuilder) SetupPayload(setup Payload) ClientBuilder {
+	defer setup.Release()
+
+	p.setupData = nil
+	p.setupMetadata = nil
+
+	data := setup.Data()
+	if len(data) > 0 {
+		data2 := make([]byte, len(data))
+		copy(data2, data)
+		p.setupData = data2
+	}
+	metadata := setup.Metadata()
+	if len(metadata) > 0 {
+		metadata2 := make([]byte, len(metadata))
+		copy(metadata2, metadata)
+		p.setupMetadata = metadata2
+	}
+	return p
+}
+
+func (p *implClientBuilder) Acceptor(acceptor ClientSocketAcceptor) ClientTransportBuilder {
+	p.acceptor = acceptor
+	return p
+}
+
+func (p *implClientBuilder) Transport(transport string) ClientStarter {
+	p.addr = transport
+	return p
+}
+
+func (p *implClientBuilder) Start() (ClientSocket, error) {
+	c, err := net.Dial("tcp", p.addr)
 	if err != nil {
-		p.hReqRes.Delete(sid)
+		return nil, err
 	}
-	return err
-}
-
-func (p *Client) Start(ctx context.Context) (err error) {
-	keepaliveInterval := p.opts.tickPeriod
-	keepaliveMaxLifetime := p.opts.ackTimeout * time.Duration(p.opts.missedAcks)
-	p.c, err = p.opts.tp.Connect(keepaliveInterval)
-	if err != nil {
-		return
+	conn := newTcpRConnection(c, p.keepaliveInteval)
+	conn.PostFlight(context.Background())
+	setup := createSetup(defaultVersion, p.keepaliveInteval, p.keepaliveMaxLifetime, nil, p.metadataMimeType, p.dataMimeType, p.setupData, p.setupMetadata)
+	if err := conn.Send(setup); err != nil {
+		defer func() {
+			_ = conn.Close()
+		}()
+		return nil, err
 	}
-	p.c.HandlePayload(func(f *framePayload) (err error) {
-		sid := f.header.StreamID()
-		value, ok := p.hReqRes.Load(sid)
-		if !ok {
-			defer f.Release()
-			return
-		}
-		fn := value.(func(Payload, error))
-		p.hReqRes.Delete(sid)
-		p.wp.Do(func() {
-			defer f.Release()
-			fn(f, nil)
-		})
-		return
-	})
-	p.c.PostFlight(ctx)
-	setup := createSetup(defaultVersion, keepaliveInterval, keepaliveMaxLifetime, nil, p.opts.mimeMetadata, p.opts.mimeData, p.opts.setupMetadata, p.opts.setupData)
-	err = p.c.Send(setup)
-	return
-}
-
-func (p *Client) nextStreamID() uint32 {
-	return 2*(atomic.AddUint32(&p.sndStreamID, 1)-1) + 1
-}
-
-type clientOpts struct {
-	tp            Transport
-	setupData     []byte
-	setupMetadata []byte
-
-	tickPeriod time.Duration
-	ackTimeout time.Duration
-	missedAcks int
-
-	mimeData     []byte
-	mimeMetadata []byte
-
-	workerPoolSize int
-}
-
-var (
-	MimeTypeBinary = []byte("application/binary")
-)
-
-type ClientOption func(o *clientOpts)
-
-func NewClient(options ...ClientOption) (*Client, error) {
-	o := &clientOpts{
+	requester := newDuplexRSocket(conn, false)
+	if p.acceptor != nil {
+		responder := p.acceptor(requester)
+		requester.bindResponder(responder)
 	}
-	for _, it := range options {
-		it(o)
-	}
-	if o.tp == nil {
-		return nil, ErrInvalidTransport
-	}
-	if o.mimeMetadata == nil {
-		o.mimeMetadata = MimeTypeBinary
-	}
-	if o.mimeData == nil {
-		o.mimeData = MimeTypeBinary
-	}
-
-	if o.tickPeriod < 1 {
-		o.tickPeriod = 20 * time.Second
-	}
-	if o.ackTimeout < 1 {
-		o.ackTimeout = 30 * time.Second
-	}
-	if o.missedAcks < 1 {
-		o.missedAcks = 3
-	}
-	return &Client{
-		opts:      o,
-		hReqRes:   &sync.Map{},
-		wp:        newWorkerPool(o.workerPoolSize),
-		onceClose: &sync.Once{},
-	}, nil
-}
-
-func WithClientWorkerPoolSize(n int) ClientOption {
-	return func(o *clientOpts) {
-		o.workerPoolSize = n
-	}
-}
-
-func WithTCPTransport(host string, port int) ClientOption {
-	return func(o *clientOpts) {
-		o.tp = newTCPClientTransport(host, port)
-	}
-}
-
-func WithSetupPayload(data []byte, metadata []byte) ClientOption {
-	return func(o *clientOpts) {
-		o.setupData = data
-		o.setupMetadata = metadata
-	}
-}
-
-func WithKeepalive(tickPeriod time.Duration, ackTimeout time.Duration, missedAcks int) ClientOption {
-	if tickPeriod < 1 {
-		panic(fmt.Errorf("invalid tickPeriod: %d", tickPeriod))
-	}
-	if ackTimeout < 1 {
-		panic(fmt.Errorf("invalid ackTimeout: %d", ackTimeout))
-	}
-	if missedAcks < 1 {
-		panic(fmt.Errorf("invalid missedAcks: %d", missedAcks))
-	}
-	return func(o *clientOpts) {
-		o.tickPeriod = tickPeriod
-		o.ackTimeout = ackTimeout
-		o.missedAcks = missedAcks
-	}
-}
-
-func WithDataMimeType(mime string) ClientOption {
-	return func(o *clientOpts) {
-		o.mimeData = []byte(mime)
-	}
-}
-
-func WithMetadataMimeType(mime string) ClientOption {
-	return func(o *clientOpts) {
-		o.mimeMetadata = []byte(mime)
-	}
+	return requester, nil
 }

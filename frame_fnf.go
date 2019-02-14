@@ -1,7 +1,13 @@
 package rsocket
 
+import "fmt"
+
 type frameFNF struct {
 	*baseFrame
+}
+
+func (p *frameFNF) String() string {
+	return fmt.Sprintf("frameFNF{%s,data=%s,metadata=%s}", p.header, p.Data(), p.Metadata())
 }
 
 func (p *frameFNF) Metadata() []byte {

@@ -29,8 +29,19 @@ type tcpRConnection struct {
 	onCancel          func(f *frameCancel) (err error)
 	onError           func(f *frameError) (err error)
 	onMetadataPush    func(f *frameMetadataPush) (err error)
+	onRequestN        func(f *frameRequestN) (err error)
 
 	keepaliveTicker *time.Ticker
+}
+
+func (p *tcpRConnection) HandleRequestN(callback func(f *frameRequestN) (err error)) {
+	if callback == nil {
+		panic(ErrHandlerNil)
+	}
+	if p.onRequestN != nil {
+		panic(ErrHandlerExist)
+	}
+	p.onRequestN = callback
 }
 
 func (p *tcpRConnection) HandleRequestChannel(h func(f *frameRequestChannel) (err error)) {
@@ -273,6 +284,11 @@ func (p *tcpRConnection) onRcv(f *baseFrame) (err error) {
 	case tError:
 		hasHandler = true
 		err = p.onError(&frameError{f})
+	case tRequestN:
+		hasHandler = p.onRequestN != nil
+		if hasHandler {
+			err = p.onRequestN(&frameRequestN{f})
+		}
 	default:
 		err = ErrInvalidFrame
 	}

@@ -1,222 +1,289 @@
 package rsocket
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
 )
 
-type RSocket struct {
-	c           RConnection
-	outStreamID uint32
-	wp          workerPool
-
-	hRQ  HandlerRQ
-	hRS  HandlerRS
-	hFNF HandlerFNF
-	hMP  HandlerMetadataPush
-	hRC  HandlerRC
-
-	requestChannelsMap *sync.Map // sid -> flux
+type duplexRSocket struct {
+	c               RConnection
+	sun             bool
+	requestStreamID uint32
+	messages        *sync.Map // sid -> rx
 }
 
-func (p *RSocket) HandleMetadataPush(h HandlerMetadataPush) {
-	if h == nil {
-		panic(ErrHandlerNil)
-	}
-	if p.hMP != nil {
-		panic(ErrHandlerExist)
-	}
-	p.hMP = h
+func (p *duplexRSocket) Close() error {
+	return p.c.Close()
 }
 
-func (p *RSocket) HandleRequestResponse(h HandlerRQ) {
-	if h == nil {
-		panic(ErrHandlerNil)
-	}
-	if p.hRQ != nil {
-		panic(ErrHandlerExist)
-	}
-	p.hRQ = h
+func (p *duplexRSocket) FireAndForget(payload Payload) {
+	_ = p.c.Send(createFNF(p.nextStreamID(), payload.Data(), payload.Metadata()))
 }
 
-func (p *RSocket) HandleRequestStream(h HandlerRS) {
-	if h == nil {
-		panic(ErrHandlerNil)
-	}
-	if p.hRS != nil {
-		panic(ErrHandlerExist)
-	}
-	p.hRS = h
+func (p *duplexRSocket) MetadataPush(payload Payload) {
+	_ = p.c.Send(createMetadataPush(payload.Metadata()))
 }
 
-func (p *RSocket) HandleFireAndForget(h HandlerFNF) {
-	if h == nil {
-		panic(ErrHandlerNil)
-	}
-	if p.hFNF != nil {
-		panic(ErrHandlerExist)
-	}
-	p.hFNF = h
-}
+func (p *duplexRSocket) RequestResponse(payload Payload) Mono {
+	defer payload.Release()
+	sid := p.nextStreamID()
 
-func (p *RSocket) HandleRequestChannel(h HandlerRC) {
-	if h == nil {
-		panic(ErrHandlerNil)
-	}
-	if p.hRC != nil {
-		panic(ErrHandlerExist)
-	}
-	p.hRC = h
-}
-
-func (p *RSocket) nextStreamID() uint32 {
-	return atomic.AddUint32(&p.outStreamID, 2)
-}
-
-func newRSocket(c RConnection, wp workerPool) *RSocket {
-	sk := &RSocket{
-		c:                  c,
-		outStreamID:        0,
-		wp:                 wp,
-		requestChannelsMap: &sync.Map{},
-	}
-
-	c.HandlePayload(func(f *framePayload) (err error) {
-		// TODO: merge client and server codes.
-		sid := f.header.StreamID()
-		found, ok := sk.requestChannelsMap.Load(sid)
-		if !ok {
-			defer f.Release()
-			return
-		}
-		// TODO: keep order, consider do in single scheduler
-		flux := found.(*implFlux)
-		fg := f.header.Flag()
-		if fg.Check(FlagNext) {
-			flux.Next(f)
-		} else if fg.Check(FlagComplete) {
-			defer f.Release()
-			flux.Complete()
-			sk.requestChannelsMap.Delete(sid)
-		} else {
-			panic(fmt.Errorf("illegal flag: %d", fg))
-		}
-		return
+	mono := NewMono(nil)
+	mono.(*implMono).setAfterSub(func(ctx context.Context, item Payload) {
+		item.Release()
 	})
+	p.messages.Store(sid, mono)
+	mono.DoFinally(func(ctx context.Context) {
+		p.messages.Delete(sid)
+	})
+	if err := p.c.Send(createRequestResponse(sid, payload.Data(), payload.Metadata())); err != nil {
+		// TODO: process error
+		panic(err)
+	}
+	return mono
+}
 
-	c.HandleRequestChannel(func(f *frameRequestChannel) (err error) {
+func (p *duplexRSocket) RequestStream(payload Payload) Flux {
+	defer payload.Release()
+	sid := p.nextStreamID()
+	flux := newImplFlux()
+	p.messages.Store(sid, flux)
+	flux.setAfterConsumer(func(ctx context.Context, item Payload) {
+		item.Release()
+	})
+	flux.DoFinally(func(ctx context.Context) {
+		p.messages.Delete(sid)
+	})
+	reqStream := createRequestStream(sid, 0xFFFFFFFF, payload.Data(), payload.Metadata())
+	if err := p.c.Send(reqStream); err != nil {
+		// TODO: wrapper error flux
+		panic(err)
+	}
+	return flux
+}
+
+func (p *duplexRSocket) RequestChannel(payloads Publisher) Flux {
+	sid := p.nextStreamID()
+	inputs := payloads.(Flux)
+	fx := newImplFlux()
+	p.messages.Store(sid, fx)
+	fx.DoFinally(func(ctx context.Context) {
+		p.messages.Delete(sid)
+	})
+	ctx := context.WithValue(context.Background(), ctxKeyRequestChannel, &ctxRequestChannel{
+		sid:  sid,
+		conn: p.c,
+	})
+	inputs.
+		DoFinally(func(ctx context.Context) {
+			v := ctx.Value(ctxKeyRequestChannel).(*ctxRequestChannel)
+			_ = v.conn.Send(createPayloadFrame(v.sid, nil, nil, FlagComplete))
+		}).
+		SubscribeOn(ElasticScheduler()).
+		Subscribe(ctx, func(ctx context.Context, item Payload) {
+			defer item.Release()
+			v := ctx.Value(ctxKeyRequestChannel).(*ctxRequestChannel)
+			// TODO: process error, request N
+			if atomic.AddUint32(&(v.processed), 1) == 1 {
+				_ = v.conn.Send(createRequestChannel(v.sid, 0xFFFFFFFF, item.Data(), item.Metadata(), FlagNext))
+			} else {
+				_ = v.conn.Send(createPayloadFrame(v.sid, item.Data(), item.Metadata(), FlagNext))
+			}
+		})
+	return fx
+}
+
+type ctxKey uint8
+
+const (
+	ctxKeyRequestChannel ctxKey = iota
+)
+
+type ctxRequestChannel struct {
+	sid       uint32
+	processed uint32
+	conn      RConnection
+}
+
+func (p *duplexRSocket) nextStreamID() uint32 {
+	if p.sun {
+		// 2,4,6,8...
+		return 2 * atomic.AddUint32(&p.requestStreamID, 1)
+	}
+	// 1,3,5,7
+	return 2*(atomic.AddUint32(&p.requestStreamID, 1)-1) + 1
+}
+
+func (p *duplexRSocket) bindResponder(socket RSocket) {
+	p.c.HandleRequestChannel(func(f *frameRequestChannel) (err error) {
 		sid := f.header.StreamID()
-		found, loaded := sk.requestChannelsMap.LoadOrStore(sid, newImplFlux())
+		initialRequestN := f.InitialRequestN()
+		payloads, loaded := p.messages.LoadOrStore(sid, newImplFlux())
 		if loaded {
 			panic(fmt.Errorf("duplicated request channel: streamID=%d", sid))
 		}
-		fluxIn := found.(*implFlux)
+		ElasticScheduler().Do(context.Background(), func(ctx context.Context) {
+			_ = p.c.Send(createRequestN(sid, initialRequestN))
+			payloads.(Emitter).Next(f)
+		})
+		outputs := socket.RequestChannel(payloads.(Flux))
 
-		// ensure RequestN
-		sk.wp.Do(func() {
-			_ = c.Send(createRequestN(sid, f.InitialRequestN()))
-			fluxIn.Next(f)
-		})
-		// subscribe incoming channel payloads
-		sk.wp.Do(func() {
-			fluxOut := sk.hRC(fluxIn)
-			if fluxOut != fluxIn {
-				// auto release frame for each consumer
-				fluxIn.setAfterConsumer(func(item Payload) {
-					item.Release()
-				})
-			}
-			fluxOut.
-				DoFinally(func() {
-					_ = c.Send(createPayloadFrame(sid, nil, nil, FlagComplete))
-				}).
-				Subscribe(toSender(sid, c, FlagNext))
-		})
+		// TODO: ugly codes... optimize
+		if payloads.(*implFlux) != outputs {
+			// auto release frame for each consumer
+			payloads.(*implFlux).setAfterConsumer(func(ctx context.Context, item Payload) {
+				item.Release()
+			})
+		}
+		outputs.
+			DoFinally(func(ctx context.Context) {
+				_ = p.c.Send(createPayloadFrame(sid, nil, nil, FlagComplete))
+			}).
+			SubscribeOn(ElasticScheduler()).
+			Subscribe(context.Background(), p.consumeAsSend(sid, FlagNext))
 		return
 	})
 
-	c.HandleMetadataPush(func(f *frameMetadataPush) (err error) {
-		sk.wp.Do(func() {
-			defer f.Release()
-			if sk.hMP == nil {
-				return
-			}
-			sk.hMP(f.Metadata())
-		})
-		return
-	})
-
-	c.HandleFNF(func(frame *frameFNF) (err error) {
-		sk.wp.Do(func() {
-			defer frame.Release()
-			if sk.hFNF == nil {
-				return
-			}
-			sk.hFNF(frame)
-		})
-		return
-	})
-
-	c.HandleRequestStream(func(frame *frameRequestStream) (err error) {
-		sk.wp.Do(func() {
-			defer frame.Release()
-			if sk.hRS == nil {
-				return
-			}
-			sid := frame.header.StreamID()
-			sk.hRS(frame).
-				DoFinally(func() {
-					_ = c.Send(createPayloadFrame(sid, nil, nil, FlagComplete))
-				}).
-				Subscribe(toSender(sid, c, FlagNext))
-		})
-		return
-	})
-
-	c.HandleRequestResponse(func(frame *frameRequestResponse) (err error) {
-		sk.wp.Do(func() {
-			if sk.hRQ == nil {
-				defer frame.Release()
-				return
-			}
-			res, err := sk.hRQ(frame)
-			if err != nil {
-				defer frame.Release()
-				_ = c.Send(createError(frame.header.StreamID(), ErrorCodeApplicationError, []byte(err.Error())))
-				return
-			}
-			if res == frame {
-				// hack and reuse frame, reduce frame copy
-				fg := FlagNext | FlagComplete
-				if len(frame.Metadata()) > 0 {
-					fg |= FlagMetadata
+	p.c.HandleRequestResponse(func(f *frameRequestResponse) (err error) {
+		res := socket.RequestResponse(f)
+		p.messages.Store(f.header.StreamID(), res)
+		res.
+			DoFinally(func(ctx context.Context) {
+				p.messages.Delete(f.header.StreamID())
+			}).
+			SubscribeOn(ElasticScheduler()).
+			Subscribe(context.Background(), func(ctx context.Context, item Payload) {
+				if item == f {
+					// hack and reuse frame, reduce frame copy
+					fg := FlagNext | FlagComplete
+					if len(f.Metadata()) > 0 {
+						fg |= FlagMetadata
+					}
+					f.setHeader(createHeader(f.header.StreamID(), tPayload, fg))
+					_ = p.c.Send(f)
+				} else {
+					defer f.Release()
+					_ = p.c.Send(createPayloadFrame(f.header.StreamID(), item.Data(), item.Metadata(), FlagNext|FlagComplete))
 				}
-				frame.setHeader(createHeader(frame.header.StreamID(), tPayload, fg))
-				_ = c.Send(frame)
-			} else {
-				defer frame.Release()
-				_ = c.Send(createPayloadFrame(frame.header.StreamID(), res.Data(), res.Metadata(), FlagNext|FlagComplete))
-			}
-			return
-		})
+			})
 		return
 	})
-	return sk
+	p.c.HandleMetadataPush(func(f *frameMetadataPush) (err error) {
+		mono := JustMono(f)
+		p.messages.Store(f.header.StreamID(), mono)
+		mono.
+			DoFinally(func(ctx context.Context) {
+				p.messages.Delete(f.header.StreamID())
+			}).
+			DoFinally(func(ctx context.Context) {
+				f.Release()
+			}).
+			SubscribeOn(ElasticScheduler()).
+			Subscribe(context.Background(), func(ctx context.Context, item Payload) {
+				socket.MetadataPush(item)
+			})
+		return
+	})
+	p.c.HandleFNF(func(f *frameFNF) (err error) {
+		mono := JustMono(f)
+		p.messages.Store(f.header.StreamID(), mono)
+		mono.
+			DoFinally(func(ctx context.Context) {
+				p.messages.Delete(f.header.StreamID())
+			}).
+			DoFinally(func(ctx context.Context) {
+				f.Release()
+			}).
+			SubscribeOn(ElasticScheduler()).
+			Subscribe(context.Background(), func(ctx context.Context, item Payload) {
+				socket.FireAndForget(item)
+			})
+		return
+	})
+	p.c.HandleRequestStream(func(f *frameRequestStream) (err error) {
+		sid := f.header.StreamID()
+		stream := socket.RequestStream(f)
+		stream.
+			DoFinally(func(ctx context.Context) {
+				p.messages.Delete(sid)
+			}).
+			DoFinally(func(ctx context.Context) {
+				f.Release()
+			}).
+			DoFinally(func(ctx context.Context) {
+				_ = p.c.Send(createPayloadFrame(sid, nil, nil, FlagComplete))
+			}).
+			SubscribeOn(ElasticScheduler()).
+			Subscribe(context.Background(), p.consumeAsSend(sid, FlagNext))
+		return
+	})
 }
 
-func toSender(sid uint32, c RConnection, fg Flags) Consumer {
-	return func(item Payload) {
+func (p *duplexRSocket) start() {
+	p.c.HandleRequestN(func(f *frameRequestN) (err error) {
+		// TODO:
+		//log.Println("handle requestN:", f)
+		return nil
+	})
+	p.c.HandlePayload(func(f *framePayload) (err error) {
+		v, ok := p.messages.Load(f.header.StreamID())
+		if !ok {
+			panic(fmt.Errorf("non-exist stream id: %d", f.header.StreamID()))
+		}
+		if mono, ok := v.(MonoEmitter); ok {
+			ElasticScheduler().Do(context.Background(), func(ctx context.Context) {
+				mono.Success(f)
+			})
+			return
+		}
+		flux := v.(Emitter)
+		if f.header.Flag().Check(FlagNext) {
+			flux.Next(f)
+		} else if f.header.Flag().Check(FlagComplete) {
+			flux.Complete()
+		}
+		return
+	})
+}
+
+func (p *duplexRSocket) consumeAsSend(sid uint32, fg Flags) Consumer {
+	return func(ctx context.Context, item Payload) {
 		switch v := item.(type) {
 		case *framePayload:
 			if v.header.Flag().Check(FlagMetadata) {
 				fg |= FlagMetadata
 			}
 			v.setHeader(createHeader(sid, tPayload, fg))
-			_ = c.Send(v)
+			_ = p.c.Send(v)
 		default:
 			defer item.Release()
-			_ = c.Send(createPayloadFrame(sid, item.Data(), item.Metadata(), fg))
+			_ = p.c.Send(createPayloadFrame(sid, item.Data(), item.Metadata(), fg))
 		}
 	}
+}
+
+func newDuplexRSocket(conn RConnection, sun bool) *duplexRSocket {
+	sk := &duplexRSocket{
+		c:        conn,
+		sun:      sun,
+		messages: &sync.Map{},
+	}
+	//tk := time.NewTicker(1 * time.Second)
+	//go func() {
+	//	for {
+	//		select {
+	//		case <-tk.C:
+	//			var ccc int
+	//			sk.messages.Range(func(key, value interface{}) bool {
+	//				ccc++
+	//				return true
+	//			})
+	//			log.Println("[leak trace] messages count:", ccc)
+	//		}
+	//	}
+	//}()
+	defer sk.start()
+	return sk
 }

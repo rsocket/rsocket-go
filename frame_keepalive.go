@@ -10,7 +10,7 @@ type frameKeepalive struct {
 }
 
 func (p *frameKeepalive) String() string {
-	return fmt.Sprintf("FrameKeepalive{respond=%t,lastReceivedPosition=%d,data=%s}", p.header.Flag().Check(FlagRespond), p.LastReceivedPosition(), string(p.Data()))
+	return fmt.Sprintf("frameKeepalive{%s,lastReceivedPosition=%d,data=%s}", p.header, p.LastReceivedPosition(), p.Data())
 }
 
 func (p *frameKeepalive) LastReceivedPosition() uint64 {
