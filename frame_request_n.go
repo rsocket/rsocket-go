@@ -10,7 +10,7 @@ type frameRequestN struct {
 }
 
 func (p *frameRequestN) String() string {
-	return fmt.Sprintf("frameRequestN{header=%s,n=%d}", p.header, p.N())
+	return fmt.Sprintf("frameRequestN{%s,n=%d}", p.header, p.N())
 }
 
 func (p *frameRequestN) N() uint32 {

@@ -1,65 +1,52 @@
 package rsocket
 
-type Acceptor = func(setup SetupPayload, sendingSocket *RSocket) (err error)
-type HandlerRQ = func(req Payload) (res Payload, err error)
-type HandlerRS = func(req Payload) (res Flux)
-type HandlerRC = func(req Flux) (res Flux)
-type HandlerFNF = func(req Payload)
-type HandlerMetadataPush = func(metadata []byte)
+import (
+	"sync"
+)
 
-type Server struct {
-	opts *serverOptions
+type ServerBuilder interface {
+	Acceptor(acceptor ServerAcceptor) ServerTransportBuilder
 }
 
-func (p *Server) Close() error {
-	return p.opts.transport.Close()
+type ServerTransportBuilder interface {
+	Transport(transport string) Start
 }
 
-func (p *Server) Serve() error {
-	wp := newWorkerPool(p.opts.workerPoolSize)
-	defer func() {
-		_ = wp.Close()
-	}()
-	p.opts.transport.Accept(func(setup *frameSetup, conn RConnection) error {
-		rs := newRSocket(conn, wp)
-		return p.opts.acceptor(setup, rs)
+type Start interface {
+	Serve() error
+}
+
+type xServer struct {
+	addr string
+	acc  ServerAcceptor
+
+	responses *sync.Map // sid -> flux/mono
+}
+
+func (p *xServer) Acceptor(acceptor ServerAcceptor) ServerTransportBuilder {
+	p.acc = acceptor
+	return p
+}
+
+func (p *xServer) Transport(transport string) Start {
+	p.addr = transport
+	return p
+}
+
+func (p *xServer) Serve() error {
+	t := newTCPServerTransport(p.addr)
+	t.Accept(func(setup *frameSetup, conn RConnection) error {
+		defer setup.Release()
+		sendingSocket := newDuplexRSocket(conn, true)
+		socket := p.acc(setup, sendingSocket)
+		sendingSocket.bindResponder(socket)
+		return nil
 	})
-	return p.opts.transport.Listen()
+	return t.Listen()
 }
 
-type serverOptions struct {
-	workerPoolSize int
-	transport      ServerTransport
-	acceptor       Acceptor
-}
-
-type ServerOption func(o *serverOptions)
-
-func WithServerWorkerPoolSize(n int) ServerOption {
-	return func(o *serverOptions) {
-		o.workerPoolSize = n
+func Receive() ServerBuilder {
+	return &xServer{
+		responses: &sync.Map{},
 	}
-}
-
-func WithTCPServerTransport(addr string) ServerOption {
-	return func(o *serverOptions) {
-		o.transport = newTCPServerTransport(addr)
-	}
-}
-
-func WithAcceptor(acceptor Acceptor) ServerOption {
-	return func(o *serverOptions) {
-		o.acceptor = acceptor
-	}
-}
-
-func NewServer(opts ...ServerOption) (*Server, error) {
-	o := &serverOptions{}
-	for _, it := range opts {
-		it(o)
-	}
-	if o.transport == nil {
-		return nil, ErrInvalidTransport
-	}
-	return &Server{opts: o}, nil
 }

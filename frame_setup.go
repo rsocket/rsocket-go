@@ -86,7 +86,7 @@ func (p *frameSetup) seekMetadata() int {
 	return offset
 }
 
-func createSetup(version Version, timeBetweenKeepalive, maxLifetime time.Duration, token, mimeMetadata, mimeData, metadata, data []byte) *frameSetup {
+func createSetup(version Version, timeBetweenKeepalive, maxLifetime time.Duration, token, mimeMetadata, mimeData, data, metadata []byte) *frameSetup {
 	var fg Flags
 	bf := borrowByteBuffer()
 	_, _ = bf.Write(version.Bytes())
