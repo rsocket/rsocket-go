@@ -5,7 +5,7 @@ Unofficial [RSocket](http://rsocket.io/) in golang.
 
 ### Example
 
-#### Server-Side
+#### Receive
 
 ```go
 package main
@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"log"
 	"context"
-	
+
 	"github.com/rsocket/rsocket-go"
 )
 
@@ -66,21 +66,21 @@ func main() {
     			log.Println("data:", string(setup.Data()))
     			log.Println("metadata:", string(setup.Metadata()))
     			log.Println("SETUP END:----------------")
-    
+
     			sendingSocket.
     				RequestResponse(rsocket.NewPayloadString("ping", "From server")).
     				SubscribeOn(rsocket.ElasticScheduler()).
     				Subscribe(context.Background(), func(ctx context.Context, item rsocket.Payload) {
     					log.Println("rcv response from client:", item)
     				})
-    
+
     			return responder
     		}).
     		Transport("127.0.0.1:8001").
     		Serve()
     	panic(err)
 }
-	
+
 ```
 
 #### Connect
@@ -165,7 +165,7 @@ func main() {
  - [x] RequestResponse
  - [x] RequestStream
  - [x] RequestChannel
- 
+
 ##### Others
  - [ ] Optimize
  - [ ] Keepalive
