@@ -39,10 +39,77 @@ func TestFlux_Basic(t *testing.T) {
 	<-done
 }
 
+func TestFoobar22(t *testing.T) {
+	k := struct {
+	}{}
+	c := context.WithValue(context.Background(), k, "abc")
+	ctx, cancel := context.WithCancel(c)
+
+	go func(ctx context.Context) {
+		log.Println("vv:", ctx.Value(k))
+	}(ctx)
+	time.Sleep(1 * time.Second)
+	cancel()
+}
+
+func TestMono_Error(t *testing.T) {
+	m := NewMono(func(ctx context.Context, emitter MonoEmitter) {
+		log.Println("ob exec")
+		time.Sleep(3 * time.Second)
+		//emitter.Errorf(fmt.Errorf("oops, error"))
+		emitter.Success(NewPayloadString("aaa", "bbb"))
+	})
+
+	dis := m.
+		DoFinally(func(ctx context.Context) {
+			log.Println("finally")
+		}).
+		DoOnSuccess(func(ctx context.Context, item Payload) {
+			log.Println("success:", item)
+		}).
+		DoOnError(func(ctx context.Context, err error) {
+			log.Println("err:", err)
+		}).
+		SubscribeOn(ElasticScheduler()).
+		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
+			log.Println("sub:", item)
+		})
+
+	time.Sleep(1 * time.Second)
+	dis.Dispose()
+}
+
+func TestName(t *testing.T) {
+	done := make(chan struct{})
+	go func() {
+		close(done)
+		<-done
+		log.Println("done")
+	}()
+	time.Sleep(10 * time.Second)
+}
+
+func TestAAA(t *testing.T) {
+	payload := NewPayloadString("foo", "bar")
+	done := make(chan struct{})
+	NewMono(func(ctx context.Context, emitter MonoEmitter) {
+		emitter.Success(payload)
+	}).
+		SubscribeOn(ElasticScheduler()).
+		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
+			close(done)
+		})
+	<-done
+	log.Println("test done")
+	time.Sleep(3 * time.Second)
+
+}
+
 func TestMono_All(t *testing.T) {
-	ob := func(emitter MonoEmitter) {
+	ob := func(ctx context.Context, emitter MonoEmitter) {
 		time.Sleep(1 * time.Millisecond)
 		emitter.Success(NewPayloadString("hello", "world"))
+
 	}
 
 	done := make(chan struct{})

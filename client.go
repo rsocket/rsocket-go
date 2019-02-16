@@ -3,7 +3,6 @@ package rsocket
 import (
 	"context"
 	"io"
-	"net"
 	"time"
 )
 
@@ -99,23 +98,28 @@ func (p *implClientBuilder) Transport(transport string) ClientStarter {
 }
 
 func (p *implClientBuilder) Start() (ClientSocket, error) {
-	c, err := net.Dial("tcp", p.addr)
+	tp, err := newClientTransportTCP(p.addr)
 	if err != nil {
 		return nil, err
 	}
-	conn := newTcpRConnection(c, p.keepaliveInteval)
-	conn.PostFlight(context.Background())
+	tp.onClose(func() {
+		logger.Infof("client transport closed!!!!!\n")
+	})
+	go func(ctx context.Context) {
+		_ = tp.Start(ctx)
+	}(context.Background())
 	setup := createSetup(defaultVersion, p.keepaliveInteval, p.keepaliveMaxLifetime, nil, p.metadataMimeType, p.dataMimeType, p.setupData, p.setupMetadata)
-	if err := conn.Send(setup); err != nil {
+	if err := tp.Send(setup); err != nil {
 		defer func() {
-			_ = conn.Close()
+			_ = tp.Close()
 		}()
 		return nil, err
 	}
-	requester := newDuplexRSocket(conn, false)
+	requester := newDuplexRSocket(tp, false)
 	if p.acceptor != nil {
 		responder := p.acceptor(requester)
 		requester.bindResponder(responder)
 	}
+
 	return requester, nil
 }

@@ -2,7 +2,6 @@ package rsocket
 
 import (
 	"bufio"
-	"context"
 	"io"
 	"net"
 	"strings"
@@ -10,21 +9,21 @@ import (
 
 const (
 	headerLen       = 6
-	defaultBuffSize = 64 * 1024
+	defaultBuffSize = 16 * 1024
 	maxBuffSize     = 16*1024*1024 + 3
 )
 
-type frameHandler = func(raw []byte) error
+type handleBytes = func(raw []byte) error
 
 type frameDecoder interface {
-	handle(ctx context.Context, fn frameHandler) error
+	handle(fn handleBytes) error
 }
 
 type lengthBasedFrameDecoder struct {
 	scanner *bufio.Scanner
 }
 
-func (p *lengthBasedFrameDecoder) handle(ctx context.Context, fn frameHandler) error {
+func (p *lengthBasedFrameDecoder) handle(fn handleBytes) error {
 	p.scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		if atEOF {
 			return
@@ -46,23 +45,19 @@ func (p *lengthBasedFrameDecoder) handle(ctx context.Context, fn frameHandler) e
 	buf := make([]byte, 0, defaultBuffSize)
 	p.scanner.Buffer(buf, maxBuffSize)
 	for p.scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			data := p.scanner.Bytes()[3:]
-			if err := fn(data); err != nil {
-				return err
-			}
+		data := p.scanner.Bytes()[3:]
+		if err := fn(data); err != nil {
+			return err
 		}
 	}
-	if err := p.scanner.Err(); err != nil {
-		if foo, ok := err.(*net.OpError); ok && strings.EqualFold(foo.Err.Error(), "use of closed network connection") {
-			return nil
-		}
-		return err
+	err := p.scanner.Err()
+	if err == nil {
+		return nil
 	}
-	return nil
+	if foo, ok := err.(*net.OpError); ok && strings.Contains(foo.Err.Error(), "use of closed network connection") {
+		return nil
+	}
+	return err
 }
 
 func newLengthBasedFrameDecoder(r io.Reader) *lengthBasedFrameDecoder {
@@ -72,6 +67,9 @@ func newLengthBasedFrameDecoder(r io.Reader) *lengthBasedFrameDecoder {
 }
 
 func extractMetadataAndData(h header, raw []byte) (metadata []byte, data []byte) {
+	if raw == nil {
+		return nil, nil
+	}
 	if !h.Flag().Check(FlagMetadata) {
 		data = raw[:]
 		return
@@ -81,49 +79,3 @@ func extractMetadataAndData(h header, raw []byte) (metadata []byte, data []byte)
 	data = raw[l+3:]
 	return
 }
-
-type ErrorCode uint32
-
-func (p ErrorCode) String() string {
-	switch p {
-	case ErrorCodeInvalidSetup:
-		return "INVALID_SETUP"
-	case ErrorCodeUnsupportedSetup:
-		return "UNSUPPORTED_SETUP"
-	case ErrorCodeRejectedSetup:
-		return "REJECTED_SETUP"
-	case ErrorCodeRejectedResume:
-		return "REJECTED_RESUME"
-	case ErrorCodeConnectionError:
-		return "CONNECTION_ERROR"
-	case ErrorCodeConnectionClose:
-		return "CONNECTION_CLOSE"
-	case ErrorCodeApplicationError:
-		return "APPLICATION_ERROR"
-	case ErrorCodeRejected:
-		return "REJECTED"
-	case ErrorCodeCanceled:
-		return "CANCELED"
-	case ErrorCodeInvalid:
-		return "INVALID"
-	case 0x00000000:
-		return "RESERVED"
-	case 0xFFFFFFFF:
-		return "RESERVED"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-const (
-	ErrorCodeInvalidSetup     ErrorCode = 0x00000001
-	ErrorCodeUnsupportedSetup ErrorCode = 0x00000002
-	ErrorCodeRejectedSetup    ErrorCode = 0x00000003
-	ErrorCodeRejectedResume   ErrorCode = 0x00000004
-	ErrorCodeConnectionError  ErrorCode = 0x00000101
-	ErrorCodeConnectionClose  ErrorCode = 0x00000102
-	ErrorCodeApplicationError ErrorCode = 0x00000201
-	ErrorCodeRejected         ErrorCode = 0x00000202
-	ErrorCodeCanceled         ErrorCode = 0x00000203
-	ErrorCodeInvalid          ErrorCode = 0x00000204
-)

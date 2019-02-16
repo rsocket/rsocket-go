@@ -7,7 +7,8 @@ import (
 
 type RConnection interface {
 	io.Closer
-	RTransport
-	Send(first Frame, others ...Frame) error
-	PostFlight(ctx context.Context)
+	Handle(handler func(ctx context.Context, frame Frame) error)
+	Send(frame Frame) error
+	Write(frame Frame) error
+	Start(ctx context.Context) error
 }

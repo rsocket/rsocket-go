@@ -35,9 +35,9 @@ func (p *xServer) Transport(transport string) Start {
 
 func (p *xServer) Serve() error {
 	t := newTCPServerTransport(p.addr)
-	t.Accept(func(setup *frameSetup, conn RConnection) error {
+	t.Accept(func(setup *frameSetup, tp transport) error {
 		defer setup.Release()
-		sendingSocket := newDuplexRSocket(conn, true)
+		sendingSocket := newDuplexRSocket(tp, true)
 		socket := p.acc(setup, sendingSocket)
 		sendingSocket.bindResponder(socket)
 		return nil

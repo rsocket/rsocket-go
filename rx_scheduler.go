@@ -1,28 +1,47 @@
 package rsocket
 
-import "context"
+import (
+	"context"
+	"github.com/panjf2000/ants"
+	_ "github.com/panjf2000/ants"
+	"io"
+)
 
 var (
-	schedulerElastic   Scheduler = &elasticSchedulerImpl{}
-	schedulerImmediate Scheduler = &immediateSchedulerImpl{}
+	elasticScheduler   = NewElasticScheduler(ants.DefaultAntsPoolSize)
+	immediateScheduler = &immediateSchedulerImpl{}
 )
 
 type Do = func(ctx context.Context)
 
-// TODO: merge codes with worker pool
 type Scheduler interface {
+	io.Closer
 	Do(ctx context.Context, fn Do)
 }
 
 func ImmediateScheduler() Scheduler {
-	return schedulerImmediate
+	return immediateScheduler
 }
 
 func ElasticScheduler() Scheduler {
-	return schedulerElastic
+	return elasticScheduler
+}
+
+func NewElasticScheduler(size int) Scheduler {
+	pool, err := ants.NewPool(size)
+	if err != nil {
+		panic(err)
+	}
+	return &elasticSchedulerImpl{
+		pool: pool,
+	}
 }
 
 type immediateSchedulerImpl struct {
+}
+
+func (p *immediateSchedulerImpl) Close() error {
+	return nil
 }
 
 func (p *immediateSchedulerImpl) Do(ctx context.Context, fn Do) {
@@ -30,8 +49,18 @@ func (p *immediateSchedulerImpl) Do(ctx context.Context, fn Do) {
 }
 
 type elasticSchedulerImpl struct {
+	pool *ants.Pool
+}
+
+func (p *elasticSchedulerImpl) Close() error {
+	return p.pool.Release()
 }
 
 func (p *elasticSchedulerImpl) Do(ctx context.Context, fn Do) {
-	go fn(ctx)
+	err := p.pool.Submit(func() {
+		fn(ctx)
+	})
+	if err != nil {
+		panic(err)
+	}
 }

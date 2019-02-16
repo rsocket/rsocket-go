@@ -16,6 +16,7 @@ var (
 	ErrInvalidEmitter     = errors.New("rsocket: invalid emitter")
 	ErrHandlerNil         = errors.New("rsocket: handler cannot be nil")
 	ErrHandlerExist       = errors.New("rsocket: handler exists already")
+	ErrSendFull           = errors.New("rsocket: frame send channel is full")
 )
 
 type ServerAcceptor = func(setup SetupPayload, sendingSocket RSocket) RSocket
@@ -81,6 +82,9 @@ func (p *abstractRSocket) FireAndForget(payload Payload) {
 }
 
 func (p *abstractRSocket) RequestResponse(payload Payload) Mono {
+	if p.requestResponse == nil {
+		return nil
+	}
 	return p.requestResponse(payload)
 }
 

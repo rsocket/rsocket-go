@@ -3,12 +3,11 @@ package rsocket
 import (
 	"github.com/valyala/bytebufferpool"
 	"io"
-	"log"
 	"sync/atomic"
 	"time"
 )
 
-const trackLeakSeconds = 0
+const trackLeakSeconds = 10
 
 var (
 	pool    bytebufferpool.Pool
@@ -32,7 +31,7 @@ func init() {
 				if !ok {
 					stop = true
 				}
-				log.Println("#### bytebuff borrows:", borrows)
+				logger.Debugf("#### bytebuff borrows: %d\n", borrows)
 			}
 		}
 	}()
@@ -72,6 +71,9 @@ func (p *ByteBuffer) Reset() {
 }
 
 func (p *ByteBuffer) Bytes() []byte {
+	if p.bb() == nil {
+		return nil
+	}
 	return p.bb().B
 }
 

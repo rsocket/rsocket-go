@@ -2,11 +2,19 @@ package rsocket
 
 import (
 	"encoding/binary"
+	"fmt"
 	"time"
 )
 
 type frameSetup struct {
 	*baseFrame
+}
+
+func (p *frameSetup) String() string {
+	return fmt.Sprintf(
+		"frameSetup{%s,version=%s,keepaliveInterval=%s,keepaliveMaxLifetime=%s,token=%s,dataMimeType=%s,metadataMimeType=%s,data=%s,metadata=%s}",
+		p.header, p.Version(), p.TimeBetweenKeepalive(), p.MaxLifetime(), p.Token(), p.DataMimeType(), p.MetadataMimeType(), p.Data(), p.Metadata(),
+	)
 }
 
 func (p *frameSetup) Version() Version {

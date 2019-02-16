@@ -10,7 +10,6 @@ import (
 	_ "net/http/pprof"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -20,14 +19,8 @@ var (
 	port = 8001
 )
 
-func TestEchoServe(t *testing.T) {
-	if err := runEchoServer("127.0.0.1", port); err != nil {
-		panic(err)
-	}
-}
-
-func TestClient_Benchmark(t *testing.T) {
-	cli, err := rsocket.Connect().
+func createClient(host string, port int) rsocket.ClientSocket {
+	client, err := rsocket.Connect().
 		SetupPayload(rsocket.NewPayloadString("你好", "世界")).
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
 			return rsocket.NewAbstractSocket(
@@ -43,37 +36,91 @@ func TestClient_Benchmark(t *testing.T) {
 		Transport(fmt.Sprintf("%s:%d", host, port)).
 		Start()
 	if err != nil {
-		t.Error(err)
+		panic(err)
 	}
-	defer func() {
-		_ = cli.Close()
-	}()
+	return client
+}
 
-	begin := time.Now()
-	totals := 500000
+func doOnce(host string, port int, totals int) {
 	wg := &sync.WaitGroup{}
 	wg.Add(totals)
 	data := []byte(strings.Repeat("A", 4096))
-
-	var totalsRcv uint32
+	md := []byte("benchmark_test")
+	ctx := context.Background()
+	log.Printf("CONN: %s:%d\n", host, port)
+	clients := make([]rsocket.ClientSocket, totals)
+	now := time.Now()
 	for i := 0; i < totals; i++ {
-		//log.Println("request:", i)
-		// send 4k data
-		md := []byte(fmt.Sprintf("benchmark_%d", i))
-		cli.RequestResponse(rsocket.NewPayload(data, md)).
+		clients[i] = createClient(host, port)
+	}
+	log.Println("SETUP:", time.Now().Sub(now))
+	now = time.Now()
+	for _, client := range clients {
+		client.RequestResponse(rsocket.NewPayload(data, md)).
 			DoFinally(func(ctx context.Context) {
 				wg.Done()
 			}).
 			SubscribeOn(rsocket.ElasticScheduler()).
-			Subscribe(context.Background(), func(ctx context.Context, item rsocket.Payload) {
-				atomic.AddUint32(&totalsRcv, 1)
+			Subscribe(ctx, func(ctx context.Context, item rsocket.Payload) {
 			})
 	}
 	wg.Wait()
+	cost := time.Now().Sub(now)
 
-	cost := time.Now().Sub(begin).Seconds()
-	log.Println("--------------------------")
-	log.Printf("QPS: %.2f\n", float64(totals)/cost)
-	log.Println("--------------------------")
-	assert.Equal(t, totals, int(totalsRcv))
+	log.Println("TOTALS:", totals)
+	log.Println("COST:", cost)
+	log.Printf("QPS: %.2f\n", float64(totals)/cost.Seconds())
+	time.Sleep(1 * time.Hour)
+	for _, client := range clients {
+		_ = client.Close()
+	}
+}
+
+func TestClients_RequestResponse(t *testing.T) {
+	log.Println("---------------")
+	doOnce(host, 8000, 5000)
+	//log.Println("---------------")
+	//doOnce(host, 8000)
+	//log.Println("---------------")
+	//doOnce(host, 8001)
+	//log.Println("---------------")
+	//doOnce(host, 8000)
+	//log.Println("---------------")
+	//doOnce(host, 8001)
+	//log.Println("---------------")
+	//doOnce(host, 8000)
+	//log.Println("---------------")
+	//doOnce(host, 8001)
+	//log.Println("---------------")
+	//doOnce(host, 8000)
+}
+
+func TestClient_RequestResponse(t *testing.T) {
+	client := createClient(host, port)
+	defer func() {
+		_ = client.Close()
+	}()
+	wg := &sync.WaitGroup{}
+	n := 500000
+	wg.Add(n)
+	data := []byte(strings.Repeat("A", 4096))
+
+	now := time.Now()
+	ctx := context.Background()
+	for i := 0; i < n; i++ {
+		md := []byte(fmt.Sprintf("benchmark_test_%d", i))
+		client.RequestResponse(rsocket.NewPayload(data, md)).
+			DoFinally(func(ctx context.Context) {
+				wg.Done()
+			}).
+			SubscribeOn(rsocket.ElasticScheduler()).
+			Subscribe(ctx, func(ctx context.Context, item rsocket.Payload) {
+				assert.Equal(t, data, item.Data(), "data doesn't match")
+				assert.Equal(t, md, item.Metadata(), "metadata doesn't match")
+			})
+	}
+	wg.Wait()
+	cost := time.Now().Sub(now)
+	log.Println(n, "COST:", cost)
+	log.Println(n, "QPS:", float64(n)/cost.Seconds())
 }

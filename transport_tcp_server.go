@@ -2,19 +2,18 @@ package rsocket
 
 import (
 	"context"
-	"log"
 	"net"
 	"sync"
 )
 
 type tcpServerTransport struct {
 	addr      string
-	acceptor  func(setup *frameSetup, conn RConnection) error
+	acceptor  func(setup *frameSetup, tp transport) error
 	listener  net.Listener
 	onceClose *sync.Once
 }
 
-func (p *tcpServerTransport) Accept(acceptor func(setup *frameSetup, conn RConnection) error) {
+func (p *tcpServerTransport) Accept(acceptor func(setup *frameSetup, tp transport) error) {
 	p.acceptor = acceptor
 }
 
@@ -50,18 +49,27 @@ func (p *tcpServerTransport) Listen(onReady ...func()) (err error) {
 	for {
 		c, err := p.listener.Accept()
 		if err != nil {
-			log.Println("tcp listener break:", err)
+			logger.Errorf("TCP listener break: %s\n", err)
 			return err
 		}
-		rc := newTcpRConnection(c, 0)
-		rc.HandleSetup(func(setup *frameSetup) (err error) {
-			defer setup.Release()
-			if p.acceptor != nil {
-				err = p.acceptor(setup, rc)
+		go func(ctx context.Context, c net.Conn) {
+			select {
+			case <-ctx.Done():
+				_ = c.Close()
+				return
+			default:
+				tp := newTransportClient(newTcpRConnection(c))
+				tp.handleSetup(func(f Frame) (err error) {
+					setup := f.(*frameSetup)
+					defer setup.Release()
+					if p.acceptor != nil {
+						err = p.acceptor(setup, tp)
+					}
+					return
+				})
+				_ = tp.Start(ctx)
 			}
-			return
-		})
-		rc.PostFlight(ctx)
+		}(ctx, c)
 	}
 }
 

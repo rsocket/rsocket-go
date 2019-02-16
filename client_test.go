@@ -3,12 +3,13 @@ package rsocket
 import (
 	"context"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"log"
 	"testing"
 	"time"
 )
 
-func TestClient_Mock(t *testing.T) {
+func newMockClient() ClientSocket {
 	socket, err := Connect().
 		SetupPayload(NewPayloadString("hello", "world")).
 		MetadataMimeType("application/json").
@@ -21,15 +22,46 @@ func TestClient_Mock(t *testing.T) {
 				}),
 			)
 		}).
-		Transport("127.0.0.1:8000").
+		Transport("127.0.0.1:8001").
 		Start()
 	if err != nil {
 		panic(err)
 	}
+	return socket
+}
+
+func TestClient_RequestResponse(t *testing.T) {
+	socket := newMockClient()
+	defer func() {
+		_ = socket.Close()
+	}()
+	socket.RequestResponse(NewPayloadString("hello", "world")).
+		DoOnError(func(ctx context.Context, err error) {
+			log.Println(err)
+		}).
+		DoOnCancel(func(ctx context.Context) {
+			log.Println("oops...it's canceled")
+		}).
+		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
+			log.Println("rcv:", item)
+			assert.Equal(t, "hello", string(item.Data()))
+			assert.Equal(t, "world", string(item.Metadata()))
+		})
+	time.Sleep(3*time.Second)
+}
+
+func TestClient_Mock(t *testing.T) {
+	socket := newMockClient()
 	defer func() {
 		_ = socket.Close()
 	}()
 	socket.RequestResponse(NewPayloadString("see", "you")).
+		DoFinally(func(ctx context.Context) {
+			log.Println("final reqresp")
+		}).
+		DoOnError(func(ctx context.Context, err error) {
+			log.Println("reqresp error:", err)
+		}).
 		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
 			log.Println("WAHAHA:", item)
 		})
