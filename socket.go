@@ -2,10 +2,16 @@ package rsocket
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
+)
+
+var (
+	unsupportedRequestStream   = []byte("Request-Stream not implemented.")
+	unsupportedRequestResponse = []byte("Request-Response not implemented.")
 )
 
 type duplexRSocket struct {
@@ -114,50 +120,61 @@ func (p *duplexRSocket) RequestChannel(payloads Publisher) Flux {
 }
 
 func (p *duplexRSocket) respondRequestResponse(socket RSocket) frameHandler {
-	return func(input Frame) (err error) {
+	return func(input Frame) error {
+		// 0. do some convert jobs
 		f := input.(*frameRequestResponse)
 		sid := f.header.StreamID()
-		send := socket.RequestResponse(f)
-		if send == nil {
-			send = NewMono(func(ctx context.Context, emitter MonoEmitter) {
-				emitter.Error(createError(sid, ErrorCodeApplicationError, []byte("Request-Response not implemented.")))
-			})
+		// 1. execute socket handler
+		send, err := func() (mono Mono, err error) {
+			defer func() {
+				err = toError(recover())
+			}()
+			mono = socket.RequestResponse(f)
+			return
+		}()
+		// 2. send error with panic
+		if err != nil {
+			_ = p.writeError(sid, err)
+			return nil
 		}
+		// 3. send error with unsupported handler
+		if send == nil {
+			_ = p.writeError(sid, createError(sid, ErrorCodeApplicationError, unsupportedRequestResponse))
+			return nil
+		}
+		// 4. register publisher
 		p.setPublisher(sid, send)
+		// 5. async subscribe publisher
 		send.
 			DoFinally(func(ctx context.Context) {
 				p.unsetPublisher(sid)
 				f.Release()
 			}).
 			DoOnError(func(ctx context.Context, err error) {
-				if v, ok := err.(*frameError); ok {
-					_ = p.tp.Send(v)
-				} else if v, ok := err.(RError); ok {
-					_ = p.tp.Send(createError(sid, v.ErrorCode(), v.ErrorData()))
-				} else {
-					_ = p.tp.Send(createError(sid, ErrorCodeApplicationError, []byte(err.Error())))
-				}
+				_ = p.writeError(sid, err)
 			}).
 			SubscribeOn(ElasticScheduler()).
 			Subscribe(context.Background(), func(ctx context.Context, item Payload) {
-				if v, ok := item.(*frameRequestResponse); ok && v == f {
-					fg := FlagNext | FlagComplete
-					if len(v.Metadata()) > 0 {
-						fg |= FlagMetadata
-					}
-					send := &framePayload{
-						&baseFrame{
-							header: createHeader(sid, tPayload, fg),
-							body:   v.body,
-						},
-					}
-					v.body = nil
-					_ = p.tp.Send(send)
-				} else {
+				v, ok := item.(*frameRequestResponse)
+				if !ok || v != f {
 					_ = p.tp.Send(createPayloadFrame(sid, item.Data(), item.Metadata(), FlagNext|FlagComplete))
+					return
 				}
+				// reuse request frame, reduce copy
+				fg := FlagNext | FlagComplete
+				if len(v.Metadata()) > 0 {
+					fg |= FlagMetadata
+				}
+				send := &framePayload{
+					&baseFrame{
+						header: createHeader(sid, tPayload, fg),
+						body:   v.body,
+					},
+				}
+				v.body = nil
+				_ = p.tp.Send(send)
 			})
-		return
+		return nil
 	}
 }
 
@@ -231,24 +248,36 @@ func (p *duplexRSocket) respondFNF(socket RSocket) frameHandler {
 	}
 }
 
-var (
-	unsupportedRequestStream = []byte("Request-Stream not implemented.")
-)
-
 func (p *duplexRSocket) respondRequestStream(socket RSocket) frameHandler {
-	return func(input Frame) (err error) {
+	return func(input Frame) error {
 		f := input.(*frameRequestStream)
 		sid := f.header.StreamID()
 
-		resp := socket.RequestStream(f)
-		if resp == nil {
-			resp = NewFlux(func(ctx context.Context, emitter Emitter) {
-				emitter.Error(createError(sid, ErrorCodeApplicationError, unsupportedRequestStream))
-			})
+		// 1. execute request stream handler
+		resp, e := func() (resp Flux, err error) {
+			defer func() {
+				err = toError(recover())
+			}()
+			resp = socket.RequestStream(f)
+			return
+		}()
+
+		// 2. send error with panic
+		if e != nil {
+			_ = p.writeError(sid, e)
+			return nil
 		}
 
+		// 3. send error with unsupported handler
+		if resp == nil {
+			_ = p.writeError(sid, createError(sid, ErrorCodeApplicationError, unsupportedRequestStream))
+			return nil
+		}
+
+		// 4. register publisher
 		p.setPublisher(sid, resp)
 
+		// 5. async subscribe publisher
 		resp.
 			DoFinally(func(ctx context.Context) {
 				_ = p.tp.Send(createPayloadFrame(sid, nil, nil, FlagComplete))
@@ -256,17 +285,22 @@ func (p *duplexRSocket) respondRequestStream(socket RSocket) frameHandler {
 				p.unsetPublisher(sid)
 			}).
 			DoOnError(func(ctx context.Context, err error) {
-				if v, ok := err.(*frameError); ok {
-					_ = p.tp.Send(v)
-				} else if v, ok := err.(RError); ok {
-					_ = p.tp.Send(createError(sid, v.ErrorCode(), v.ErrorData()))
-				} else {
-					_ = p.tp.Send(createError(sid, ErrorCodeApplicationError, []byte(err.Error())))
-				}
+				_ = p.writeError(sid, err)
 			}).
 			SubscribeOn(ElasticScheduler()).
 			Subscribe(context.Background(), p.consumeAsSend(sid, FlagNext))
-		return
+		return nil
+	}
+}
+
+func (p *duplexRSocket) writeError(sid uint32, err error) error {
+	switch v := err.(type) {
+	case *frameError:
+		return p.tp.Send(v)
+	case RError:
+		return p.tp.Send(createError(sid, v.ErrorCode(), v.ErrorData()))
+	default:
+		return p.tp.Send(createError(sid, ErrorCodeApplicationError, []byte(err.Error())))
 	}
 }
 
@@ -291,7 +325,7 @@ func (p *duplexRSocket) start() {
 	})
 	p.tp.handleError(func(input Frame) (err error) {
 		f := input.(*frameError)
-		logger.Errorf("error frame: %s\n", f)
+		logger.Errorf("handle error frame: %s\n", f)
 		v, ok := p.messages.Load(f.header.StreamID())
 		if !ok {
 			return fmt.Errorf("invalid stream id: %d", f.header.StreamID())
@@ -403,4 +437,19 @@ func newDuplexRSocket(tp transport, serverMode bool) *duplexRSocket {
 	}
 	defer sk.start()
 	return sk
+}
+
+// toError try convert something to error
+func toError(err interface{}) error {
+	if err == nil {
+		return nil
+	}
+	switch v := err.(type) {
+	case error:
+		return v
+	case string:
+		return errors.New(v)
+	default:
+		return fmt.Errorf("%s", v)
+	}
 }

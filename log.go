@@ -4,8 +4,10 @@ import (
 	"log"
 )
 
+// LogFunc
 type LogFunc = func(string, ...interface{})
 
+// LogLevel
 type LogLevel int8
 
 const (
@@ -15,7 +17,7 @@ const (
 	LogLevelError
 )
 
-var logger Logger = &loggerWrapper{
+var logger loggerR = &loggerWrapper{
 	lvl: LogLevelInfo,
 	d:   log.Printf,
 	i:   log.Printf,
@@ -23,27 +25,33 @@ var logger Logger = &loggerWrapper{
 	e:   log.Printf,
 }
 
+// SetLoggerLevel set global RSocket log level.
+// There're 4 log levels for choose: LogLevelDebug,LogLevelInfo,LogLevelWarn and LogLevelError.
 func SetLoggerLevel(level LogLevel) {
 	logger.(*loggerWrapper).lvl = level
 }
 
+// SetLoggerDebug custom your debug log implementation.
 func SetLoggerDebug(logFunc LogFunc) {
 	logger.(*loggerWrapper).d = logFunc
 }
 
+// SetLoggerInfo custom your info log implementation.
 func SetLoggerInfo(logFunc LogFunc) {
 	logger.(*loggerWrapper).i = logFunc
 }
 
+// SetLoggerWarn custom your warn level log implementation.
 func SetLoggerWarn(logFunc LogFunc) {
 	logger.(*loggerWrapper).w = logFunc
 }
 
+// SetLoggerError custom your error level log implementation.
 func SetLoggerError(logFunc LogFunc) {
 	logger.(*loggerWrapper).e = logFunc
 }
 
-type Logger interface {
+type loggerR interface {
 	IsDebugEnabled() bool
 	Debugf(format string, v ...interface{})
 	Infof(format string, v ...interface{})

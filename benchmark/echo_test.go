@@ -70,15 +70,15 @@ func doOnce(host string, port int, totals int) {
 	log.Println("TOTALS:", totals)
 	log.Println("COST:", cost)
 	log.Printf("QPS: %.2f\n", float64(totals)/cost.Seconds())
-	time.Sleep(1 * time.Hour)
-	for _, client := range clients {
-		_ = client.Close()
-	}
+	time.Sleep(10 * time.Second)
+	//for _, client := range clients {
+	//	_ = client.Close()
+	//}
 }
 
 func TestClients_RequestResponse(t *testing.T) {
 	log.Println("---------------")
-	doOnce(host, 8000, 5000)
+	doOnce(host, 8001, 5000)
 	//log.Println("---------------")
 	//doOnce(host, 8000)
 	//log.Println("---------------")

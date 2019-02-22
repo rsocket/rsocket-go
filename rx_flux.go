@@ -58,6 +58,7 @@ func (p *implFlux) Error(e error) {
 	}
 	p.sig = SigError
 	p.err = e
+	close(p.source)
 }
 
 func (p *implFlux) Dispose() {
