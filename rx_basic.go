@@ -1,14 +1,8 @@
 package rsocket
 
 import (
+	"container/list"
 	"context"
-)
-
-const (
-	SigReady SignalType = iota
-	SigSuccess
-	SigError
-	SigCancel
 )
 
 const (
@@ -18,9 +12,10 @@ const (
 	rxFuncSuccess
 	rxFuncClean
 	rxFuncComplete
+	rxFuncDrain
+	rxFuncSub
 )
 
-type SignalType uint8
 type rxFuncType uint8
 
 type RxFunc interface {
@@ -31,17 +26,29 @@ type RxFunc interface {
 	RegisterSuccess(fn Consumer)
 	RegisterAfterConsumer(fn Consumer)
 	RegisterComplete(fn OnComplete)
+	RegisterDrain(fn OnExhaust)
+	RegisterSubscribe(fn OnSubscribe)
 
 	DoError(ctx context.Context, e error)
 	DoCancel(ctx context.Context)
-	DoFinally(ctx context.Context)
+	DoFinally(ctx context.Context, sig SignalType)
 	DoNextOrSuccess(ctx context.Context, payload Payload)
 	DoAfterConsumer(ctx context.Context, payload Payload)
 	DoComplete(ctx context.Context)
+	DoDrain(ctx context.Context)
+	DoSubscribe(ctx context.Context)
 }
 
 type implRxFuncStore struct {
-	values map[rxFuncType][]interface{}
+	values [8]*list.List
+}
+
+func (p *implRxFuncStore) RegisterSubscribe(fn OnSubscribe) {
+	p.register(rxFuncSub, fn)
+}
+
+func (p *implRxFuncStore) RegisterDrain(fn OnExhaust) {
+	p.register(rxFuncDrain, fn)
 }
 
 func (p *implRxFuncStore) RegisterComplete(fn OnComplete) {
@@ -49,62 +56,98 @@ func (p *implRxFuncStore) RegisterComplete(fn OnComplete) {
 }
 
 func (p *implRxFuncStore) DoComplete(ctx context.Context) {
-	li, ok := p.values[rxFuncComplete]
-	if !ok {
+	root := p.values[rxFuncComplete]
+	if root == nil {
 		return
 	}
-	for i, l := 0, len(li); i < l; i++ {
-		li[i].(OnComplete)(ctx)
+	var next *list.Element
+	for it := root.Front(); it != nil; it = next {
+		it.Value.(OnComplete)(ctx)
+		next = it.Next()
 	}
 }
 
 func (p *implRxFuncStore) DoNextOrSuccess(ctx context.Context, payload Payload) {
-	cur, ok := p.values[rxFuncSuccess]
-	if !ok {
+	root := p.values[rxFuncSuccess]
+	if root == nil {
 		return
 	}
-	for _, value := range cur {
-		value.(Consumer)(ctx, payload)
+	var next *list.Element
+	for it := root.Front(); it != nil; it = next {
+		it.Value.(Consumer)(ctx, payload)
+		next = it.Next()
 	}
 }
 
 func (p *implRxFuncStore) DoAfterConsumer(ctx context.Context, payload Payload) {
-	cur, ok := p.values[rxFuncClean]
-	if !ok {
+	root := p.values[rxFuncClean]
+	if root == nil {
 		return
 	}
-	for _, value := range cur {
-		value.(Consumer)(ctx, payload)
+	var next *list.Element
+	for it := root.Front(); it != nil; it = next {
+		it.Value.(Consumer)(ctx, payload)
+		next = it.Next()
 	}
 }
 
-func (p *implRxFuncStore) DoFinally(ctx context.Context) {
-	cur, ok := p.values[rxFuncFinally]
-	if !ok {
+func (p *implRxFuncStore) DoFinally(ctx context.Context, sig SignalType) {
+	root := p.values[rxFuncFinally]
+	if root == nil {
 		return
 	}
-	for i, l := 0, len(cur); i < l; i++ {
-		cur[l-i-1].(OnFinally)(ctx)
+	var prev *list.Element
+	for it := root.Back(); it != nil; it = prev {
+		it.Value.(OnFinally)(ctx, sig)
+		prev = it.Prev()
+	}
+}
+
+func (p *implRxFuncStore) DoSubscribe(ctx context.Context) {
+	root := p.values[rxFuncSub]
+	if root == nil {
+		return
+	}
+	var next *list.Element
+	for it := root.Front(); it != nil; it = next {
+		it.Value.(OnSubscribe)(ctx)
+		next = it.Next()
 	}
 }
 
 func (p *implRxFuncStore) DoCancel(ctx context.Context) {
-	cur, ok := p.values[rxFuncCancel]
-	if !ok {
+	root := p.values[rxFuncCancel]
+	if root == nil {
 		return
 	}
-	for _, value := range cur {
-		value.(OnCancel)(ctx)
+	var next *list.Element
+	for it := root.Front(); it != nil; it = next {
+		it.Value.(OnCancel)(ctx)
+		next = it.Next()
 	}
 }
 
 func (p *implRxFuncStore) DoError(ctx context.Context, e error) {
-	cur, ok := p.values[rxFuncError]
-	if !ok {
+	li := p.values[rxFuncError]
+	if li == nil {
 		return
 	}
-	for _, value := range cur {
-		value.(OnError)(ctx, e)
+	var next *list.Element
+	for it := li.Front(); it != nil; it = next {
+		it.Value.(OnError)(ctx, e)
+		next = it.Next()
+	}
+}
+
+func (p *implRxFuncStore) DoDrain(ctx context.Context) {
+	root := p.values[rxFuncDrain]
+	if root == nil {
+		return
+	}
+	var next *list.Element
+	for it := root.Front(); it != nil; it = next {
+		it.Value.(OnExhaust)(ctx)
+		next = it.Next()
 	}
 }
 
@@ -137,11 +180,14 @@ func (p *implRxFuncStore) RegisterError(fn OnError) {
 }
 
 func (p *implRxFuncStore) register(key rxFuncType, fn interface{}) {
-	p.values[key] = append(p.values[key], fn)
+	root := p.values[key]
+	if root == nil {
+		root = list.New()
+		p.values[key] = root
+	}
+	root.PushBack(fn)
 }
 
 func newRxFuncStore() RxFunc {
-	return &implRxFuncStore{
-		values: make(map[rxFuncType][]interface{}, 6),
-	}
+	return &implRxFuncStore{}
 }

@@ -75,7 +75,7 @@ func (p *implMono) Subscribe(ctx context.Context, consumer Consumer) Disposable 
 		}
 		// waiting for subscribe
 		<-p.done
-		defer p.handlers.DoFinally(ctx)
+		defer p.handlers.DoFinally(ctx, p.sig)
 		switch p.sig {
 		case SigError:
 			p.handlers.DoError(ctx, p.result.(error))
@@ -87,7 +87,7 @@ func (p *implMono) Subscribe(ctx context.Context, consumer Consumer) Disposable 
 		case SigCancel:
 			p.handlers.DoCancel(ctx)
 			cancel()
-		case SigReady:
+		default:
 			panic("unreachable")
 		}
 	})

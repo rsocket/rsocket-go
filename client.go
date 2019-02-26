@@ -3,6 +3,7 @@ package rsocket
 import (
 	"context"
 	"io"
+	"runtime"
 	"time"
 )
 
@@ -32,8 +33,8 @@ type ClientTransportBuilder interface {
 
 func Connect() ClientBuilder {
 	return &implClientBuilder{
-		keepaliveInteval:     20 * time.Second,
-		keepaliveMaxLifetime: 90 * time.Second,
+		keepaliveInteval:     defaultKeepaliveInteval,
+		keepaliveMaxLifetime: defaultKeepaliveMaxLifetime,
 		dataMimeType:         MimeTypeBinary,
 		metadataMimeType:     MimeTypeBinary,
 	}
@@ -98,28 +99,29 @@ func (p *implClientBuilder) Transport(transport string) ClientStarter {
 }
 
 func (p *implClientBuilder) Start() (ClientSocket, error) {
-	tp, err := newClientTransportTCP(p.addr)
+	tp, err := newClientTransportTCP(p.addr, p.keepaliveInteval, p.keepaliveMaxLifetime)
 	if err != nil {
 		return nil, err
 	}
+	sendingScheduler := NewElasticScheduler(runtime.NumCPU())
 	tp.onClose(func() {
-		logger.Infof("client transport closed!!!!!\n")
+		_ = sendingScheduler.Close()
 	})
-	go func(ctx context.Context) {
-		_ = tp.Start(ctx)
-	}(context.Background())
-	setup := createSetup(defaultVersion, p.keepaliveInteval, p.keepaliveMaxLifetime, nil, p.metadataMimeType, p.dataMimeType, p.setupData, p.setupMetadata)
-	if err := tp.Send(setup); err != nil {
-		defer func() {
-			_ = tp.Close()
-		}()
-		return nil, err
-	}
-	requester := newDuplexRSocket(tp, false)
+	requester := newDuplexRSocket(tp, false, sendingScheduler)
 	if p.acceptor != nil {
 		responder := p.acceptor(requester)
 		requester.bindResponder(responder)
 	}
-
+	ctx, cancel := context.WithCancel(context.Background())
+	go func(ctx context.Context) {
+		if err := tp.Start(ctx); err != nil {
+			logger.Debugf("client closed: %s\n", err)
+		}
+	}(ctx)
+	setup := createSetup(defaultVersion, p.keepaliveInteval, p.keepaliveMaxLifetime, nil, p.metadataMimeType, p.dataMimeType, p.setupData, p.setupMetadata)
+	if err := tp.Send(setup); err != nil {
+		cancel()
+		return nil, err
+	}
 	return requester, nil
 }

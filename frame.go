@@ -158,3 +158,36 @@ func (p *baseFrame) Release() {
 	returnByteBuffer(p.body)
 	p.body = nil
 }
+
+func (p *baseFrame) trySeekMetadataLen(offset int) int {
+	raw := p.body.Bytes()
+	if offset > 0 {
+		raw = raw[offset:]
+	}
+	if raw == nil {
+		return -1
+	}
+	if !p.header.Flag().Check(FlagMetadata) {
+		return 0
+	}
+	return newUint24Bytes(raw).asInt()
+}
+
+func (p *baseFrame) trySliceMetadata(offset int) []byte {
+	n := p.trySeekMetadataLen(offset)
+	if n < 1 {
+		return nil
+	}
+	return p.body.Bytes()[offset+3 : offset+3+n]
+}
+
+func (p *baseFrame) trySliceData(offset int) []byte {
+	n := p.trySeekMetadataLen(offset)
+	if n < 0 {
+		return nil
+	}
+	if n == 0 {
+		return p.body.Bytes()
+	}
+	return p.body.Bytes()[offset+n+3:]
+}

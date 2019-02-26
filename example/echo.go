@@ -59,18 +59,20 @@ func createEchoServer(host string, port int) error {
 			//}
 			s := string(payload.Data())
 			m := string(payload.Metadata())
+			log.Println("data:", s, "metadata:", m)
 			totals := 100
 			if n, err := strconv.Atoi(string(payload.Metadata())); err == nil {
 				totals = n
 			}
-			return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Emitter) {
+			return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.FluxEmitter) {
 				for i := 0; i < totals; i++ {
 					// You can use context for graceful coroutine shutdown, stop produce.
 					select {
 					case <-ctx.Done():
+						log.Println("ctx done:", ctx.Err())
 						return
 					default:
-						time.Sleep(1 * time.Second)
+						time.Sleep(10 * time.Millisecond)
 						payload := rsocket.NewPayloadString(fmt.Sprintf("%s_%d", s, i), m)
 						emitter.Next(payload)
 					}
@@ -81,7 +83,7 @@ func createEchoServer(host string, port int) error {
 		rsocket.RequestChannel(func(payloads rsocket.Publisher) rsocket.Flux {
 			return payloads.(rsocket.Flux)
 			//// echo all incoming payloads
-			//f := rsocket.NewFlux(func(emitter rsocket.Emitter) {
+			//f := rsocket.NewFlux(func(emitter rsocket.FluxEmitter) {
 			//	req.
 			//		DoFinally(func() {
 			//			emitter.Complete()

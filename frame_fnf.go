@@ -11,13 +11,11 @@ func (p *frameFNF) String() string {
 }
 
 func (p *frameFNF) Metadata() []byte {
-	metadata, _ := extractMetadataAndData(p.header, p.body.Bytes())
-	return metadata
+	return p.trySliceMetadata(0)
 }
 
 func (p *frameFNF) Data() []byte {
-	_, data := extractMetadataAndData(p.header, p.body.Bytes())
-	return data
+	return p.trySliceData(0)
 }
 
 func createFNF(sid uint32, data, metadata []byte, flags ...Flags) *frameFNF {

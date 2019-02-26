@@ -13,13 +13,11 @@ func (p *framePayload) String() string {
 }
 
 func (p *framePayload) Metadata() []byte {
-	m, _ := extractMetadataAndData(p.header, p.body.Bytes())
-	return m
+	return p.trySliceMetadata(0)
 }
 
 func (p *framePayload) Data() []byte {
-	_, d := extractMetadataAndData(p.header, p.body.Bytes())
-	return d
+	return p.trySliceData(0)
 }
 
 func createPayloadFrame(id uint32, data, metadata []byte, flags ...Flags) *framePayload {

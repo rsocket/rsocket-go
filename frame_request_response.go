@@ -11,12 +11,10 @@ func (p *frameRequestResponse) String() string {
 }
 
 func (p *frameRequestResponse) Metadata() []byte {
-	m, _ := extractMetadataAndData(p.header, p.body.Bytes())
-	return m
+	return p.trySliceMetadata(0)
 }
 func (p *frameRequestResponse) Data() []byte {
-	_, d := extractMetadataAndData(p.header, p.body.Bytes())
-	return d
+	return p.trySliceData(0)
 }
 
 func createRequestResponse(id uint32, data, metadata []byte, flags ...Flags) *frameRequestResponse {

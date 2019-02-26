@@ -12,7 +12,7 @@ type frameSetup struct {
 
 func (p *frameSetup) String() string {
 	return fmt.Sprintf(
-		"frameSetup{%s,version=%s,keepaliveInterval=%s,keepaliveMaxLifetime=%s,token=%s,dataMimeType=%s,metadataMimeType=%s,data=%s,metadata=%s}",
+		"frameSetup{%s,version=%s,kaInterval=%s,kaMaxLifetime=%s,token=%s,dataMimeType=%s,metadataMimeType=%s,data=%s,metadata=%s}",
 		p.header, p.Version(), p.TimeBetweenKeepalive(), p.MaxLifetime(), p.Token(), p.DataMimeType(), p.MetadataMimeType(), p.Data(), p.Metadata(),
 	)
 }
@@ -67,16 +67,13 @@ func (p *frameSetup) Metadata() []byte {
 	if !p.header.Flag().Check(FlagMetadata) {
 		return nil
 	}
-	raw := p.body.Bytes()
 	offset := p.seekMetadata()
-	m, _ := extractMetadataAndData(p.header, raw[offset:])
-	return m
+	return p.trySliceMetadata(offset)
 }
 
 func (p *frameSetup) Data() []byte {
 	offset := p.seekMetadata()
-	_, d := extractMetadataAndData(p.header, p.body.Bytes()[offset:])
-	return d
+	return p.trySliceData(offset)
 }
 
 func (p *frameSetup) seekMIME() int {

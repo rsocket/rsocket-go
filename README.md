@@ -167,10 +167,10 @@ func main() {
  - [x] RequestChannel
 
 ##### Others
- - [ ] Optimize
- - [ ] Keepalive
+ - [ ] Tuning
+ - [x] Keepalive
  - [ ] Fragmentation
  - [ ] Full Reactor Support
- - [ ] Cancel
- - [ ] Error
+ - [x] Cancel
+ - [x] Error
  - [ ] Flow Control

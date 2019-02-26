@@ -12,8 +12,12 @@ type clientTransportImpl struct {
 	fnClose  func()
 }
 
-func (p *clientTransportImpl) Send(frame Frame) error {
-	return p.conn.Send(frame)
+func (p *clientTransportImpl) Send(frame Frame) (err error) {
+	err = p.conn.Send(frame)
+	if err != nil {
+		frame.Release()
+	}
+	return
 }
 
 func (p *clientTransportImpl) Close() error {
@@ -23,13 +27,23 @@ func (p *clientTransportImpl) Close() error {
 func (p *clientTransportImpl) Start(ctx context.Context) error {
 	p.conn.Handle(func(ctx context.Context, frame Frame) (err error) {
 		t := frame.Header().Type()
+		// 1. respond keepalive
 		if t == tKeepalive {
 			p.handleKeepalive(ctx, frame)
 			return nil
 		}
+		// 2. skip invalid metadata push
+		if t == tMetadataPush && frame.Header().StreamID() != 0 {
+			frame.Release()
+			logger.Warnf("rsocket.transport: omit MetadataPush with non-zero stream id %d\n", frame.Header().StreamID())
+			return nil
+		}
+		// 3. trigger handler
 		if h, ok := p.handlers.Load(t); ok {
 			return h.(frameHandler)(frame)
 		}
+		// 4. missing handler
+		frame.Release()
 		return fmt.Errorf("missing frame handler: type=%s", t)
 	})
 	defer func() {

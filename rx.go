@@ -6,11 +6,21 @@ import (
 )
 
 type Consumer = func(ctx context.Context, item Payload)
-type consumerIndexed = func(ctx context.Context, item Payload, i int)
 type OnCancel = func(ctx context.Context)
-type OnFinally = func(ctx context.Context)
+type OnExhaust = func(ctx context.Context)
+type OnFinally = func(ctx context.Context, sig SignalType)
 type OnError = func(ctx context.Context, err error)
 type OnComplete = func(ctx context.Context)
+type OnSubscribe = func(ctx context.Context)
+
+const (
+	SigReady SignalType = iota
+	SigSuccess
+	SigError
+	SigCancel
+)
+
+type SignalType uint8
 
 type Disposable interface {
 	//IsDisposed() bool
@@ -19,11 +29,6 @@ type Disposable interface {
 
 type Publisher interface {
 	Subscribe(ctx context.Context, consumer Consumer) Disposable
-}
-
-type indexedPublisher interface {
-	Publisher
-	subscribeIndexed(ctx context.Context, indexed consumerIndexed) Disposable
 }
 
 type Mono interface {
@@ -38,17 +43,22 @@ type Mono interface {
 }
 
 type Flux interface {
-	indexedPublisher
+	Publisher
+	LimitRate(n uint32) Flux
 	DoOnCancel(onCancel OnCancel) Flux
 	DoOnNext(onNext Consumer) Flux
 	DoOnError(onError OnError) Flux
 	DoOnComplete(onSuccess OnComplete) Flux
 	DoFinally(fn OnFinally) Flux
-	SubscribeOn(scheduler Scheduler) indexedPublisher
+	DoOnSubscribe(subscribe OnSubscribe) Flux
+	SubscribeOn(scheduler Scheduler) Publisher
 	onAfterSubscribe(fn Consumer) Flux
+	limiter() (*rateLimiter, bool)
+	onExhaust(onExhaust OnExhaust) Flux
+	resetLimit(n uint32)
 }
 
-type Emitter interface {
+type FluxEmitter interface {
 	Next(payload Payload)
 	Error(err error)
 	Complete()
@@ -79,4 +89,13 @@ func JustMono(payload Payload) Mono {
 		handlers: newRxFuncStore(),
 		locker:   &sync.Mutex{},
 	}
+}
+
+func NewFlux(create func(ctx context.Context, emitter FluxEmitter)) Flux {
+	if create == nil {
+		panic(ErrInvalidEmitter)
+	}
+	f := newImplFlux()
+	f.creation = create
+	return f
 }
