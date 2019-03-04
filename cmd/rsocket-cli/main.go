@@ -297,7 +297,7 @@ func (opts *opts) runAllOperations(ctxt context.Context, socket rsocket.RSocket)
 
 			subscription = socket.
 				RequestStream(payload).
-				DoFinally(func(ctx context.Context) {
+				DoFinally(func(ctx context.Context, sig rsocket.SignalType) {
 					wg.Done()
 				}).
 				SubscribeOn(rsocket.ElasticScheduler()).
@@ -322,7 +322,7 @@ func (opts *opts) runAllOperations(ctxt context.Context, socket rsocket.RSocket)
 
 			subscription = socket.
 				RequestChannel(opts.inputPublisher()).
-				DoFinally(func(ctx context.Context) {
+				DoFinally(func(ctx context.Context, sig rsocket.SignalType) {
 					wg.Done()
 				}).
 				SubscribeOn(rsocket.ElasticScheduler()).
@@ -364,7 +364,7 @@ func (opts *opts) singleInputPayload(ctxt context.Context) rsocket.Payload {
 }
 
 func (opts *opts) inputPublisher() rsocket.Flux {
-	return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Emitter) {
+	return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.FluxEmitter) {
 		defer emitter.Complete()
 
 		metadata, err := opts.buildMetadata()
@@ -413,7 +413,7 @@ type lineInputPublishers struct {
 	io.Reader
 }
 
-func (p *lineInputPublishers) emitLines(emitter rsocket.Emitter, metadata string) {
+func (p *lineInputPublishers) emitLines(emitter rsocket.FluxEmitter, metadata string) {
 	ch := make(chan interface{}, 1)
 
 	go func() {
