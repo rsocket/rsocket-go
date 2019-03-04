@@ -1,7 +1,5 @@
 # go-rsocket (WARNING: STILL IN DEVELOP!!!)
-Unofficial [RSocket](http://rsocket.io/) in golang.
-
-[![Build Status](https://travis-ci.org/jjeffcaii/go-rsocket.svg?branch=master)](https://travis-ci.org/jjeffcaii/go-rsocket)
+[RSocket](http://rsocket.io/) in golang.
 
 ### Example
 
