@@ -18,13 +18,11 @@ func (p *frameRequestChannel) InitialRequestN() uint32 {
 }
 
 func (p *frameRequestChannel) Metadata() []byte {
-	m, _ := extractMetadataAndData(p.header, p.body.Bytes()[4:])
-	return m
+	return p.trySliceMetadata(4)
 }
 
 func (p *frameRequestChannel) Data() []byte {
-	_, d := extractMetadataAndData(p.header, p.body.Bytes()[4:])
-	return d
+	return p.trySliceData(4)
 }
 
 func createRequestChannel(sid uint32, n uint32, data, metadata []byte, flags ...Flags) *frameRequestChannel {

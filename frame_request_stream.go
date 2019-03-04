@@ -18,13 +18,11 @@ func (p *frameRequestStream) InitialRequestN() uint32 {
 }
 
 func (p *frameRequestStream) Metadata() []byte {
-	m, _ := extractMetadataAndData(p.header, p.body.Bytes()[4:])
-	return m
+	return p.trySliceMetadata(4)
 }
 
 func (p *frameRequestStream) Data() []byte {
-	_, d := extractMetadataAndData(p.header, p.body.Bytes()[4:])
-	return d
+	return p.trySliceData(4)
 }
 
 func createRequestStream(id uint32, n uint32, data, metadata []byte, flags ...Flags) *frameRequestStream {
@@ -37,6 +35,7 @@ func createRequestStream(id uint32, n uint32, data, metadata []byte, flags ...Fl
 	if len(metadata) > 0 {
 		fg |= FlagMetadata
 		_ = bf.WriteUint24(len(metadata))
+		_, _ = bf.Write(metadata)
 	}
 	if len(data) > 0 {
 		_, _ = bf.Write(data)

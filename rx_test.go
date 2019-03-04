@@ -9,7 +9,7 @@ import (
 )
 
 func TestFlux_Basic(t *testing.T) {
-	create := func(ctx context.Context, emitter Emitter) {
+	create := func(ctx context.Context, emitter FluxEmitter) {
 		for i := 0; i < 3; i++ {
 			emitter.Next(NewPayloadString(fmt.Sprintf("hello_%d", i), fmt.Sprintf("world_%d", i)))
 		}
@@ -23,13 +23,13 @@ func TestFlux_Basic(t *testing.T) {
 		DoOnNext(func(ctx context.Context, item Payload) {
 			log.Println("onNext2:", item)
 		}).
-		DoFinally(func(ctx context.Context) {
+		DoFinally(func(ctx context.Context, sig SignalType) {
 			close(done)
 		}).
-		DoFinally(func(ctx context.Context) {
+		DoFinally(func(ctx context.Context, sig SignalType) {
 			log.Println("doFinally1")
 		}).
-		DoFinally(func(ctx context.Context) {
+		DoFinally(func(ctx context.Context, sig SignalType) {
 			log.Println("doFinally2")
 		}).
 		SubscribeOn(ElasticScheduler()).
@@ -61,7 +61,7 @@ func TestMono_Error(t *testing.T) {
 	})
 
 	dis := m.
-		DoFinally(func(ctx context.Context) {
+		DoFinally(func(ctx context.Context, sig SignalType) {
 			log.Println("finally")
 		}).
 		DoOnSuccess(func(ctx context.Context, item Payload) {
@@ -114,11 +114,11 @@ func TestMono_All(t *testing.T) {
 
 	done := make(chan struct{})
 	NewMono(ob).
-		DoFinally(func(ctx context.Context) {
+		DoFinally(func(ctx context.Context, sig SignalType) {
 			log.Println("finally 1")
 			close(done)
 		}).
-		DoFinally(func(ctx context.Context) {
+		DoFinally(func(ctx context.Context, sig SignalType) {
 			log.Println("finally 2")
 		}).
 		DoOnSuccess(func(ctx context.Context, item Payload) {
@@ -140,9 +140,38 @@ func TestMono_All(t *testing.T) {
 	<-done
 }
 
+func TestImplFlux_RateLimit(t *testing.T) {
+	flux := NewFlux(func(ctx context.Context, emitter FluxEmitter) {
+		for i := 0; i < 100; i++ {
+			s := fmt.Sprintf("hello_%d", i)
+			emitter.Next(NewPayloadString(s, s))
+		}
+		emitter.Complete()
+	})
+
+	done := make(chan struct{}, 0)
+
+	flux.
+		LimitRate(3).
+		DoFinally(func(ctx context.Context, sig SignalType) {
+			close(done)
+		}).
+		onExhaust(func(ctx context.Context) {
+			time.Sleep(1 * time.Second)
+			flux.resetLimit(3)
+		}).
+		SubscribeOn(ElasticScheduler()).
+		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
+			log.Println("---> sub:", item)
+		})
+
+	<-done
+
+}
+
 func TestRx_Context(t *testing.T) {
 	ctx := context.WithValue(context.Background(), "kkk", "vvv")
-	fx := NewFlux(func(ctx context.Context, emitter Emitter) {
+	fx := NewFlux(func(ctx context.Context, emitter FluxEmitter) {
 		for i := 0; i < 100; i++ {
 			emitter.Next(NewPayloadString(fmt.Sprintf("foo_%d", i), "xxx"))
 		}
@@ -150,7 +179,7 @@ func TestRx_Context(t *testing.T) {
 	})
 	done := make(chan struct{})
 	fx.
-		DoFinally(func(ctx context.Context) {
+		DoFinally(func(ctx context.Context, sig SignalType) {
 			close(done)
 		}).
 		SubscribeOn(ElasticScheduler()).Subscribe(ctx, func(ctx context.Context, item Payload) {

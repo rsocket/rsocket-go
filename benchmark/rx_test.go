@@ -7,8 +7,13 @@ import (
 	"testing"
 )
 
+var payload rsocket.Payload
+
+func init() {
+	payload = rsocket.NewPayloadString("foo", "bar")
+}
+
 func Benchmark_Mono(b *testing.B) {
-	payload := rsocket.NewPayloadString("foo", "bar")
 	wg := &sync.WaitGroup{}
 	wg.Add(b.N)
 	b.ResetTimer()
@@ -26,7 +31,6 @@ func Benchmark_Mono(b *testing.B) {
 }
 
 func Benchmark_MonoJust(b *testing.B) {
-	payload := rsocket.NewPayloadString("foo", "bar")
 	wg := &sync.WaitGroup{}
 	wg.Add(b.N)
 	b.ResetTimer()
@@ -39,5 +43,26 @@ func Benchmark_MonoJust(b *testing.B) {
 				})
 		}
 	})
+	wg.Wait()
+}
+
+func Benchmark_Flux(b *testing.B) {
+	wg := &sync.WaitGroup{}
+	wg.Add(b.N)
+	ctx := context.Background()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		rsocket.
+			NewFlux(func(ctx context.Context, emitter rsocket.FluxEmitter) {
+				emitter.Next(payload)
+				emitter.Complete()
+			}).
+			DoFinally(func(ctx context.Context, sig rsocket.SignalType) {
+				wg.Done()
+			}).
+			SubscribeOn(rsocket.ElasticScheduler()).
+			Subscribe(ctx, func(ctx context.Context, item rsocket.Payload) {
+			})
+	}
 	wg.Wait()
 }

@@ -58,7 +58,7 @@ func (p *tcpServerTransport) Listen(onReady ...func()) (err error) {
 				_ = c.Close()
 				return
 			default:
-				tp := newTransportClient(newTcpRConnection(c))
+				tp := newTransportClient(newTcpRConnection(c, defaultKeepaliveInteval, defaultKeepaliveMaxLifetime, false))
 				tp.handleSetup(func(f Frame) (err error) {
 					setup := f.(*frameSetup)
 					defer setup.Release()

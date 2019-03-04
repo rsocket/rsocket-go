@@ -62,11 +62,12 @@ func (p *implMonoSingle) onAfterSubscribe(fn Consumer) Mono {
 
 func (p *implMonoSingle) Subscribe(ctx context.Context, consumer Consumer) Disposable {
 	p.ss.Do(ctx, func(ctx context.Context) {
-		defer p.handlers.DoFinally(ctx)
 		select {
 		case <-ctx.Done():
+			defer p.handlers.DoFinally(ctx, SigCancel)
 			return
 		default:
+			defer p.handlers.DoFinally(ctx, SigSuccess)
 			p.handlers.DoNextOrSuccess(ctx, p.value)
 			consumer(ctx, p.value)
 			p.handlers.DoAfterConsumer(ctx, p.value)

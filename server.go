@@ -17,9 +17,9 @@ type Start interface {
 }
 
 type xServer struct {
-	addr string
-	acc  ServerAcceptor
-
+	addr      string
+	acc       ServerAcceptor
+	scheduler Scheduler
 	responses *sync.Map // sid -> flux/mono
 }
 
@@ -34,10 +34,13 @@ func (p *xServer) Transport(transport string) Start {
 }
 
 func (p *xServer) Serve() error {
+	defer func() {
+		_ = p.scheduler.Close()
+	}()
 	t := newTCPServerTransport(p.addr)
 	t.Accept(func(setup *frameSetup, tp transport) error {
 		defer setup.Release()
-		sendingSocket := newDuplexRSocket(tp, true)
+		sendingSocket := newDuplexRSocket(tp, true, p.scheduler)
 		socket := p.acc(setup, sendingSocket)
 		sendingSocket.bindResponder(socket)
 		return nil
@@ -48,5 +51,6 @@ func (p *xServer) Serve() error {
 func Receive() ServerBuilder {
 	return &xServer{
 		responses: &sync.Map{},
+		scheduler: NewElasticScheduler(1000),
 	}
 }

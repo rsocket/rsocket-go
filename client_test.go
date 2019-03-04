@@ -22,12 +22,21 @@ func newMockClient() ClientSocket {
 				}),
 			)
 		}).
-		Transport("127.0.0.1:8001").
+		Transport("127.0.0.1:8000").
 		Start()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	return socket
+}
+
+func TestClient_KeepAlive(t *testing.T) {
+	cli := newMockClient()
+
+	defer cli.Close()
+
+	time.Sleep(1 * time.Hour)
+
 }
 
 func TestClient_RequestResponse(t *testing.T) {
@@ -35,9 +44,11 @@ func TestClient_RequestResponse(t *testing.T) {
 	defer func() {
 		_ = socket.Close()
 	}()
+	done := make(chan struct{})
 	socket.RequestResponse(NewPayloadString("hello", "world")).
 		DoOnError(func(ctx context.Context, err error) {
 			log.Println(err)
+			close(done)
 		}).
 		DoOnCancel(func(ctx context.Context) {
 			log.Println("oops...it's canceled")
@@ -47,7 +58,71 @@ func TestClient_RequestResponse(t *testing.T) {
 			assert.Equal(t, "hello", string(item.Data()))
 			assert.Equal(t, "world", string(item.Metadata()))
 		})
-	time.Sleep(3*time.Second)
+	<-done
+}
+
+func TestClient_RequestStream(t *testing.T) {
+	socket := newMockClient()
+	defer func() {
+		_ = socket.Close()
+	}()
+	done := make(chan struct{})
+	socket.RequestStream(NewPayloadString("hello", "50")).
+		DoFinally(func(ctx context.Context, sig SignalType) {
+			close(done)
+		}).
+		DoOnError(func(ctx context.Context, err error) {
+			log.Println(err)
+			close(done)
+		}).
+		DoOnCancel(func(ctx context.Context) {
+			log.Println("oops...it's canceled")
+		}).
+		LimitRate(3).
+		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
+			log.Println("rcv:", item)
+		})
+	<-done
+}
+
+func TestClient_MetadataPush(t *testing.T) {
+	socket := newMockClient()
+	defer func() {
+		_ = socket.Close()
+	}()
+	socket.MetadataPush(NewPayloadString("hello", "world"))
+	time.Sleep(10 * time.Second)
+}
+
+func TestClient_FireAndForget(t *testing.T) {
+	socket := newMockClient()
+	defer func() {
+		_ = socket.Close()
+	}()
+	socket.FireAndForget(NewPayloadString("hello", "world"))
+}
+
+func TestClient_RequestChannel(t *testing.T) {
+	socket := newMockClient()
+	defer func() {
+		_ = socket.Close()
+	}()
+
+	done := make(chan struct{})
+	socket.
+		RequestChannel(NewFlux(func(ctx context.Context, emitter FluxEmitter) {
+			for i := 0; i < 10; i++ {
+				emitter.Next(NewPayloadString("h", "b"))
+			}
+			emitter.Complete()
+		})).
+		DoFinally(func(ctx context.Context, sig SignalType) {
+			close(done)
+		}).
+		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
+			log.Println("next:", item)
+		})
+	<-done
 }
 
 func TestClient_Mock(t *testing.T) {
@@ -56,7 +131,7 @@ func TestClient_Mock(t *testing.T) {
 		_ = socket.Close()
 	}()
 	socket.RequestResponse(NewPayloadString("see", "you")).
-		DoFinally(func(ctx context.Context) {
+		DoFinally(func(ctx context.Context, sig SignalType) {
 			log.Println("final reqresp")
 		}).
 		DoOnError(func(ctx context.Context, err error) {
@@ -66,7 +141,7 @@ func TestClient_Mock(t *testing.T) {
 			log.Println("WAHAHA:", item)
 		})
 	socket.RequestStream(NewPayloadString("aaa", "bbb")).
-		DoFinally(func(ctx context.Context) {
+		DoFinally(func(ctx context.Context, sig SignalType) {
 			log.Println("finish")
 		}).
 		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
@@ -74,7 +149,7 @@ func TestClient_Mock(t *testing.T) {
 		})
 
 	socket.
-		RequestChannel(NewFlux(func(ctx context.Context, emitter Emitter) {
+		RequestChannel(NewFlux(func(ctx context.Context, emitter FluxEmitter) {
 			for i := 0; i < 5; i++ {
 				emitter.Next(NewPayloadString(fmt.Sprintf("hello_%d", i), "from golang"))
 			}

@@ -25,7 +25,7 @@ func TestXServer_Serve(t *testing.T) {
 				}),
 				RequestStream(func(payload Payload) Flux {
 					s := string(payload.Data())
-					return NewFlux(func(ctx context.Context, emitter Emitter) {
+					return NewFlux(func(ctx context.Context, emitter FluxEmitter) {
 						for i := 0; i < 100; i++ {
 							time.Sleep(100 * time.Millisecond)
 							emitter.Next(NewPayload([]byte(fmt.Sprintf("%s_%d", s, i)), nil))

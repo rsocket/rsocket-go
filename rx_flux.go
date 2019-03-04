@@ -2,17 +2,53 @@ package rsocket
 
 import (
 	"context"
+	"math"
 	"sync"
+	"sync/atomic"
 )
 
 type implFlux struct {
 	locker   *sync.Mutex
 	source   chan Payload
-	creation func(ctx context.Context, emitter Emitter)
+	creation func(ctx context.Context, emitter FluxEmitter)
 	c, s     Scheduler
 	handlers RxFunc
 	sig      SignalType
 	err      error
+	rl       *rateLimiter
+}
+
+func (p *implFlux) DoOnSubscribe(onSubscribe OnSubscribe) Flux {
+	p.handlers.RegisterSubscribe(onSubscribe)
+	return p
+}
+
+func (p *implFlux) limiter() (*rateLimiter, bool) {
+	if p.rl == nil {
+		return nil, false
+	}
+	return p.rl, true
+}
+
+func (p *implFlux) onExhaust(onExhaust OnExhaust) Flux {
+	p.locker.Lock()
+	p.handlers.RegisterDrain(onExhaust)
+	p.locker.Unlock()
+	return p
+}
+
+func (p *implFlux) resetLimit(n uint32) {
+	p.locker.Lock()
+	defer p.locker.Unlock()
+	if p.rl == nil {
+		return
+	}
+	p.rl.reset(n)
+}
+
+func (p *implFlux) LimitRate(n uint32) Flux {
+	p.rl = newRateLimiter(n)
+	return p
 }
 
 func (p *implFlux) DoOnError(onError OnError) Flux {
@@ -58,7 +94,7 @@ func (p *implFlux) Error(e error) {
 	}
 	p.sig = SigError
 	p.err = e
-	close(p.source)
+	p.release()
 }
 
 func (p *implFlux) Dispose() {
@@ -68,12 +104,13 @@ func (p *implFlux) Dispose() {
 		return
 	}
 	p.sig = SigCancel
-	close(p.source)
+	p.release()
 }
 
 func (p *implFlux) Next(item Payload) {
 	defer func() {
 		if e := recover(); e != nil {
+			item.Release()
 			logger.Warnf("submit next item failed: %s\n", e)
 		}
 	}()
@@ -87,21 +124,15 @@ func (p *implFlux) Complete() {
 		return
 	}
 	p.sig = SigSuccess
-	close(p.source)
+	p.release()
 }
 
-func (p *implFlux) SubscribeOn(scheduler Scheduler) indexedPublisher {
+func (p *implFlux) SubscribeOn(scheduler Scheduler) Publisher {
 	p.s = scheduler
 	return p
 }
 
 func (p *implFlux) Subscribe(ctx context.Context, consumer Consumer) Disposable {
-	return p.subscribeIndexed(ctx, func(ctx context.Context, item Payload, i int) {
-		consumer(ctx, item)
-	})
-}
-
-func (p *implFlux) subscribeIndexed(ctx context.Context, consumer consumerIndexed) Disposable {
 	ctx, cancel := context.WithCancel(ctx)
 	if p.creation != nil {
 		p.c.Do(ctx, func(ctx context.Context) {
@@ -116,13 +147,16 @@ func (p *implFlux) subscribeIndexed(ctx context.Context, consumer consumerIndexe
 	}
 	p.s.Do(ctx, func(ctx context.Context) {
 		defer func() {
-			p.handlers.DoFinally(ctx)
+			p.handlers.DoFinally(ctx, p.sig)
 		}()
+		p.handlers.DoSubscribe(ctx)
 		var stop bool
-		idx := 0
 		for {
 			if stop {
 				break
+			}
+			if p.rl != nil {
+				p.rl.acquire(ctx, p.handlers)
 			}
 			select {
 			case it, ok := <-p.source:
@@ -131,9 +165,8 @@ func (p *implFlux) subscribeIndexed(ctx context.Context, consumer consumerIndexe
 					break
 				}
 				p.handlers.DoNextOrSuccess(ctx, it)
-				consumer(ctx, it, idx)
+				consumer(ctx, it)
 				p.handlers.DoAfterConsumer(ctx, it)
-				idx++
 			}
 		}
 		switch p.sig {
@@ -144,6 +177,8 @@ func (p *implFlux) subscribeIndexed(ctx context.Context, consumer consumerIndexe
 			p.handlers.DoComplete(ctx)
 		case SigError:
 			p.handlers.DoError(ctx, p.err)
+		default:
+			panic("unreachable")
 		}
 	})
 	return p
@@ -154,6 +189,13 @@ func (p *implFlux) onAfterSubscribe(fn Consumer) Flux {
 	p.handlers.RegisterAfterConsumer(fn)
 	p.locker.Unlock()
 	return p
+}
+
+func (p *implFlux) release() {
+	close(p.source)
+	if p.rl != nil {
+		_ = p.rl.Close()
+	}
 }
 
 func newImplFlux() *implFlux {
@@ -167,11 +209,48 @@ func newImplFlux() *implFlux {
 	}
 }
 
-func NewFlux(create func(ctx context.Context, emitter Emitter)) Flux {
-	if create == nil {
-		panic(ErrInvalidEmitter)
+type rateLimiter struct {
+	initN   int32
+	tickets int32
+	waiting chan struct{}
+}
+
+func (p *rateLimiter) Close() error {
+	close(p.waiting)
+	return nil
+}
+
+func (p *rateLimiter) reset(n uint32) {
+	var v int32
+	if n < math.MaxInt32 {
+		v = int32(n)
+	} else {
+		v = math.MaxInt32
 	}
-	f := newImplFlux()
-	f.creation = create
-	return f
+	if atomic.CompareAndSwapInt32(&(p.tickets), 0, v) {
+		p.waiting <- struct{}{}
+	} else {
+		atomic.AddInt32(&(p.tickets), v)
+	}
+}
+
+func (p *rateLimiter) acquire(ctx context.Context, rxFunc RxFunc) {
+	// tickets exhausted
+	if atomic.LoadInt32(&(p.tickets)) == 0 {
+		rxFunc.DoDrain(ctx)
+		<-p.waiting
+	}
+	atomic.AddInt32(&(p.tickets), -1)
+}
+
+func newRateLimiter(n uint32) *rateLimiter {
+	var v int32 = math.MaxInt32
+	if n < math.MaxInt32 {
+		v = int32(n)
+	}
+	return &rateLimiter{
+		initN:   v,
+		tickets: v,
+		waiting: make(chan struct{}, 1),
+	}
 }

@@ -2,15 +2,14 @@ package rsocket
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"io"
-	"net"
-	"strings"
 )
 
 const (
-	headerLen       = 6
-	defaultBuffSize = 16 * 1024
-	maxBuffSize     = 16*1024*1024 + 3
+	headerLen   = 6
+	maxBuffSize = 16*1024*1024 + 3
 )
 
 type handleBytes = func(raw []byte) error
@@ -42,7 +41,7 @@ func (p *lengthBasedFrameDecoder) handle(fn handleBytes) error {
 		}
 		return
 	})
-	buf := make([]byte, 0, defaultBuffSize)
+	buf := make([]byte, 0, defaultConnTcpReadBuffSize)
 	p.scanner.Buffer(buf, maxBuffSize)
 	for p.scanner.Scan() {
 		data := p.scanner.Bytes()[3:]
@@ -50,14 +49,7 @@ func (p *lengthBasedFrameDecoder) handle(fn handleBytes) error {
 			return err
 		}
 	}
-	err := p.scanner.Err()
-	if err == nil {
-		return nil
-	}
-	if foo, ok := err.(*net.OpError); ok && strings.Contains(foo.Err.Error(), "use of closed network connection") {
-		return nil
-	}
-	return err
+	return p.scanner.Err()
 }
 
 func newLengthBasedFrameDecoder(r io.Reader) *lengthBasedFrameDecoder {
@@ -66,16 +58,17 @@ func newLengthBasedFrameDecoder(r io.Reader) *lengthBasedFrameDecoder {
 	}
 }
 
-func extractMetadataAndData(h header, raw []byte) (metadata []byte, data []byte) {
-	if raw == nil {
-		return nil, nil
+// toError try convert something to error
+func toError(err interface{}) error {
+	if err == nil {
+		return nil
 	}
-	if !h.Flag().Check(FlagMetadata) {
-		data = raw[:]
-		return
+	switch v := err.(type) {
+	case error:
+		return v
+	case string:
+		return errors.New(v)
+	default:
+		return fmt.Errorf("%s", v)
 	}
-	l := newUint24Bytes(raw).asInt()
-	metadata = raw[3 : l+3]
-	data = raw[l+3:]
-	return
 }

@@ -2,16 +2,23 @@ package rsocket
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"io"
 	"sync"
 	"time"
 )
 
-const (
-	writeBuffSize = 16 * 1024
-	sndChanSize   = 64
-)
+var bytesOfKeepalive []byte
+
+func init() {
+	k := createKeepalive(0, nil, true)
+	defer k.Release()
+	bf := &bytes.Buffer{}
+	_, _ = newUint24(k.Len()).WriteTo(bf)
+	_, _ = k.WriteTo(bf)
+	bytesOfKeepalive = bf.Bytes()
+}
 
 type tcpRConnection struct {
 	c         io.ReadWriteCloser
@@ -21,6 +28,12 @@ type tcpRConnection struct {
 	onceClose *sync.Once
 	done      chan struct{}
 	handler   func(ctx context.Context, frame Frame) error
+
+	kaEnable      bool
+	kaTicker      *time.Ticker
+	kaInterval    time.Duration
+	kaMaxLifetime time.Duration
+	heartbeat     time.Time
 }
 
 func (p *tcpRConnection) Handle(handler func(ctx context.Context, frame Frame) error) {
@@ -66,7 +79,6 @@ func (p *tcpRConnection) Send(frame Frame) (err error) {
 			err = e
 		}
 	}()
-
 	p.snd <- frame
 	return
 }
@@ -76,6 +88,7 @@ func (p *tcpRConnection) Close() (err error) {
 		close(p.snd)
 		// TODO: release unfinished frame
 		<-p.done
+		p.kaTicker.Stop()
 		err = p.c.Close()
 	})
 	return
@@ -83,8 +96,10 @@ func (p *tcpRConnection) Close() (err error) {
 
 func (p *tcpRConnection) loopSnd(ctx context.Context) {
 	defer func() {
+		logger.Debugf("connection send loop end\n")
 		close(p.done)
 	}()
+
 	var stop bool
 	for {
 		if stop {
@@ -96,6 +111,19 @@ func (p *tcpRConnection) loopSnd(ctx context.Context) {
 				logger.Errorf("send loop end: %s\n", err)
 			}
 			return
+		case t := <-p.kaTicker.C:
+			if t.Sub(p.heartbeat) > p.kaMaxLifetime {
+				logger.Errorf("keepalive failed: remote connection is dead\n")
+				stop = true
+			}
+			if !p.kaEnable {
+				continue
+			}
+			if _, err := p.w.Write(bytesOfKeepalive); err != nil {
+				logger.Errorf("send frame failed: %s\n", err)
+			} else if err := p.w.Flush(); err != nil {
+				logger.Errorf("send frame failed: %s\n", err)
+			}
 		case out, ok := <-p.snd:
 			if !ok {
 				stop = true
@@ -109,10 +137,17 @@ func (p *tcpRConnection) loopSnd(ctx context.Context) {
 }
 
 func (p *tcpRConnection) onRcv(ctx context.Context, f *baseFrame) error {
+	p.heartbeat = time.Now()
 	var frame Frame
 	switch f.header.Type() {
 	case tSetup:
-		frame = &frameSetup{f}
+		setupFrame := &frameSetup{f}
+		interval := setupFrame.TimeBetweenKeepalive()
+		if interval != p.kaInterval {
+			p.kaTicker.Stop()
+			p.kaTicker = time.NewTicker(interval)
+		}
+		frame = setupFrame
 	case tKeepalive:
 		frame = &frameKeepalive{f}
 	case tRequestResponse:
@@ -136,20 +171,26 @@ func (p *tcpRConnection) onRcv(ctx context.Context, f *baseFrame) error {
 	default:
 		return ErrInvalidFrame
 	}
-	now := time.Now()
-	defer func() {
-		logger.Debugf("handle %s: cost=%s\n", f.header.Type(), time.Now().Sub(now))
-	}()
+	//now := time.Now()
+	//defer func() {
+	//	logger.Debugf("handle %s: cost=%s\n", f.header.Type(), time.Now().Sub(now))
+	//}()
 	return p.handler(ctx, frame)
 }
 
-func newTcpRConnection(c io.ReadWriteCloser) *tcpRConnection {
+func newTcpRConnection(c io.ReadWriteCloser, keepaliveInterval, keepaliveMaxLifetime time.Duration, reportKeepalive bool) *tcpRConnection {
 	return &tcpRConnection{
 		c:         c,
-		w:         bufio.NewWriterSize(c, writeBuffSize),
+		w:         bufio.NewWriterSize(c, defaultConnTcpWriteBuffSize),
 		decoder:   newLengthBasedFrameDecoder(c),
-		snd:       make(chan Frame, sndChanSize),
+		snd:       make(chan Frame, defaultConnSendChanSize),
 		done:      make(chan struct{}),
 		onceClose: &sync.Once{},
+
+		kaEnable:      reportKeepalive,
+		kaTicker:      time.NewTicker(keepaliveInterval),
+		kaInterval:    keepaliveInterval,
+		kaMaxLifetime: keepaliveMaxLifetime,
+		heartbeat:     time.Now(),
 	}
 }
