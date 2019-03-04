@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,42 +12,47 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 
+	"github.com/2tvenom/cbor"
 	"github.com/mkideal/cli"
 	clix "github.com/mkideal/cli/ext"
-	"github.com/rsocket/rsocket-go"
+	rsocket "github.com/rsocket/rsocket-go"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 const (
-	errRequiredArgument = "Required arguments are missing: '%s'"
+	appJSON   = "application/json"
+	appCBOR   = "application/cbor"
+	appBinary = "application/binary"
+	textPlain = "text/plain"
 )
 
 type opts struct {
 	cli.Helper
 	*zap.Logger
 
-	Debug           bool          `cli:"d, debug" usage:"Debug Output"`
-	ServerMode      bool          `cli:"s, server" usage:"Start server instead of client"`
-	Keepalive       clix.Duration `cli:"k, keepalive" name:"duration" usage:"Keepalive period" dft:"20s"`
-	AckTimeout      clix.Duration `cli:"ackTimeout" name:"duration" usage:"ACK timeout period" dft:"30s"`
-	MissedAcks      int           `cli:"missed-acks" name:"count" usage:"Missed ACK" dft:"3"`
-	MetadataFormat  string        `cli:"metadataFormat" name:"mimeType" usage:"Metadata Format [json|cbor|binary|text|mime-type]" dft:"json"`
-	DataFormat      string        `cli:"dataFormat" name:"mimeType" usage:"Data Format [json|cbor|binary|text|mime-type]" dft:"binary"`
-	Setup           string        `cli:"setup" name:"setup" usage:"String input or @path/to/file for setup metadata"`
-	Input           []string      `cli:"i, input" name:"input" usage:"String input, '-' (STDIN) or @path/to/file"`
-	Timeout         clix.Duration `cli:"timeout" name:"duration" usage:"Timeout period"`
-	Operations      int           `cli:"o, ops" name:"operations" usage:"Operation Count" dft:"1"`
-	RequestN        int           `cli:"r, requestn" name:"requests" usage:"Request N credits"`
-	FireAndForget   bool          `cli:"fnf" usage:"Fire and Forget"`
-	MetadataPush    bool          `cli:"metadataPush" usage:"Metadata Push"`
-	RequestResponse bool          `cli:"request" usage:"Request Response"`
-	Stream          bool          `cli:"stream" usage:"Request Stream"`
-	Channel         bool          `cli:"channel" usage:"Request Channel"`
+	Debug           bool              `cli:"d, debug" usage:"Debug Output"`
+	ServerMode      bool              `cli:"s, server" usage:"Start server instead of client"`
+	Keepalive       clix.Duration     `cli:"k, keepalive" name:"duration" usage:"Keepalive period" dft:"20s"`
+	AckTimeout      clix.Duration     `cli:"ackTimeout" name:"duration" usage:"ACK timeout period" dft:"30s"`
+	MissedAcks      int               `cli:"missed-acks" name:"count" usage:"Missed ACK" dft:"3"`
+	MetadataFmt     string            `cli:"metadataFormat" name:"mimeType" usage:"Metadata Format [json|cbor|binary|text|mime-type]" dft:"json"`
+	DataFmt         string            `cli:"dataFormat" name:"mimeType" usage:"Data Format [json|cbor|binary|text|mime-type]" dft:"binary"`
+	Setup           string            `cli:"setup" name:"setup" usage:"String input or @path/to/file for setup metadata"`
+	Metadata        string            `cli:"m, metadata" name:"metadata" usage:"Metadata input string input or @path/to/file"`
+	Headers         map[string]string `cli:"H, header" name:"name=value" usage:"Request Response"`
+	Input           []string          `cli:"i, input" name:"input" usage:"String input, '-' (STDIN) or @path/to/file"`
+	Timeout         clix.Duration     `cli:"timeout" name:"duration" usage:"Timeout period"`
+	Operations      int               `cli:"o, ops" name:"operations" usage:"Operation Count" dft:"1"`
+	RequestN        int               `cli:"r, requestn" name:"requests" usage:"Request N credits" dft:"-1"`
+	FireAndForget   bool              `cli:"fnf" usage:"Fire and Forget"`
+	MetadataPush    bool              `cli:"metadataPush" usage:"Metadata Push"`
+	RequestResponse bool              `cli:"request" usage:"Request Response"`
+	Stream          bool              `cli:"stream" usage:"Request Stream"`
+	Channel         bool              `cli:"channel" usage:"Request Channel"`
 }
-
-type SyncFunc func() error
 
 func (opts *opts) configureLogging() (err error) {
 	if opts.Debug {
@@ -83,24 +90,24 @@ func (opts *opts) configureLogging() (err error) {
 func (opts *opts) createResponder(ctxt context.Context, logger *zap.Logger) (responder rsocket.RSocket) {
 	return rsocket.NewAbstractSocket(
 		rsocket.MetadataPush(func(payload rsocket.Payload) {
-			logger.Debug("MetadataPush", zap.Object("payload", PayloadMarshaler{payload}))
+			logger.Debug("MetadataPush", zap.Object("request", payloadMarshaler{payload}))
 
 			println(string(payload.Metadata()))
 		}),
 		rsocket.FireAndForget(func(payload rsocket.Payload) {
-			logger.Debug("FireAndForget", zap.Object("payload", PayloadMarshaler{payload}))
+			logger.Debug("FireAndForget", zap.Object("request", payloadMarshaler{payload}))
 
 			println(string(payload.Data()))
 		}),
 		rsocket.RequestResponse(func(payload rsocket.Payload) rsocket.Mono {
-			logger.Debug("RequestResponse", zap.Object("payload", PayloadMarshaler{payload}))
+			logger.Debug("RequestResponse", zap.Object("request", payloadMarshaler{payload}))
 
 			println(string(payload.Data()))
 
 			return rsocket.JustMono(opts.singleInputPayload(ctxt))
 		}),
 		rsocket.RequestStream(func(payload rsocket.Payload) rsocket.Flux {
-			logger.Debug("RequestStream", zap.Object("payload", PayloadMarshaler{payload}))
+			logger.Debug("RequestStream", zap.Object("request", payloadMarshaler{payload}))
 
 			println(string(payload.Data()))
 
@@ -120,7 +127,7 @@ func (opts *opts) createResponder(ctxt context.Context, logger *zap.Logger) (res
 			}
 
 			publisher.Subscribe(ctxt, func(ctx context.Context, payload rsocket.Payload) {
-				logger.Debug("RequestChannel", zap.Object("payload", PayloadMarshaler{payload}))
+				logger.Debug("RequestChannel", zap.Object("payload", payloadMarshaler{payload}))
 			})
 
 			return opts.inputPublisher()
@@ -132,14 +139,9 @@ func (opts *opts) buildServer(ctxt context.Context, logger *zap.Logger, uri *url
 	responder := opts.createResponder(ctxt, logger)
 
 	return rsocket.Receive().Acceptor(func(setup rsocket.SetupPayload, socket rsocket.RSocket) rsocket.RSocket {
-		logger.Debug("Accpet connection with setup payload", zap.Object("setup", SetupMarshaler{setup}))
+		logger.Debug("Accpet connection with setup payload", zap.Object("setup", setupMarshaler{setup}))
 
-		opts.
-			runAllOperations(ctxt, socket).
-			SubscribeOn(rsocket.ElasticScheduler()).
-			Subscribe(ctxt, func(ctx context.Context, payload rsocket.Payload) {
-				logger.Debug("received payload", zap.Object("payload", PayloadMarshaler{payload}))
-			})
+		go opts.runAllOperations(ctxt, socket)
 
 		return responder
 	}).Transport(uri.Host)
@@ -149,8 +151,8 @@ func (opts *opts) buildClient(ctxt context.Context, logger *zap.Logger, uri *url
 	responder := opts.createResponder(ctxt, logger)
 	builder := rsocket.Connect().
 		KeepAlive(opts.Keepalive.Duration, opts.AckTimeout.Duration, opts.MissedAcks).
-		MetadataMimeType(standardMimeType(opts.MetadataFormat)).
-		DataMimeType(standardMimeType(opts.DataFormat))
+		MetadataMimeType(opts.MetadataFormat()).
+		DataMimeType(opts.DataFormat())
 
 	var setup rsocket.Payload
 
@@ -173,81 +175,174 @@ func (opts *opts) buildClient(ctxt context.Context, logger *zap.Logger, uri *url
 	return
 }
 
+func (opts *opts) MetadataFormat() string {
+	return standardMimeType(opts.MetadataFmt)
+}
+
+func (opts *opts) DataFormat() string {
+	return standardMimeType(opts.DataFmt)
+}
+
 func standardMimeType(fmt string) string {
 	switch fmt {
 	case "", "json":
-		return "application/json"
+		return appJSON
 	case "cbor":
-		return "application/cbor"
+		return appCBOR
 	case "binary":
-		return "application/binary"
+		return appBinary
 	case "text":
-		return "text/plain"
+		return textPlain
 	default:
 		return fmt
 	}
 }
 
-func (opts *opts) parseSetupPayload() (setup rsocket.Payload, err error) {
+func readData(s string) (data []byte, err error) {
 	switch {
-	case strings.HasPrefix(opts.Setup, "@"):
-		var data []byte
+	case strings.HasPrefix(s, "@"):
+		return ioutil.ReadFile(s[1:])
 
-		filename := opts.Setup[1:]
-		data, err = ioutil.ReadFile(filename)
-
-		if err != nil {
-			return
-		}
-
-		setup = rsocket.NewPayload(data, nil)
-
-	case opts.Setup == "":
-		setup = rsocket.NewPayload(nil, nil)
+	case s == "":
+		break
 
 	default:
-		setup = rsocket.NewPayloadString(opts.Setup, "")
+		data = []byte(s)
 	}
 
 	return
 }
 
-func (opts *opts) runAllOperations(ctxt context.Context, socket rsocket.RSocket) rsocket.Flux {
-	return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Emitter) {
-		for i := 0; i < opts.Operations; i++ {
-			if opts.FireAndForget {
-				payload := opts.singleInputPayload(ctxt)
+func (opts *opts) parseSetupPayload() (setup rsocket.Payload, err error) {
+	var data []byte
 
-				opts.Logger.Debug("FireAndForget", zap.Object("payload", PayloadMarshaler{payload}))
+	data, err = readData(opts.Setup)
 
-				socket.FireAndForget(payload)
-			} else if opts.MetadataPush {
-				payload := opts.singleInputPayload(ctxt)
+	if err != nil {
+		return
+	}
 
-				opts.Logger.Debug("MetadataPush", zap.Object("payload", PayloadMarshaler{payload}))
+	setup = rsocket.NewPayload(data, nil)
 
-				socket.MetadataPush(payload)
-			} else if opts.RequestResponse {
-				payload := opts.singleInputPayload(ctxt)
+	return
+}
 
-				opts.Logger.Debug("RequestResponse", zap.Object("payload", PayloadMarshaler{payload}))
+func (opts *opts) buildMetadata() (metadata []byte, err error) {
+	if len(opts.Metadata) > 0 && len(opts.Headers) > 0 {
+		err = errors.New("Can't specify headers and metadata")
+	} else if len(opts.Metadata) > 0 {
+		metadata, err = readData(opts.Metadata)
+	} else if len(opts.Headers) > 0 {
+		switch opts.MetadataFormat() {
+		case appJSON:
+			metadata, err = json.Marshal(opts.Headers)
 
-				socket.RequestResponse(payload)
-			} else if opts.Stream {
-				payload := opts.singleInputPayload(ctxt)
+		case appCBOR:
+			var buf bytes.Buffer
 
-				opts.Logger.Debug("Stream", zap.Object("payload", PayloadMarshaler{payload}))
+			encoder := cbor.NewEncoder(&buf)
 
-				socket.RequestStream(payload)
-			} else if opts.Channel {
-				opts.Logger.Debug("Channel")
+			_, err = encoder.Marshal(opts.Headers)
 
-				socket.RequestChannel(opts.inputPublisher())
-			}
+			metadata = buf.Bytes()
+
+		default:
+			err = fmt.Errorf("headers not supported with mimetype: %s", opts.MetadataFmt)
 		}
+	}
 
-		emitter.Complete()
-	})
+	return
+}
+
+func (opts *opts) runAllOperations(ctxt context.Context, socket rsocket.RSocket) {
+	var wg sync.WaitGroup
+
+	for i := 0; i < opts.Operations; i++ {
+		if opts.FireAndForget {
+			payload := opts.singleInputPayload(ctxt)
+
+			opts.Logger.Debug("FireAndForget", zap.Object("request", payloadMarshaler{payload}))
+
+			socket.FireAndForget(payload)
+		} else if opts.MetadataPush {
+			payload := opts.singleInputPayload(ctxt)
+
+			opts.Logger.Debug("MetadataPush", zap.Object("request", payloadMarshaler{payload}))
+
+			socket.MetadataPush(payload)
+		} else if opts.RequestResponse {
+			payload := opts.singleInputPayload(ctxt)
+
+			opts.Logger.Debug("RequestResponse", zap.Object("request", payloadMarshaler{payload}))
+
+			socket.
+				RequestResponse(payload).
+				SubscribeOn(rsocket.ElasticScheduler()).
+				Subscribe(ctxt, func(ctx context.Context, payload rsocket.Payload) {
+					defer wg.Done()
+
+					opts.Logger.Debug("RequestResponse", zap.Object("response", payloadMarshaler{payload}))
+
+					println(string(payload.Data()))
+				})
+
+			wg.Add(1)
+		} else if opts.Stream {
+			payload := opts.singleInputPayload(ctxt)
+
+			opts.Logger.Debug("Stream", zap.Object("request", payloadMarshaler{payload}))
+
+			var subscription rsocket.Disposable
+			var responses int
+
+			subscription = socket.
+				RequestStream(payload).
+				DoFinally(func(ctx context.Context) {
+					wg.Done()
+				}).
+				SubscribeOn(rsocket.ElasticScheduler()).
+				Subscribe(ctxt, func(ctx context.Context, payload rsocket.Payload) {
+					opts.Logger.Debug("Stream", zap.Object("response", payloadMarshaler{payload}))
+
+					println(string(payload.Data()))
+
+					responses++
+
+					if opts.RequestN > 0 && responses >= opts.RequestN {
+						subscription.Dispose()
+					}
+				})
+
+			wg.Add(1)
+		} else if opts.Channel {
+			opts.Logger.Debug("Channel")
+
+			var subscription rsocket.Disposable
+			var responses int
+
+			subscription = socket.
+				RequestChannel(opts.inputPublisher()).
+				DoFinally(func(ctx context.Context) {
+					wg.Done()
+				}).
+				SubscribeOn(rsocket.ElasticScheduler()).
+				Subscribe(ctxt, func(ctx context.Context, payload rsocket.Payload) {
+					opts.Logger.Debug("Channel", zap.Object("response", payloadMarshaler{payload}))
+
+					println(string(payload.Data()))
+
+					responses++
+
+					if opts.RequestN > 0 && responses >= opts.RequestN {
+						subscription.Dispose()
+					}
+				})
+
+			wg.Add(1)
+		}
+	}
+
+	wg.Wait()
 }
 
 func (opts *opts) singleInputPayload(ctxt context.Context) rsocket.Payload {
@@ -272,12 +367,20 @@ func (opts *opts) inputPublisher() rsocket.Flux {
 	return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Emitter) {
 		defer emitter.Complete()
 
-		for _, input := range opts.Input {
-			input = strings.TrimSpace(input)
+		metadata, err := opts.buildMetadata()
 
+		if err != nil {
+			opts.Logger.Warn("fail to read metadata", zap.Error(err))
+		}
+
+		for _, input := range opts.Input {
 			switch {
 			case input == "-":
-				emitLines(ctx, emitter, os.Stdin)
+				opts.Logger.Debug("emit lines from STDIN")
+
+				publisher := lineInputPublishers{ctx, opts.Logger, os.Stdin}
+
+				publisher.emitLines(emitter, string(metadata))
 
 			case strings.HasPrefix(input, "@"):
 				filename := input[1:]
@@ -291,41 +394,32 @@ func (opts *opts) inputPublisher() rsocket.Flux {
 
 				defer f.Close()
 
-				emitLines(ctx, emitter, os.Stdin)
+				opts.Logger.Debug("emit lines from file", zap.String("filename", filename))
+
+				publisher := lineInputPublishers{ctx, opts.Logger, f}
+
+				publisher.emitLines(emitter, string(metadata))
 
 			default:
-				emitter.Next(rsocket.NewPayloadString(input, ""))
+				emitter.Next(rsocket.NewPayloadString(input, string(metadata)))
 			}
 		}
 	})
 }
 
-func emitLines(ctxt context.Context, emitter rsocket.Emitter, r io.Reader) {
-	ch := readLines(r)
-
-	for {
-		select {
-		case <-ctxt.Done():
-			break
-
-		case line := <-ch:
-			switch i := line.(type) {
-			case error:
-				emitter.Error(i)
-			case string:
-				emitter.Next(rsocket.NewPayloadString(i, ""))
-			}
-		}
-	}
+type lineInputPublishers struct {
+	context.Context
+	*zap.Logger
+	io.Reader
 }
 
-func readLines(r io.Reader) (ch chan interface{}) {
-	ch = make(chan interface{}, 1)
+func (p *lineInputPublishers) emitLines(emitter rsocket.Emitter, metadata string) {
+	ch := make(chan interface{}, 1)
 
 	go func() {
 		defer close(ch)
 
-		br := bufio.NewReader(r)
+		br := bufio.NewReader(p.Reader)
 
 		for {
 			line, err := br.ReadString('\n')
@@ -339,31 +433,45 @@ func readLines(r io.Reader) (ch chan interface{}) {
 		}
 	}()
 
-	return
+	for {
+		select {
+		case <-p.Context.Done():
+			return
+
+		case line := <-ch:
+			switch i := line.(type) {
+			case error:
+				emitter.Error(i)
+
+			case string:
+				emitter.Next(rsocket.NewPayloadString(i, metadata))
+			}
+		}
+	}
 }
 
-type PayloadMarshaler struct {
+type payloadMarshaler struct {
 	rsocket.Payload
 }
 
-func (payload PayloadMarshaler) MarshalLogObject(encoder zapcore.ObjectEncoder) error {
+func (payload payloadMarshaler) MarshalLogObject(encoder zapcore.ObjectEncoder) error {
 	encoder.AddByteString("data", payload.Data())
 	encoder.AddByteString("metadata", payload.Metadata())
 
 	return nil
 }
 
-type SetupMarshaler struct {
+type setupMarshaler struct {
 	rsocket.SetupPayload
 }
 
-func (setup SetupMarshaler) MarshalLogObject(encoder zapcore.ObjectEncoder) error {
+func (setup setupMarshaler) MarshalLogObject(encoder zapcore.ObjectEncoder) error {
 	encoder.AddString("dataMimeType", setup.DataMimeType())
 	encoder.AddString("metadataMimeType", setup.MetadataMimeType())
 	encoder.AddDuration("timeBetweenKeepalive", setup.TimeBetweenKeepalive())
 	encoder.AddDuration("maxLifetime", setup.MaxLifetime())
 	encoder.AddString("version", setup.Version().String())
-	encoder.AddObject("payload", PayloadMarshaler{setup})
+	encoder.AddObject("payload", payloadMarshaler{setup})
 
 	return nil
 }
@@ -383,7 +491,7 @@ func main() {
 		args := cmdline.Args()
 
 		if len(args) == 0 {
-			err = fmt.Errorf(errRequiredArgument, "target")
+			err = fmt.Errorf("Required arguments are missing: '%s'", "target")
 			return
 		}
 
@@ -399,8 +507,11 @@ func main() {
 			return
 		}
 
-		if len(uri.Scheme) > 0 && !strings.HasPrefix(uri.Scheme, "tcp") {
-			err = errors.New("Only support TCP.")
+		switch uri.Scheme {
+		case "", "tcp", "tcp4", "tcp6":
+			break
+		default:
+			err = errors.New("only support TCP")
 			return
 		}
 
@@ -442,21 +553,27 @@ func main() {
 
 		if opts.Timeout.Duration > 0 {
 			ctxt, cancel = context.WithTimeout(ctxt, opts.Timeout.Duration)
+
+			defer cancel()
 		}
 
-		subscripber := opts.
-			runAllOperations(ctxt, socket).
-			DoFinally(func(ctx context.Context) {
-				cancel()
-			}).
-			SubscribeOn(rsocket.ElasticScheduler()).
-			Subscribe(ctxt, func(ctx context.Context, payload rsocket.Payload) {
-				logger.Debug("received payload", zap.Object("payload", PayloadMarshaler{payload}))
-			})
+		c := make(chan struct{}, 1)
 
-		defer subscripber.Dispose()
+		go func() {
+			opts.runAllOperations(ctxt, socket)
 
-		<-ctxt.Done()
+			c <- struct{}{}
+
+			close(c)
+		}()
+
+		select {
+		case <-c:
+			break
+
+		case <-ctxt.Done():
+			break
+		}
 
 		return
 	}, "CLI for RSocket.")
