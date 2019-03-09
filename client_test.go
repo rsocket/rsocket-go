@@ -44,21 +44,18 @@ func TestClient_RequestResponse(t *testing.T) {
 	defer func() {
 		_ = socket.Close()
 	}()
-	done := make(chan struct{})
 	socket.RequestResponse(NewPayloadString("hello", "world")).
 		DoOnError(func(ctx context.Context, err error) {
 			log.Println(err)
-			close(done)
 		}).
 		DoOnCancel(func(ctx context.Context) {
 			log.Println("oops...it's canceled")
 		}).
-		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
+		Subscribe(context.Background(), OnNext(func(ctx context.Context, sub Subscription, item Payload) {
 			log.Println("rcv:", item)
 			assert.Equal(t, "hello", string(item.Data()))
 			assert.Equal(t, "world", string(item.Metadata()))
-		})
-	<-done
+		}))
 }
 
 func TestClient_RequestStream(t *testing.T) {
@@ -79,9 +76,9 @@ func TestClient_RequestStream(t *testing.T) {
 			log.Println("oops...it's canceled")
 		}).
 		LimitRate(3).
-		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
-			log.Println("rcv:", item)
-		})
+		Subscribe(context.Background(), OnNext(func(ctx context.Context, sub Subscription, payload Payload) {
+			log.Println("rcv:", payload)
+		}))
 	<-done
 }
 
@@ -110,7 +107,7 @@ func TestClient_RequestChannel(t *testing.T) {
 
 	done := make(chan struct{})
 	socket.
-		RequestChannel(NewFlux(func(ctx context.Context, emitter FluxEmitter) {
+		RequestChannel(NewFlux(func(ctx context.Context, emitter Producer) {
 			for i := 0; i < 10; i++ {
 				emitter.Next(NewPayloadString("h", "b"))
 			}
@@ -119,9 +116,9 @@ func TestClient_RequestChannel(t *testing.T) {
 		DoFinally(func(ctx context.Context, sig SignalType) {
 			close(done)
 		}).
-		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
-			log.Println("next:", item)
-		})
+		Subscribe(context.Background(), OnNext(func(ctx context.Context, sub Subscription, payload Payload) {
+			log.Println("next:", payload)
+		}))
 	<-done
 }
 
@@ -137,25 +134,25 @@ func TestClient_Mock(t *testing.T) {
 		DoOnError(func(ctx context.Context, err error) {
 			log.Println("reqresp error:", err)
 		}).
-		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
-			log.Println("WAHAHA:", item)
-		})
+		Subscribe(context.Background(), OnNext(func(ctx context.Context, sub Subscription, payload Payload) {
+			log.Println("WAHAHA:", payload)
+		}))
 	socket.RequestStream(NewPayloadString("aaa", "bbb")).
 		DoFinally(func(ctx context.Context, sig SignalType) {
 			log.Println("finish")
 		}).
-		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
-			log.Println("stream:", item)
-		})
+		Subscribe(context.Background(), OnNext(func(ctx context.Context, sub Subscription, payload Payload) {
+			log.Println("stream:", payload)
+		}))
 
 	socket.
-		RequestChannel(NewFlux(func(ctx context.Context, emitter FluxEmitter) {
+		RequestChannel(NewFlux(func(ctx context.Context, emitter Producer) {
 			for i := 0; i < 5; i++ {
 				emitter.Next(NewPayloadString(fmt.Sprintf("hello_%d", i), "from golang"))
 			}
 			emitter.Complete()
 		})).
-		Subscribe(context.Background(), func(ctx context.Context, item Payload) {
-			log.Println("channel:", item)
-		})
+		Subscribe(context.Background(), OnNext(func(ctx context.Context, sub Subscription, payload Payload) {
+			log.Println("channel:", payload)
+		}))
 }

@@ -33,8 +33,8 @@ func doOnce(host string, port int, totals int) {
 				wg.Done()
 			}).
 			SubscribeOn(rsocket.ElasticScheduler()).
-			Subscribe(ctx, func(ctx context.Context, item rsocket.Payload) {
-			})
+			Subscribe(ctx, rsocket.OnNext(func(ctx context.Context, sub rsocket.Subscription, payload rsocket.Payload) {
+			}))
 	}
 	wg.Wait()
 	cost := time.Now().Sub(now)
@@ -82,14 +82,15 @@ func TestClient_RequestResponse(t *testing.T) {
 	for i := 0; i < n; i++ {
 		md := []byte(fmt.Sprintf("benchmark_test_%d", i))
 		client.RequestResponse(rsocket.NewPayload(data, md)).
-			DoFinally(func(ctx context.Context, sig rsocket.SignalType) {
-				wg.Done()
-			}).
+			//DoFinally(func(ctx context.Context, sig rsocket.SignalType) {
+			//
+			//}).
 			SubscribeOn(rsocket.ElasticScheduler()).
-			Subscribe(ctx, func(ctx context.Context, item rsocket.Payload) {
-				assert.Equal(t, data, item.Data(), "data doesn't match")
-				assert.Equal(t, md, item.Metadata(), "metadata doesn't match")
-			})
+			Subscribe(ctx, rsocket.OnNext(func(ctx context.Context, sub rsocket.Subscription, payload rsocket.Payload) {
+				assert.Equal(t, data, payload.Data(), "data doesn't match")
+				assert.Equal(t, md, payload.Metadata(), "metadata doesn't match")
+				wg.Done()
+			}))
 	}
 	wg.Wait()
 	cost := time.Now().Sub(now)

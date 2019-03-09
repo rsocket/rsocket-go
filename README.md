@@ -1,5 +1,45 @@
-# go-rsocket (WARNING: STILL IN DEVELOP!!!)
+# go-rsocket (WARNING: STILL IN DEVELOP!!! APIs will change at any time until release of v1.0.0)
 [RSocket](http://rsocket.io/) in golang.
+
+## Features
+ - Design For Golang
+ - Thin [reactive-streams](http://www.reactive-streams.org/) implementation.
+
+## Reactor Start Up
+
+> Here's basic Reactor Flux example:
+
+``` go
+	f := NewFlux(func(ctx context.Context, producer Producer) {
+		for i := 0; i < 3; i++ {
+			producer.Next(NewPayloadString(fmt.Sprintf("foo%d", i), fmt.Sprintf("bar%d", i)))
+		}
+		producer.Complete()
+	})
+	f.
+		DoFinally(func(ctx context.Context, st SignalType) {
+			log.Println("doFinally:", st)
+		}).
+		DoOnNext(func(ctx context.Context, s Subscription, payload Payload) {
+			log.Println("doNext:", payload)
+		}).
+		DoAfterNext(func(ctx context.Context, payload Payload) {
+			payload.Release()
+		}).
+		Subscribe(context.Background())
+
+    // Or you can use varargs with wrapper of `OnSubscribe`,`OnNext`,`OnComplete` and `OnError`
+    f.Subscribe(context.Background(), OnNext(func(ctx context.Context, s Subscription, payload Payload) {
+		// Do something
+
+        // Cancel it
+        // s.Cancel()
+
+        // Also you can use Request for flow control
+        // s.Request(1)
+	}))
+
+```
 
 ### Example
 
@@ -30,7 +70,7 @@ func main() {
     		}),
     		rsocket.RequestStream(func(payload rsocket.Payload) rsocket.Flux {
     			s := string(payload.Data())
-    			return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Emitter) {
+    			return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Producer) {
     				for i := 0; i < 100; i++ {
     					payload := rsocket.NewPayloadString(fmt.Sprintf("%s_%d", s, i), "")
     					emitter.Next(payload)
@@ -41,7 +81,7 @@ func main() {
     		rsocket.RequestChannel(func(payloads rsocket.Publisher) rsocket.Flux {
     			return payloads.(rsocket.Flux)
     			//// echo all incoming payloads
-    			//f := rsocket.NewFlux(func(emitter rsocket.Emitter) {
+    			//f := rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Producer) {
     			//	req.
     			//		DoFinally(func() {
     			//			emitter.Complete()
@@ -171,4 +211,4 @@ func main() {
  - [ ] Full Reactor Support
  - [x] Cancel
  - [x] Error
- - [ ] Flow Control
+ - [x] Flow Control
