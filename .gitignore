@@ -13,3 +13,9 @@
 
 # Others
 vendor/
+
+# go-fuzz
+corpus/
+crashers/
+suppressions/
+*.zip

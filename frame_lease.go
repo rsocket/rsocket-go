@@ -2,11 +2,16 @@ package rsocket
 
 import (
 	"encoding/binary"
+	"fmt"
 	"time"
 )
 
 type frameLease struct {
 	*baseFrame
+}
+
+func (p *frameLease) String() string {
+	return fmt.Sprintf("frameLease{%s,timeToLive=%d,numberOfRequests=%d,metadata=%s}", p.header, p.TimeToLive(), p.NumberOfRequests(), p.Metadata())
 }
 
 func (p *frameLease) TimeToLive() time.Duration {
