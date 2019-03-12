@@ -5,28 +5,28 @@ import (
 	"strings"
 )
 
-type FrameType uint8
+type rFrameType uint8
 
 const (
-	tReserved        FrameType = 0x00
-	tSetup           FrameType = 0x01
-	tLease           FrameType = 0x02
-	tKeepalive       FrameType = 0x03
-	tRequestResponse FrameType = 0x04
-	tRequestFNF      FrameType = 0x05
-	tRequestStream   FrameType = 0x06
-	tRequestChannel  FrameType = 0x07
-	tRequestN        FrameType = 0x08
-	tCancel          FrameType = 0x09
-	tPayload         FrameType = 0x0A
-	tError           FrameType = 0x0B
-	tMetadataPush    FrameType = 0x0C
-	tResume          FrameType = 0x0D
-	tResumeOK        FrameType = 0x0E
-	tExt             FrameType = 0x3F
+	tReserved        rFrameType = 0x00
+	tSetup           rFrameType = 0x01
+	tLease           rFrameType = 0x02
+	tKeepalive       rFrameType = 0x03
+	tRequestResponse rFrameType = 0x04
+	tRequestFNF      rFrameType = 0x05
+	tRequestStream   rFrameType = 0x06
+	tRequestChannel  rFrameType = 0x07
+	tRequestN        rFrameType = 0x08
+	tCancel          rFrameType = 0x09
+	tPayload         rFrameType = 0x0A
+	tError           rFrameType = 0x0B
+	tMetadataPush    rFrameType = 0x0C
+	tResume          rFrameType = 0x0D
+	tResumeOK        rFrameType = 0x0E
+	tExt             rFrameType = 0x3F
 )
 
-func (f FrameType) String() string {
+func (f rFrameType) String() string {
 	switch f {
 	case tReserved:
 		return "RESERVED"
@@ -65,46 +65,46 @@ func (f FrameType) String() string {
 	}
 }
 
-type Flags uint16
+type rFlags uint16
 
-func (f Flags) String() string {
+func (f rFlags) String() string {
 	foo := make([]string, 0)
-	if f.Check(FlagNext) {
+	if f.Check(flagNext) {
 		foo = append(foo, "N")
 	}
-	if f.Check(FlagComplete) {
+	if f.Check(flagComplete) {
 		foo = append(foo, "CL")
 	}
-	if f.Check(FlagFollow) {
+	if f.Check(flagFollow) {
 		foo = append(foo, "FRS)")
 	}
-	if f.Check(FlagMetadata) {
+	if f.Check(flagMetadata) {
 		foo = append(foo, "M")
 	}
-	if f.Check(FlagIgnore) {
+	if f.Check(flagIgnore) {
 		foo = append(foo, "I")
 	}
 	return strings.Join(foo, "|")
 }
 
 const (
-	FlagNext Flags = 1 << (5 + iota)
-	FlagComplete
-	FlagFollow
-	FlagMetadata
-	FlagIgnore
+	flagNext rFlags = 1 << (5 + iota)
+	flagComplete
+	flagFollow
+	flagMetadata
+	flagIgnore
 
-	FlagResume  = FlagFollow
-	FlagLease   = FlagComplete
-	FlagRespond = FlagFollow
+	flagResume  = flagFollow
+	flagLease   = flagComplete
+	flagRespond = flagFollow
 )
 
-func (f Flags) Check(mask Flags) bool {
+func (f rFlags) Check(mask rFlags) bool {
 	return mask&f == mask
 }
 
-func newFlags(flags ...Flags) Flags {
-	var fg Flags
+func newFlags(flags ...rFlags) rFlags {
+	var fg rFlags
 	for _, it := range flags {
 		fg |= it
 	}
@@ -121,7 +121,7 @@ type Frame interface {
 
 type baseFrame struct {
 	header header
-	body   *ByteBuffer
+	body   *rByteBuffer
 }
 
 func (p *baseFrame) Header() header {
@@ -167,7 +167,7 @@ func (p *baseFrame) trySeekMetadataLen(offset int) int {
 	if raw == nil {
 		return -1
 	}
-	if !p.header.Flag().Check(FlagMetadata) {
+	if !p.header.Flag().Check(flagMetadata) {
 		return 0
 	}
 	return newUint24Bytes(raw).asInt()

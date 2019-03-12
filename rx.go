@@ -5,7 +5,7 @@ import "context"
 type SignalType int8
 
 const (
-	SignalDefault SignalType = iota
+	signalDefault SignalType = iota
 	SignalComplete
 	SignalCancel
 	SignalError
@@ -89,37 +89,37 @@ type Flux interface {
 	PublishOn(s Scheduler) Flux
 }
 
-type OpSubscriber func(*Hooks)
+type OpSubscriber func(*hooks)
 
 func OnNext(fn FnOnNext) OpSubscriber {
-	return func(hooks *Hooks) {
+	return func(hooks *hooks) {
 		hooks.DoOnNext(fn)
 	}
 }
 
 func OnComplete(fn FnOnComplete) OpSubscriber {
-	return func(hooks *Hooks) {
+	return func(hooks *hooks) {
 		hooks.DoOnComplete(fn)
 	}
 }
 
 func OnSubscribe(fn FnOnSubscribe) OpSubscriber {
-	return func(hooks *Hooks) {
+	return func(hooks *hooks) {
 		hooks.DoOnSubscribe(fn)
 	}
 }
 
 func OnError(fn FnOnError) OpSubscriber {
-	return func(hooks *Hooks) {
+	return func(hooks *hooks) {
 		hooks.DoOnError(fn)
 	}
 }
 
-type Hooks struct {
+type hooks struct {
 	m map[SignalType][]interface{}
 }
 
-func (p *Hooks) OnCancel(ctx context.Context) {
+func (p *hooks) OnCancel(ctx context.Context) {
 	found, ok := p.m[SignalCancel]
 	if !ok {
 		return
@@ -129,7 +129,7 @@ func (p *Hooks) OnCancel(ctx context.Context) {
 	}
 }
 
-func (p *Hooks) OnRequest(ctx context.Context, n int) {
+func (p *hooks) OnRequest(ctx context.Context, n int) {
 	found, ok := p.m[signalRequest]
 	if !ok {
 		return
@@ -139,7 +139,7 @@ func (p *Hooks) OnRequest(ctx context.Context, n int) {
 	}
 }
 
-func (p *Hooks) OnSubscribe(ctx context.Context, s Subscription) {
+func (p *hooks) OnSubscribe(ctx context.Context, s Subscription) {
 	found, ok := p.m[signalSubscribe]
 	if !ok {
 		return
@@ -149,7 +149,7 @@ func (p *Hooks) OnSubscribe(ctx context.Context, s Subscription) {
 	}
 }
 
-func (p *Hooks) OnNext(ctx context.Context, s Subscription, v Payload) {
+func (p *hooks) OnNext(ctx context.Context, s Subscription, v Payload) {
 	found, ok := p.m[signalNext]
 	if !ok {
 		return
@@ -159,7 +159,7 @@ func (p *Hooks) OnNext(ctx context.Context, s Subscription, v Payload) {
 	}
 }
 
-func (p *Hooks) OnComplete(ctx context.Context) {
+func (p *hooks) OnComplete(ctx context.Context) {
 	found, ok := p.m[SignalComplete]
 	if !ok {
 		return
@@ -169,7 +169,7 @@ func (p *Hooks) OnComplete(ctx context.Context) {
 	}
 }
 
-func (p *Hooks) OnError(ctx context.Context, err error) {
+func (p *hooks) OnError(ctx context.Context, err error) {
 	found, ok := p.m[SignalError]
 	if !ok {
 		return
@@ -179,7 +179,7 @@ func (p *Hooks) OnError(ctx context.Context, err error) {
 	}
 }
 
-func (p *Hooks) OnFinally(ctx context.Context, sig SignalType) {
+func (p *hooks) OnFinally(ctx context.Context, sig SignalType) {
 	found, ok := p.m[signalFinally]
 	if !ok {
 		return
@@ -189,11 +189,11 @@ func (p *Hooks) OnFinally(ctx context.Context, sig SignalType) {
 	}
 }
 
-func (p *Hooks) DoOnAfterNext(fn FnConsumer) {
+func (p *hooks) DoOnAfterNext(fn FnConsumer) {
 	p.register(signalNextAfter, fn)
 }
 
-func (p *Hooks) OnAfterNext(ctx context.Context, payload Payload) {
+func (p *hooks) OnAfterNext(ctx context.Context, payload Payload) {
 	found, ok := p.m[signalNextAfter]
 	if !ok {
 		return
@@ -203,39 +203,39 @@ func (p *Hooks) OnAfterNext(ctx context.Context, payload Payload) {
 	}
 }
 
-func (p *Hooks) DoOnError(fn FnOnError) {
+func (p *hooks) DoOnError(fn FnOnError) {
 	p.register(SignalError, fn)
 }
 
-func (p *Hooks) DoOnNext(fn FnOnNext) {
+func (p *hooks) DoOnNext(fn FnOnNext) {
 	p.register(signalNext, fn)
 }
 
-func (p *Hooks) DoOnRequest(fn FnOnRequest) {
+func (p *hooks) DoOnRequest(fn FnOnRequest) {
 	p.register(signalRequest, fn)
 }
 
-func (p *Hooks) DoOnComplete(fn FnOnComplete) {
+func (p *hooks) DoOnComplete(fn FnOnComplete) {
 	p.register(SignalComplete, fn)
 }
 
-func (p *Hooks) DoOnCancel(fn FnOnCancel) {
+func (p *hooks) DoOnCancel(fn FnOnCancel) {
 	p.register(SignalCancel, fn)
 }
 
-func (p *Hooks) DoOnSubscribe(fn FnOnSubscribe) {
+func (p *hooks) DoOnSubscribe(fn FnOnSubscribe) {
 	p.register(signalSubscribe, fn)
 }
-func (p *Hooks) DoOnFinally(fn FnOnFinally) {
+func (p *hooks) DoOnFinally(fn FnOnFinally) {
 	p.register(signalFinally, fn)
 }
 
-func (p *Hooks) register(sig SignalType, fn interface{}) {
+func (p *hooks) register(sig SignalType, fn interface{}) {
 	p.m[sig] = append(p.m[sig], fn)
 }
 
-func NewHooks() *Hooks {
-	return &Hooks{
+func newHooks() *hooks {
+	return &hooks{
 		m: make(map[SignalType][]interface{}),
 	}
 }

@@ -10,7 +10,7 @@ import (
 type defaultMonoProcessor struct {
 	lock         *sync.Mutex
 	gen          func(MonoProducer)
-	hooks        *Hooks
+	hooks        *hooks
 	pubScheduler Scheduler
 	subScheduler Scheduler
 	r            Payload
@@ -58,7 +58,7 @@ func (p *defaultMonoProcessor) DoOnCancel(fn FnOnCancel) Mono {
 }
 
 func (p *defaultMonoProcessor) Cancel() {
-	if p.sig != SignalDefault {
+	if p.sig != signalDefault {
 		return
 	}
 	p.sig = SignalCancel
@@ -87,7 +87,7 @@ func (p *defaultMonoProcessor) OnError(ctx context.Context, err error) {
 func (p *defaultMonoProcessor) Success(payload Payload) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if p.sig == SignalDefault {
+	if p.sig == signalDefault {
 		p.r = payload
 		p.sig = SignalComplete
 		close(p.done)
@@ -97,7 +97,7 @@ func (p *defaultMonoProcessor) Success(payload Payload) {
 func (p *defaultMonoProcessor) Error(err error) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if p.sig == SignalDefault {
+	if p.sig == signalDefault {
 		p.e = err
 		p.sig = SignalError
 		close(p.done)
@@ -161,9 +161,9 @@ func NewMono(fn func(sink MonoProducer)) Mono {
 		lock:         &sync.Mutex{},
 		gen:          fn,
 		done:         make(chan struct{}),
-		sig:          SignalDefault,
+		sig:          signalDefault,
 		pubScheduler: ImmediateScheduler(),
 		subScheduler: ImmediateScheduler(),
-		hooks:        NewHooks(),
+		hooks:        newHooks(),
 	}
 }

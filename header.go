@@ -21,19 +21,19 @@ func (p header) StreamID() uint32 {
 	return binary.BigEndian.Uint32(p[:4])
 }
 
-func (p header) Type() FrameType {
-	return FrameType((p.n() & 0xFC00) >> 10)
+func (p header) Type() rFrameType {
+	return rFrameType((p.n() & 0xFC00) >> 10)
 }
 
-func (p header) Flag() Flags {
-	return Flags(p.n() & 0x03FF)
+func (p header) Flag() rFlags {
+	return rFlags(p.n() & 0x03FF)
 }
 
 func (p header) n() uint16 {
 	return binary.BigEndian.Uint16(p[4:])
 }
 
-func createHeader(streamID uint32, frameType FrameType, flags ...Flags) header {
+func createHeader(streamID uint32, frameType rFrameType, flags ...rFlags) header {
 	fg := newFlags(flags...)
 	var h [headerLen]byte
 	binary.BigEndian.PutUint32(h[:], streamID)

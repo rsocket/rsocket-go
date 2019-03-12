@@ -24,7 +24,7 @@ func (p *frameLease) NumberOfRequests() uint32 {
 }
 
 func (p *frameLease) Metadata() []byte {
-	if !p.header.Flag().Check(FlagMetadata) {
+	if !p.header.Flag().Check(flagMetadata) {
 		return nil
 	}
 	return p.body.Bytes()[8:]

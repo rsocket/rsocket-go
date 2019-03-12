@@ -121,16 +121,16 @@ func (p *duplexRSocket) RequestChannel(payloads Publisher) Flux {
 
 	inputs.
 		DoFinally(func(ctx context.Context, sig SignalType) {
-			_ = merge.tp.Send(createPayloadFrame(merge.sid, nil, nil, FlagComplete))
+			_ = merge.tp.Send(createPayloadFrame(merge.sid, nil, nil, flagComplete))
 		}).
 		SubscribeOn(p.scheduler).
 		Subscribe(context.Background(), OnNext(func(ctx context.Context, sub Subscription, item Payload) {
 			defer item.Release()
 			// TODO: request N
 			if atomic.AddUint32(merge.i, 1) == 1 {
-				_ = merge.tp.Send(createRequestChannel(merge.sid, math.MaxUint32, item.Data(), item.Metadata(), FlagNext))
+				_ = merge.tp.Send(createRequestChannel(merge.sid, math.MaxUint32, item.Data(), item.Metadata(), flagNext))
 			} else {
-				_ = merge.tp.Send(createPayloadFrame(merge.sid, item.Data(), item.Metadata(), FlagNext))
+				_ = merge.tp.Send(createPayloadFrame(merge.sid, item.Data(), item.Metadata(), flagNext))
 			}
 		}))
 
@@ -174,13 +174,13 @@ func (p *duplexRSocket) respondRequestResponse(input Frame) error {
 		Subscribe(context.Background(), OnNext(func(ctx context.Context, sub Subscription, item Payload) {
 			v, ok := item.(*frameRequestResponse)
 			if !ok || v != f {
-				_ = p.tp.Send(createPayloadFrame(sid, item.Data(), item.Metadata(), FlagNext|FlagComplete))
+				_ = p.tp.Send(createPayloadFrame(sid, item.Data(), item.Metadata(), flagNext|flagComplete))
 				return
 			}
 			// reuse request frame, reduce copy
-			fg := FlagNext | FlagComplete
+			fg := flagNext | flagComplete
 			if len(v.Metadata()) > 0 {
-				fg |= FlagMetadata
+				fg |= flagMetadata
 			}
 			send := &framePayload{
 				&baseFrame{
@@ -233,10 +233,10 @@ func (p *duplexRSocket) respondRequestChannel(input Frame) error {
 			_ = p.writeError(sid, err)
 		}).
 		DoOnComplete(func(ctx context.Context) {
-			_ = p.tp.Send(createPayloadFrame(sid, nil, nil, FlagComplete))
+			_ = p.tp.Send(createPayloadFrame(sid, nil, nil, flagComplete))
 		}).
 		SubscribeOn(p.scheduler).
-		Subscribe(context.Background(), p.toSender(sid, FlagNext))
+		Subscribe(context.Background(), p.toSender(sid, flagNext))
 	return nil
 }
 
@@ -297,7 +297,7 @@ func (p *duplexRSocket) respondRequestStream(input Frame) error {
 			p.unsetPublisher(sid)
 		}).
 		DoOnComplete(func(ctx context.Context) {
-			_ = p.tp.Send(createPayloadFrame(sid, nil, nil, FlagComplete))
+			_ = p.tp.Send(createPayloadFrame(sid, nil, nil, flagComplete))
 		}).
 		DoOnError(func(ctx context.Context, err error) {
 			_ = p.writeError(sid, err)
@@ -305,7 +305,7 @@ func (p *duplexRSocket) respondRequestStream(input Frame) error {
 		SubscribeOn(p.scheduler).
 		Subscribe(context.Background(), OnSubscribe(func(ctx context.Context, s Subscription) {
 			s.Request(int(f.InitialRequestN()))
-		}), p.toSender(sid, FlagNext))
+		}), p.toSender(sid, flagNext))
 	return nil
 }
 
@@ -320,17 +320,13 @@ func (p *duplexRSocket) writeError(sid uint32, err error) error {
 	}
 }
 
-func (p *duplexRSocket) bindResponder(socket RSocket) error {
-	if p.responder != nil {
-		return fmt.Errorf("rsocket.socket: responder has been set already")
-	}
+func (p *duplexRSocket) bindResponder(socket RSocket) {
 	p.responder = socket
 	p.tp.handleRequestResponse(p.respondRequestResponse)
 	p.tp.handleMetadataPush(p.respondMetadataPush)
 	p.tp.handleFNF(p.respondFNF)
 	p.tp.handleRequestStream(p.respondRequestStream)
 	p.tp.handleRequestChannel(p.respondRequestChannel)
-	return nil
 }
 
 func (p *duplexRSocket) start() {
@@ -398,9 +394,9 @@ func (p *duplexRSocket) start() {
 		case MonoProducer:
 			vv.Success(f)
 		case Producer:
-			if f.header.Flag().Check(FlagNext) {
+			if f.header.Flag().Check(flagNext) {
 				vv.Next(f)
-			} else if f.header.Flag().Check(FlagComplete) {
+			} else if f.header.Flag().Check(flagComplete) {
 				vv.Complete()
 			}
 		}
@@ -408,17 +404,17 @@ func (p *duplexRSocket) start() {
 	})
 }
 
-func (p *duplexRSocket) toSender(sid uint32, fg Flags) OpSubscriber {
+func (p *duplexRSocket) toSender(sid uint32, fg rFlags) OpSubscriber {
 	merge := struct {
 		tp  transport
 		sid uint32
-		fg  Flags
+		fg  rFlags
 	}{p.tp, sid, fg}
 	return OnNext(func(ctx context.Context, sub Subscription, payload Payload) {
 		switch v := payload.(type) {
 		case *framePayload:
-			if v.header.Flag().Check(FlagMetadata) {
-				v.setHeader(createHeader(merge.sid, tPayload, merge.fg|FlagMetadata))
+			if v.header.Flag().Check(flagMetadata) {
+				v.setHeader(createHeader(merge.sid, tPayload, merge.fg|flagMetadata))
 			} else {
 				v.setHeader(createHeader(merge.sid, tPayload, merge.fg))
 			}

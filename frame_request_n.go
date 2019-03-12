@@ -17,7 +17,7 @@ func (p *frameRequestN) N() uint32 {
 	return binary.BigEndian.Uint32(p.body.Bytes())
 }
 
-func createRequestN(sid, n uint32, flags ...Flags) *frameRequestN {
+func createRequestN(sid, n uint32, flags ...rFlags) *frameRequestN {
 	fg := newFlags(flags...)
 	bf := borrowByteBuffer()
 	for i := 0; i < 4; i++ {

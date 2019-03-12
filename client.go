@@ -109,18 +109,15 @@ func (p *implClientBuilder) Start() (ClientSocket, error) {
 	})
 	requester := newDuplexRSocket(tp, false, sendingScheduler)
 	if p.acceptor != nil {
-		responder := p.acceptor(requester)
-		requester.bindResponder(responder)
+		requester.bindResponder(p.acceptor(requester))
 	}
-	ctx, cancel := context.WithCancel(context.Background())
 	go func(ctx context.Context) {
 		if err := tp.Start(ctx); err != nil {
 			logger.Debugf("client closed: %s\n", err)
 		}
-	}(ctx)
+	}(context.Background())
 	setup := createSetup(defaultVersion, p.keepaliveInteval, p.keepaliveMaxLifetime, nil, p.metadataMimeType, p.dataMimeType, p.setupData, p.setupMetadata)
 	if err := tp.Send(setup); err != nil {
-		cancel()
 		return nil, err
 	}
 	return requester, nil

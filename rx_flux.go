@@ -13,7 +13,7 @@ type fluxProcessor struct {
 	gen          func(context.Context, Producer)
 	q            *bQueue
 	e            error
-	hooks        *Hooks
+	hooks        *hooks
 	sig          SignalType
 	pubScheduler Scheduler
 	subScheduler Scheduler
@@ -101,7 +101,7 @@ func (p *fluxProcessor) Request(n int) {
 func (p *fluxProcessor) Cancel() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if p.sig == SignalDefault {
+	if p.sig == signalDefault {
 		p.sig = SignalCancel
 		_ = p.q.Close()
 	}
@@ -111,7 +111,7 @@ func (p *fluxProcessor) Cancel() {
 func (p *fluxProcessor) Next(v Payload) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if p.sig == SignalDefault {
+	if p.sig == signalDefault {
 		_ = p.q.Add(v)
 	}
 }
@@ -119,7 +119,7 @@ func (p *fluxProcessor) Next(v Payload) {
 func (p *fluxProcessor) Error(e error) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if p.sig == SignalDefault {
+	if p.sig == signalDefault {
 		p.e = e
 		p.sig = SignalError
 		_ = p.q.Close()
@@ -129,7 +129,7 @@ func (p *fluxProcessor) Error(e error) {
 func (p *fluxProcessor) Complete() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if p.sig == SignalDefault {
+	if p.sig == signalDefault {
 		p.sig = SignalComplete
 		_ = p.q.Close()
 	}
@@ -206,7 +206,7 @@ func (p *fluxProcessor) OnError(ctx context.Context, err error) {
 func NewFlux(fn func(ctx context.Context, producer Producer)) Flux {
 	return &fluxProcessor{
 		lock:         &sync.Mutex{},
-		hooks:        NewHooks(),
+		hooks:        newHooks(),
 		gen:          fn,
 		q:            newQueue(16, math.MaxInt32, 0),
 		pubScheduler: ElasticScheduler(),

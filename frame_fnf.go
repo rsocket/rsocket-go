@@ -18,11 +18,11 @@ func (p *frameFNF) Data() []byte {
 	return p.trySliceData(0)
 }
 
-func createFNF(sid uint32, data, metadata []byte, flags ...Flags) *frameFNF {
+func createFNF(sid uint32, data, metadata []byte, flags ...rFlags) *frameFNF {
 	fg := newFlags(flags...)
 	bf := borrowByteBuffer()
 	if len(metadata) > 0 {
-		fg |= FlagMetadata
+		fg |= flagMetadata
 		_ = bf.WriteUint24(len(metadata))
 		_, _ = bf.Write(metadata)
 	}

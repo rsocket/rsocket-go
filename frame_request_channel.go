@@ -25,7 +25,7 @@ func (p *frameRequestChannel) Data() []byte {
 	return p.trySliceData(4)
 }
 
-func createRequestChannel(sid uint32, n uint32, data, metadata []byte, flags ...Flags) *frameRequestChannel {
+func createRequestChannel(sid uint32, n uint32, data, metadata []byte, flags ...rFlags) *frameRequestChannel {
 	fg := newFlags(flags...)
 	bf := borrowByteBuffer()
 	for range [4]struct{}{} {
@@ -33,7 +33,7 @@ func createRequestChannel(sid uint32, n uint32, data, metadata []byte, flags ...
 	}
 	binary.BigEndian.PutUint32(bf.Bytes(), n)
 	if len(metadata) > 0 {
-		fg |= FlagMetadata
+		fg |= flagMetadata
 		_ = bf.WriteUint24(len(metadata))
 		_, _ = bf.Write(metadata)
 	}

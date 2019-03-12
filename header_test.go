@@ -7,7 +7,7 @@ import (
 )
 
 func TestHeader_All(t *testing.T) {
-	h1 := createHeader(134, tPayload, FlagMetadata|FlagComplete|FlagNext)
+	h1 := createHeader(134, tPayload, flagMetadata|flagComplete|flagNext)
 	h := parseHeaderBytes(h1[:])
 	assert.Equal(t, h1.StreamID(), h.StreamID())
 	assert.Equal(t, h1.Type(), h.Type())

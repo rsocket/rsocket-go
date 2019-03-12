@@ -37,21 +37,21 @@ func init() {
 	}()
 }
 
-type ByteBuffer bytebufferpool.ByteBuffer
+type rByteBuffer bytebufferpool.ByteBuffer
 
-func (p *ByteBuffer) Len() int {
+func (p *rByteBuffer) Len() int {
 	return p.bb().Len()
 }
 
-func (p *ByteBuffer) WriteTo(w io.Writer) (n int64, err error) {
+func (p *rByteBuffer) WriteTo(w io.Writer) (n int64, err error) {
 	return p.bb().WriteTo(w)
 }
 
-func (p *ByteBuffer) Write(bs []byte) (n int, err error) {
+func (p *rByteBuffer) Write(bs []byte) (n int, err error) {
 	return p.bb().Write(bs)
 }
 
-func (p *ByteBuffer) WriteUint24(n int) (err error) {
+func (p *rByteBuffer) WriteUint24(n int) (err error) {
 	foo := newUint24(n)
 	for i := 0; i < 3; i++ {
 		err = p.WriteByte(foo[i])
@@ -62,35 +62,35 @@ func (p *ByteBuffer) WriteUint24(n int) (err error) {
 	return
 }
 
-func (p *ByteBuffer) WriteByte(b byte) error {
+func (p *rByteBuffer) WriteByte(b byte) error {
 	return p.bb().WriteByte(b)
 }
 
-func (p *ByteBuffer) Reset() {
+func (p *rByteBuffer) Reset() {
 	p.bb().Reset()
 }
 
-func (p *ByteBuffer) Bytes() []byte {
+func (p *rByteBuffer) Bytes() []byte {
 	if p.bb() == nil {
 		return nil
 	}
 	return p.bb().B
 }
 
-func (p *ByteBuffer) bb() *bytebufferpool.ByteBuffer {
+func (p *rByteBuffer) bb() *bytebufferpool.ByteBuffer {
 	return (*bytebufferpool.ByteBuffer)(p)
 }
 
-func borrowByteBuffer() *ByteBuffer {
+func borrowByteBuffer() *rByteBuffer {
 	if trackLeakSeconds > 0 {
 		defer func() {
 			atomic.AddInt64(&borrows, 1)
 		}()
 	}
-	return (*ByteBuffer)(pool.Get())
+	return (*rByteBuffer)(pool.Get())
 }
 
-func returnByteBuffer(b *ByteBuffer) {
+func returnByteBuffer(b *rByteBuffer) {
 	if trackLeakSeconds > 0 {
 		defer func() {
 			atomic.AddInt64(&borrows, -1)

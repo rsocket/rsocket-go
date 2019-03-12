@@ -25,7 +25,7 @@ func (p *frameRequestStream) Data() []byte {
 	return p.trySliceData(4)
 }
 
-func createRequestStream(id uint32, n uint32, data, metadata []byte, flags ...Flags) *frameRequestStream {
+func createRequestStream(id uint32, n uint32, data, metadata []byte, flags ...rFlags) *frameRequestStream {
 	fg := newFlags(flags...)
 	bf := borrowByteBuffer()
 	for range [4]struct{}{} {
@@ -33,7 +33,7 @@ func createRequestStream(id uint32, n uint32, data, metadata []byte, flags ...Fl
 	}
 	binary.BigEndian.PutUint32(bf.Bytes(), n)
 	if len(metadata) > 0 {
-		fg |= FlagMetadata
+		fg |= flagMetadata
 		_ = bf.WriteUint24(len(metadata))
 		_, _ = bf.Write(metadata)
 	}

@@ -41,8 +41,7 @@ func (p *xServer) Serve() error {
 	t.Accept(func(setup *frameSetup, tp transport) error {
 		defer setup.Release()
 		sendingSocket := newDuplexRSocket(tp, true, p.scheduler)
-		socket := p.acc(setup, sendingSocket)
-		sendingSocket.bindResponder(socket)
+		sendingSocket.bindResponder(p.acc(setup, sendingSocket))
 		return nil
 	})
 	return t.Listen()

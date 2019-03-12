@@ -22,9 +22,9 @@ func (p *frameKeepalive) Data() []byte {
 }
 
 func createKeepalive(position uint64, data []byte, respond bool) *frameKeepalive {
-	var fg Flags
+	var fg rFlags
 	if respond {
-		fg |= FlagRespond
+		fg |= flagRespond
 	}
 	bf := borrowByteBuffer()
 	for i := 0; i < 8; i++ {

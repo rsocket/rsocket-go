@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-type RConnection interface {
+type rConnection interface {
 	io.Closer
 	Handle(handler func(ctx context.Context, frame Frame) error)
 	Send(frame Frame) error

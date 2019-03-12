@@ -7,7 +7,7 @@ import (
 )
 
 type clientTransportImpl struct {
-	conn     RConnection
+	conn     rConnection
 	handlers *sync.Map
 	fnClose  func()
 }
@@ -105,7 +105,7 @@ func (p *clientTransportImpl) handleKeepalive(ctx context.Context, frame Frame) 
 		err = ctx.Err()
 	default:
 		f := frame.(*frameKeepalive)
-		if !f.header.Flag().Check(FlagRespond) {
+		if !f.header.Flag().Check(flagRespond) {
 			f.Release()
 		} else {
 			f.header = createHeader(0, tKeepalive)
@@ -117,7 +117,7 @@ func (p *clientTransportImpl) handleKeepalive(ctx context.Context, frame Frame) 
 	}
 }
 
-func newTransportClient(c RConnection) *clientTransportImpl {
+func newTransportClient(c rConnection) *clientTransportImpl {
 	return &clientTransportImpl{
 		conn:     c,
 		handlers: &sync.Map{},

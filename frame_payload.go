@@ -20,11 +20,11 @@ func (p *framePayload) Data() []byte {
 	return p.trySliceData(0)
 }
 
-func createPayloadFrame(id uint32, data, metadata []byte, flags ...Flags) *framePayload {
+func createPayloadFrame(id uint32, data, metadata []byte, flags ...rFlags) *framePayload {
 	fg := newFlags(flags...)
 	bf := borrowByteBuffer()
 	if len(metadata) > 0 {
-		fg |= FlagMetadata
+		fg |= flagMetadata
 		_ = bf.WriteUint24(len(metadata))
 		_, _ = bf.Write(metadata)
 	}

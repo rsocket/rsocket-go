@@ -2,7 +2,7 @@ package rsocket
 
 import "fmt"
 
-var defaultFrameMetadataPushHeader = createHeader(0, tMetadataPush, FlagMetadata)
+var defaultFrameMetadataPushHeader = createHeader(0, tMetadataPush, flagMetadata)
 
 type frameMetadataPush struct {
 	*baseFrame

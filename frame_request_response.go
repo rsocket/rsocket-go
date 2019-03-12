@@ -17,11 +17,11 @@ func (p *frameRequestResponse) Data() []byte {
 	return p.trySliceData(0)
 }
 
-func createRequestResponse(id uint32, data, metadata []byte, flags ...Flags) *frameRequestResponse {
+func createRequestResponse(id uint32, data, metadata []byte, flags ...rFlags) *frameRequestResponse {
 	fg := newFlags(flags...)
 	bf := borrowByteBuffer()
 	if len(metadata) > 0 {
-		fg |= FlagMetadata
+		fg |= flagMetadata
 		_ = bf.WriteUint24(len(metadata))
 		_, _ = bf.Write(metadata)
 	}

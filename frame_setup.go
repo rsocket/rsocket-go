@@ -32,7 +32,7 @@ func (p *frameSetup) MaxLifetime() time.Duration {
 }
 
 func (p *frameSetup) Token() []byte {
-	if !p.header.Flag().Check(FlagResume) {
+	if !p.header.Flag().Check(flagResume) {
 		return nil
 	}
 	raw := p.body.Bytes()
@@ -64,7 +64,7 @@ func (p *frameSetup) MIME() (metadata []byte, data []byte) {
 }
 
 func (p *frameSetup) Metadata() []byte {
-	if !p.header.Flag().Check(FlagMetadata) {
+	if !p.header.Flag().Check(flagMetadata) {
 		return nil
 	}
 	offset := p.seekMetadata()
@@ -77,7 +77,7 @@ func (p *frameSetup) Data() []byte {
 }
 
 func (p *frameSetup) seekMIME() int {
-	if !p.header.Flag().Check(FlagResume) {
+	if !p.header.Flag().Check(flagResume) {
 		return 12
 	}
 	l := binary.BigEndian.Uint16(p.body.Bytes()[12:])
@@ -92,7 +92,7 @@ func (p *frameSetup) seekMetadata() int {
 }
 
 func createSetup(version Version, timeBetweenKeepalive, maxLifetime time.Duration, token, mimeMetadata, mimeData, data, metadata []byte) *frameSetup {
-	var fg Flags
+	var fg rFlags
 	bf := borrowByteBuffer()
 	_, _ = bf.Write(version.Bytes())
 	b4 := borrowByteBuffer()
@@ -105,7 +105,7 @@ func createSetup(version Version, timeBetweenKeepalive, maxLifetime time.Duratio
 	binary.BigEndian.PutUint32(b4.Bytes(), uint32(maxLifetime.Nanoseconds()/1e6))
 	_, _ = b4.WriteTo(bf)
 	if len(token) > 0 {
-		fg |= FlagResume
+		fg |= flagResume
 		binary.BigEndian.PutUint16(b4.Bytes(), uint16(len(token)))
 		_, _ = bf.Write(b4.Bytes()[:2])
 		_, _ = bf.Write(token)
@@ -115,7 +115,7 @@ func createSetup(version Version, timeBetweenKeepalive, maxLifetime time.Duratio
 	_ = bf.WriteByte(byte(len(mimeData)))
 	_, _ = bf.Write(mimeData)
 	if len(metadata) > 0 {
-		fg |= FlagMetadata
+		fg |= flagMetadata
 		_ = bf.WriteUint24(len(metadata))
 		_, _ = bf.Write(metadata)
 	}

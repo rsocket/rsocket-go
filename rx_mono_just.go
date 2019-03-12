@@ -6,7 +6,7 @@ import (
 
 type justMonoProcessor struct {
 	item         Payload
-	hooks        *Hooks
+	hooks        *hooks
 	subScheduler Scheduler
 }
 
@@ -94,7 +94,7 @@ func (p *justMonoProcessor) Subscribe(ctx context.Context, ops ...OpSubscriber) 
 func JustMono(item Payload) Mono {
 	return &justMonoProcessor{
 		subScheduler: ImmediateScheduler(),
-		hooks:        NewHooks(),
+		hooks:        newHooks(),
 		item:         item,
 	}
 }
