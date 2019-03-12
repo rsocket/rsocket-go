@@ -8,6 +8,10 @@ type framePayload struct {
 	*baseFrame
 }
 
+func (p *framePayload) validate() (err error) {
+	return
+}
+
 func (p *framePayload) String() string {
 	return fmt.Sprintf("framePayload{%s,data=%s,metadata=%s}", p.header, string(p.Data()), string(p.Metadata()))
 }

@@ -6,8 +6,23 @@ import (
 	"time"
 )
 
+const (
+	ttlLen        = 4
+	reqOff        = ttlLen
+	reqLen        = 4
+	minLeaseFrame = ttlLen + reqLen
+)
+
 type frameLease struct {
 	*baseFrame
+}
+
+func (p *frameLease) validate() (err error) {
+	if p.body.Len() < minLeaseFrame {
+		err = errIncompleteFrame
+	}
+
+	return
 }
 
 func (p *frameLease) String() string {
@@ -20,7 +35,7 @@ func (p *frameLease) TimeToLive() time.Duration {
 }
 
 func (p *frameLease) NumberOfRequests() uint32 {
-	return binary.BigEndian.Uint32(p.body.Bytes()[4:])
+	return binary.BigEndian.Uint32(p.body.Bytes()[reqOff:])
 }
 
 func (p *frameLease) Metadata() []byte {

@@ -12,6 +12,10 @@ const (
 	maxBuffSize = 16*1024*1024 + 3
 )
 
+var (
+	errIncompleteHeader = errors.New("incomplete header")
+)
+
 type handleBytes = func(raw []byte) error
 
 type frameDecoder interface {
@@ -45,6 +49,9 @@ func (p *lengthBasedFrameDecoder) handle(fn handleBytes) error {
 	p.scanner.Buffer(buf, maxBuffSize)
 	for p.scanner.Scan() {
 		data := p.scanner.Bytes()[3:]
+		if len(data) < headerLen {
+			return errIncompleteHeader
+		}
 		if err := fn(data); err != nil {
 			return err
 		}

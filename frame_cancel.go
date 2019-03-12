@@ -6,6 +6,10 @@ type frameCancel struct {
 	*baseFrame
 }
 
+func (p *frameCancel) validate() (err error) {
+	return
+}
+
 func (p *frameCancel) String() string {
 	return fmt.Sprintf("frameCancel{%s}", p.header)
 }

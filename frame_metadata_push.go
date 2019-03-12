@@ -8,6 +8,10 @@ type frameMetadataPush struct {
 	*baseFrame
 }
 
+func (p *frameMetadataPush) validate() (err error) {
+	return
+}
+
 func (p *frameMetadataPush) String() string {
 	return fmt.Sprintf("frameMetadataPush{%s,metadata=%s}", p.header, p.Metadata())
 }

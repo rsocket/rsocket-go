@@ -113,6 +113,7 @@ func newFlags(flags ...rFlags) rFlags {
 
 type Frame interface {
 	io.WriterTo
+	validate() error
 	setHeader(h header)
 	Header() header
 	Release()
@@ -164,11 +165,11 @@ func (p *baseFrame) trySeekMetadataLen(offset int) int {
 	if offset > 0 {
 		raw = raw[offset:]
 	}
-	if raw == nil {
-		return -1
-	}
 	if !p.header.Flag().Check(flagMetadata) {
 		return 0
+	}
+	if len(raw) < 3 {
+		return -1
 	}
 	return newUint24Bytes(raw).asInt()
 }
