@@ -2,255 +2,214 @@ package rsocket
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
 	"sync"
-	"sync/atomic"
 )
 
-type implFlux struct {
-	locker   *sync.Mutex
-	source   chan Payload
-	creation func(ctx context.Context, emitter FluxEmitter)
-	c, s     Scheduler
-	handlers RxFunc
-	sig      SignalType
-	err      error
-	rl       *rateLimiter
+type fluxProcessor struct {
+	lock         *sync.Mutex
+	gen          func(context.Context, Producer)
+	q            *bQueue
+	e            error
+	hooks        *Hooks
+	sig          SignalType
+	pubScheduler Scheduler
+	subScheduler Scheduler
 }
 
-func (p *implFlux) DoOnSubscribe(onSubscribe OnSubscribe) Flux {
-	p.handlers.RegisterSubscribe(onSubscribe)
+func (p *fluxProcessor) n() int {
+	return int(p.q.tickets)
+}
+
+func (p *fluxProcessor) DoAfterNext(fn FnConsumer) Flux {
+	p.hooks.DoOnAfterNext(fn)
 	return p
 }
 
-func (p *implFlux) limiter() (*rateLimiter, bool) {
-	if p.rl == nil {
-		return nil, false
+func (p *fluxProcessor) Dispose() {
+	p.Cancel()
+}
+
+func (p *fluxProcessor) DoFinally(fn FnOnFinally) Flux {
+	p.hooks.DoOnFinally(fn)
+	return p
+}
+
+func (p *fluxProcessor) LimitRate(n int) Flux {
+	if n < 1 {
+		p.q.SetRate(0)
+	} else if n >= math.MaxInt32 {
+		p.q.SetRate(math.MaxInt32)
+	} else {
+		p.q.SetRate(int32(n))
 	}
-	return p.rl, true
-}
-
-func (p *implFlux) onExhaust(onExhaust OnExhaust) Flux {
-	p.locker.Lock()
-	p.handlers.RegisterDrain(onExhaust)
-	p.locker.Unlock()
 	return p
 }
 
-func (p *implFlux) resetLimit(n uint32) {
-	p.locker.Lock()
-	defer p.locker.Unlock()
-	if p.rl == nil {
-		return
+func (p *fluxProcessor) DoOnRequest(fn FnOnRequest) Flux {
+	p.hooks.DoOnRequest(fn)
+	return p
+}
+
+func (p *fluxProcessor) DoOnSubscribe(fn FnOnSubscribe) Flux {
+	p.hooks.DoOnSubscribe(fn)
+	return p
+}
+
+func (p *fluxProcessor) DoOnNext(fn FnOnNext) Flux {
+	p.hooks.DoOnNext(fn)
+	return p
+}
+
+func (p *fluxProcessor) DoOnComplete(fn FnOnComplete) Flux {
+	p.hooks.DoOnComplete(fn)
+	return p
+}
+
+func (p *fluxProcessor) DoOnError(fn FnOnError) Flux {
+	p.hooks.DoOnError(fn)
+	return p
+}
+
+func (p *fluxProcessor) DoOnCancel(fn FnOnCancel) Flux {
+	p.hooks.DoOnCancel(fn)
+	return p
+}
+
+func (p *fluxProcessor) SubscribeOn(s Scheduler) Flux {
+	p.subScheduler = s
+	return p
+}
+
+func (p *fluxProcessor) PublishOn(s Scheduler) Flux {
+	p.pubScheduler = s
+	return p
+}
+
+func (p *fluxProcessor) Request(n int) {
+	if n > math.MaxInt32 {
+		p.q.RequestN(math.MaxInt32)
+	} else if n < 0 {
+		p.q.RequestN(0)
+	} else {
+		p.q.RequestN(int32(n))
 	}
-	p.rl.reset(n)
 }
 
-func (p *implFlux) LimitRate(n uint32) Flux {
-	p.rl = newRateLimiter(n)
-	return p
-}
-
-func (p *implFlux) DoOnError(onError OnError) Flux {
-	p.locker.Lock()
-	p.handlers.RegisterError(onError)
-	p.locker.Unlock()
-	return p
-}
-
-func (p *implFlux) DoOnComplete(fn OnComplete) Flux {
-	p.locker.Lock()
-	p.handlers.RegisterComplete(fn)
-	p.locker.Unlock()
-	return p
-}
-
-func (p *implFlux) DoOnCancel(onCancel OnCancel) Flux {
-	p.locker.Lock()
-	p.handlers.RegisterCancel(onCancel)
-	p.locker.Unlock()
-	return p
-}
-
-func (p *implFlux) DoOnNext(onNext Consumer) Flux {
-	p.locker.Lock()
-	p.handlers.RegisterNext(onNext)
-	p.locker.Unlock()
-	return p
-}
-
-func (p *implFlux) DoFinally(fn OnFinally) Flux {
-	p.locker.Lock()
-	p.handlers.RegisterFinally(fn)
-	p.locker.Unlock()
-	return p
-}
-
-func (p *implFlux) Error(e error) {
-	p.locker.Lock()
-	defer p.locker.Unlock()
-	if p.sig != SigReady {
-		return
+func (p *fluxProcessor) Cancel() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if p.sig == SignalDefault {
+		p.sig = SignalCancel
+		_ = p.q.Close()
 	}
-	p.sig = SigError
-	p.err = e
-	p.release()
+
 }
 
-func (p *implFlux) Dispose() {
-	p.locker.Lock()
-	defer p.locker.Unlock()
-	if p.sig != SigReady {
-		return
+func (p *fluxProcessor) Next(v Payload) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if p.sig == SignalDefault {
+		_ = p.q.Add(v)
 	}
-	p.sig = SigCancel
-	p.release()
 }
 
-func (p *implFlux) Next(item Payload) {
-	defer func() {
-		if e := recover(); e != nil {
-			item.Release()
-			logger.Warnf("submit next item failed: %s\n", e)
-		}
-	}()
-	p.source <- item
-}
-
-func (p *implFlux) Complete() {
-	p.locker.Lock()
-	defer p.locker.Unlock()
-	if p.sig != SigReady {
-		return
+func (p *fluxProcessor) Error(e error) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if p.sig == SignalDefault {
+		p.e = e
+		p.sig = SignalError
+		_ = p.q.Close()
 	}
-	p.sig = SigSuccess
-	p.release()
 }
 
-func (p *implFlux) SubscribeOn(scheduler Scheduler) Publisher {
-	p.s = scheduler
-	return p
+func (p *fluxProcessor) Complete() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if p.sig == SignalDefault {
+		p.sig = SignalComplete
+		_ = p.q.Close()
+	}
 }
 
-func (p *implFlux) Subscribe(ctx context.Context, consumer Consumer) Disposable {
-	ctx, cancel := context.WithCancel(ctx)
-	if p.creation != nil {
-		p.c.Do(ctx, func(ctx context.Context) {
-			select {
-			case <-ctx.Done():
-				logger.Debugf("flux creation contex done: %s\n", ctx.Err())
-				return
-			default:
-				p.creation(ctx, p)
-			}
+func (p *fluxProcessor) Subscribe(ctx context.Context, ops ...OpSubscriber) Disposable {
+	for _, it := range ops {
+		it(p.hooks)
+	}
+	if p.gen != nil {
+		p.pubScheduler.Do(ctx, func(ctx context.Context) {
+			defer func() {
+				e := recover()
+				if e == nil {
+					return
+				}
+				switch v := e.(type) {
+				case error:
+					p.Error(v)
+				case string:
+					p.Error(errors.New(v))
+				default:
+					p.Error(fmt.Errorf("%v", v))
+				}
+			}()
+			p.gen(ctx, p)
 		})
 	}
-	p.s.Do(ctx, func(ctx context.Context) {
+	// bind request N
+	p.q.onRequestN = func(n int32) {
+		p.hooks.OnRequest(ctx, int(n))
+	}
+	p.subScheduler.Do(ctx, func(ctx context.Context) {
 		defer func() {
-			p.handlers.DoFinally(ctx, p.sig)
+			p.hooks.OnFinally(ctx, p.sig)
 		}()
-		p.handlers.DoSubscribe(ctx)
-		var stop bool
+		p.OnSubscribe(ctx, p)
 		for {
-			if stop {
+			v, ok := p.q.Poll(ctx)
+			if !ok {
 				break
 			}
-			if p.rl != nil {
-				p.rl.acquire(ctx, p.handlers)
-			}
-			select {
-			case it, ok := <-p.source:
-				if !ok {
-					stop = true
-					break
-				}
-				p.handlers.DoNextOrSuccess(ctx, it)
-				consumer(ctx, it)
-				p.handlers.DoAfterConsumer(ctx, it)
-			}
+			p.OnNext(ctx, p, v)
+			p.hooks.OnAfterNext(ctx, v)
 		}
 		switch p.sig {
-		case SigCancel:
-			p.handlers.DoCancel(ctx)
-			cancel()
-		case SigSuccess:
-			p.handlers.DoComplete(ctx)
-		case SigError:
-			p.handlers.DoError(ctx, p.err)
-		default:
-			panic("unreachable")
+		case SignalComplete:
+			p.OnComplete(ctx)
+		case SignalError:
+			p.OnError(ctx, p.e)
+		case SignalCancel:
+			p.hooks.OnCancel(ctx)
 		}
 	})
 	return p
 }
 
-func (p *implFlux) onAfterSubscribe(fn Consumer) Flux {
-	p.locker.Lock()
-	p.handlers.RegisterAfterConsumer(fn)
-	p.locker.Unlock()
-	return p
+func (p *fluxProcessor) OnSubscribe(ctx context.Context, s Subscription) {
+	p.hooks.OnSubscribe(ctx, s)
 }
 
-func (p *implFlux) release() {
-	close(p.source)
-	if p.rl != nil {
-		_ = p.rl.Close()
-	}
+func (p *fluxProcessor) OnNext(ctx context.Context, s Subscription, v Payload) {
+	p.hooks.OnNext(ctx, s, v)
 }
 
-func newImplFlux() *implFlux {
-	return &implFlux{
-		source:   make(chan Payload, 1),
-		s:        ImmediateScheduler(),
-		c:        ElasticScheduler(),
-		locker:   &sync.Mutex{},
-		sig:      SigReady,
-		handlers: newRxFuncStore(),
-	}
+func (p *fluxProcessor) OnComplete(ctx context.Context) {
+	p.hooks.OnComplete(ctx)
 }
 
-type rateLimiter struct {
-	initN   int32
-	tickets int32
-	waiting chan struct{}
+func (p *fluxProcessor) OnError(ctx context.Context, err error) {
+	p.hooks.OnError(ctx, err)
 }
 
-func (p *rateLimiter) Close() error {
-	close(p.waiting)
-	return nil
-}
-
-func (p *rateLimiter) reset(n uint32) {
-	var v int32
-	if n < math.MaxInt32 {
-		v = int32(n)
-	} else {
-		v = math.MaxInt32
-	}
-	if atomic.CompareAndSwapInt32(&(p.tickets), 0, v) {
-		p.waiting <- struct{}{}
-	} else {
-		atomic.AddInt32(&(p.tickets), v)
-	}
-}
-
-func (p *rateLimiter) acquire(ctx context.Context, rxFunc RxFunc) {
-	// tickets exhausted
-	if atomic.LoadInt32(&(p.tickets)) == 0 {
-		rxFunc.DoDrain(ctx)
-		<-p.waiting
-	}
-	atomic.AddInt32(&(p.tickets), -1)
-}
-
-func newRateLimiter(n uint32) *rateLimiter {
-	var v int32 = math.MaxInt32
-	if n < math.MaxInt32 {
-		v = int32(n)
-	}
-	return &rateLimiter{
-		initN:   v,
-		tickets: v,
-		waiting: make(chan struct{}, 1),
+func NewFlux(fn func(ctx context.Context, producer Producer)) Flux {
+	return &fluxProcessor{
+		lock:         &sync.Mutex{},
+		hooks:        NewHooks(),
+		gen:          fn,
+		q:            newQueue(16, math.MaxInt32, 0),
+		pubScheduler: ElasticScheduler(),
+		subScheduler: ImmediateScheduler(),
 	}
 }

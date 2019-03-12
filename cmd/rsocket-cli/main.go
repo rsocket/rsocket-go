@@ -17,7 +17,7 @@ import (
 	"github.com/2tvenom/cbor"
 	"github.com/mkideal/cli"
 	clix "github.com/mkideal/cli/ext"
-	rsocket "github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -118,7 +118,7 @@ func (opts *opts) createResponder(ctxt context.Context, logger *zap.Logger) (res
 
 			if flux, ok := publisher.(rsocket.Flux); ok {
 				flux.
-					DoOnNext(func(ctx context.Context, payload rsocket.Payload) {
+					DoOnNext(func(ctx context.Context, s rsocket.Subscription, payload rsocket.Payload) {
 						println(string(payload.Data()))
 					}).
 					DoOnError(func(ctx context.Context, err error) {
@@ -126,9 +126,9 @@ func (opts *opts) createResponder(ctxt context.Context, logger *zap.Logger) (res
 					})
 			}
 
-			publisher.Subscribe(ctxt, func(ctx context.Context, payload rsocket.Payload) {
+			publisher.Subscribe(ctxt, rsocket.OnNext(func(ctx context.Context, s rsocket.Subscription, payload rsocket.Payload) {
 				logger.Debug("RequestChannel", zap.Object("payload", payloadMarshaler{payload}))
-			})
+			}))
 
 			return opts.inputPublisher()
 		}),
@@ -278,13 +278,13 @@ func (opts *opts) runAllOperations(ctxt context.Context, socket rsocket.RSocket)
 			socket.
 				RequestResponse(payload).
 				SubscribeOn(rsocket.ElasticScheduler()).
-				Subscribe(ctxt, func(ctx context.Context, payload rsocket.Payload) {
+				Subscribe(ctxt, rsocket.OnNext(func(ctx context.Context, s rsocket.Subscription, payload rsocket.Payload) {
 					defer wg.Done()
 
 					opts.Logger.Debug("RequestResponse", zap.Object("response", payloadMarshaler{payload}))
 
 					println(string(payload.Data()))
-				})
+				}))
 
 			wg.Add(1)
 		} else if opts.Stream {
@@ -301,7 +301,7 @@ func (opts *opts) runAllOperations(ctxt context.Context, socket rsocket.RSocket)
 					wg.Done()
 				}).
 				SubscribeOn(rsocket.ElasticScheduler()).
-				Subscribe(ctxt, func(ctx context.Context, payload rsocket.Payload) {
+				Subscribe(ctxt, rsocket.OnNext(func(ctx context.Context, s rsocket.Subscription, payload rsocket.Payload) {
 					opts.Logger.Debug("Stream", zap.Object("response", payloadMarshaler{payload}))
 
 					println(string(payload.Data()))
@@ -311,22 +311,21 @@ func (opts *opts) runAllOperations(ctxt context.Context, socket rsocket.RSocket)
 					if opts.RequestN > 0 && responses >= opts.RequestN {
 						subscription.Dispose()
 					}
-				})
+				}))
 
 			wg.Add(1)
 		} else if opts.Channel {
 			opts.Logger.Debug("Channel")
 
-			var subscription rsocket.Disposable
 			var responses int
 
-			subscription = socket.
+			socket.
 				RequestChannel(opts.inputPublisher()).
 				DoFinally(func(ctx context.Context, sig rsocket.SignalType) {
 					wg.Done()
 				}).
 				SubscribeOn(rsocket.ElasticScheduler()).
-				Subscribe(ctxt, func(ctx context.Context, payload rsocket.Payload) {
+				Subscribe(ctxt, rsocket.OnNext(func(ctx context.Context, s rsocket.Subscription, payload rsocket.Payload) {
 					opts.Logger.Debug("Channel", zap.Object("response", payloadMarshaler{payload}))
 
 					println(string(payload.Data()))
@@ -334,9 +333,9 @@ func (opts *opts) runAllOperations(ctxt context.Context, socket rsocket.RSocket)
 					responses++
 
 					if opts.RequestN > 0 && responses >= opts.RequestN {
-						subscription.Dispose()
+						s.Cancel()
 					}
-				})
+				}))
 
 			wg.Add(1)
 		}
@@ -348,9 +347,9 @@ func (opts *opts) runAllOperations(ctxt context.Context, socket rsocket.RSocket)
 func (opts *opts) singleInputPayload(ctxt context.Context) rsocket.Payload {
 	c := make(chan rsocket.Payload, 1)
 
-	subscriber := opts.inputPublisher().Subscribe(ctxt, func(ctx context.Context, item rsocket.Payload) {
+	subscriber := opts.inputPublisher().Subscribe(ctxt, rsocket.OnNext(func(ctx context.Context, s rsocket.Subscription, item rsocket.Payload) {
 		c <- item
-	})
+	}))
 
 	defer subscriber.Dispose()
 
@@ -364,7 +363,7 @@ func (opts *opts) singleInputPayload(ctxt context.Context) rsocket.Payload {
 }
 
 func (opts *opts) inputPublisher() rsocket.Flux {
-	return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.FluxEmitter) {
+	return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Producer) {
 		defer emitter.Complete()
 
 		metadata, err := opts.buildMetadata()
@@ -413,7 +412,7 @@ type lineInputPublishers struct {
 	io.Reader
 }
 
-func (p *lineInputPublishers) emitLines(emitter rsocket.FluxEmitter, metadata string) {
+func (p *lineInputPublishers) emitLines(emitter rsocket.Producer, metadata string) {
 	ch := make(chan interface{}, 1)
 
 	go func() {

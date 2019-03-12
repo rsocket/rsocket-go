@@ -8,7 +8,6 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"strconv"
-	"time"
 )
 
 func init() {
@@ -64,7 +63,7 @@ func createEchoServer(host string, port int) error {
 			if n, err := strconv.Atoi(string(payload.Metadata())); err == nil {
 				totals = n
 			}
-			return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.FluxEmitter) {
+			return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Producer) {
 				for i := 0; i < totals; i++ {
 					// You can use context for graceful coroutine shutdown, stop produce.
 					select {
@@ -72,7 +71,7 @@ func createEchoServer(host string, port int) error {
 						log.Println("ctx done:", ctx.Err())
 						return
 					default:
-						time.Sleep(10 * time.Millisecond)
+						//time.Sleep(10 * time.Millisecond)
 						payload := rsocket.NewPayloadString(fmt.Sprintf("%s_%d", s, i), m)
 						emitter.Next(payload)
 					}

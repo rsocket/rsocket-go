@@ -15,9 +15,9 @@ func TestXServer_Serve(t *testing.T) {
 			//duplexRSocket.FireAndForget(NewPayloadString("foo", "bar"))
 			sendingSocket.RequestResponse(NewPayloadString("111", "222")).
 				SubscribeOn(ElasticScheduler()).
-				Subscribe(context.Background(), func(ctx context.Context, item Payload) {
-					log.Println("FROM EARTH:", item)
-				})
+				Subscribe(context.Background(), OnNext(func(ctx context.Context, sub Subscription, payload Payload) {
+					log.Println("FROM EARTH:", payload)
+				}))
 
 			return NewAbstractSocket(
 				RequestResponse(func(payload Payload) Mono {
@@ -25,7 +25,7 @@ func TestXServer_Serve(t *testing.T) {
 				}),
 				RequestStream(func(payload Payload) Flux {
 					s := string(payload.Data())
-					return NewFlux(func(ctx context.Context, emitter FluxEmitter) {
+					return NewFlux(func(ctx context.Context, emitter Producer) {
 						for i := 0; i < 100; i++ {
 							time.Sleep(100 * time.Millisecond)
 							emitter.Next(NewPayload([]byte(fmt.Sprintf("%s_%d", s, i)), nil))

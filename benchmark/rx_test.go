@@ -19,13 +19,13 @@ func Benchmark_Mono(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		rsocket.
-			NewMono(func(ctx context.Context, emitter rsocket.MonoEmitter) {
-				emitter.Success(payload)
+			NewMono(func(sink rsocket.MonoProducer) {
+				sink.Success(payload)
 			}).
 			SubscribeOn(rsocket.ElasticScheduler()).
-			Subscribe(context.Background(), func(ctx context.Context, item rsocket.Payload) {
+			Subscribe(context.Background(), rsocket.OnNext(func(ctx context.Context, sub rsocket.Subscription, payload rsocket.Payload) {
 				wg.Done()
-			})
+			}))
 	}
 	wg.Wait()
 }
@@ -38,9 +38,9 @@ func Benchmark_MonoJust(b *testing.B) {
 		for pb.Next() {
 			rsocket.JustMono(payload).
 				SubscribeOn(rsocket.ElasticScheduler()).
-				Subscribe(context.Background(), func(ctx context.Context, item rsocket.Payload) {
+				Subscribe(context.Background(), rsocket.OnNext(func(ctx context.Context, sub rsocket.Subscription, payload rsocket.Payload) {
 					wg.Done()
-				})
+				}))
 		}
 	})
 	wg.Wait()
@@ -53,16 +53,17 @@ func Benchmark_Flux(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		rsocket.
-			NewFlux(func(ctx context.Context, emitter rsocket.FluxEmitter) {
-				emitter.Next(payload)
-				emitter.Complete()
+			NewFlux(func(ctx context.Context, producer rsocket.Producer) {
+				producer.Next(payload)
+				producer.Complete()
 			}).
 			DoFinally(func(ctx context.Context, sig rsocket.SignalType) {
 				wg.Done()
 			}).
 			SubscribeOn(rsocket.ElasticScheduler()).
-			Subscribe(ctx, func(ctx context.Context, item rsocket.Payload) {
-			})
+			Subscribe(ctx, rsocket.OnNext(func(ctx context.Context, sub rsocket.Subscription, payload rsocket.Payload) {
+
+			}))
 	}
 	wg.Wait()
 }

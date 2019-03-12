@@ -48,6 +48,9 @@ func Fuzz(data []byte) int {
 			return ErrInvalidFrame
 		}
 
+		// release resource borrowed
+		defer f.Release()
+
 		switch f := frame.(type) {
 		case fmt.Stringer:
 			s := f.String()
