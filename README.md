@@ -1,3 +1,9 @@
+[![Slack](https://img.shields.io/badge/slack-rsocket--go-blue.svg)](https://rsocket.slack.com/messages/C9VGZ5MV3)
+[![GoDoc](https://godoc.org/github.com/rsocket/rsocket-go?status.svg)](https://godoc.org/github.com/rsocket/rsocket-go)
+[![Go Report Card](https://goreportcard.com/badge/github.com/rsocket/rsocket-go)](https://goreportcard.com/report/github.com/rsocket/rsocket-go)
+[![License](https://img.shields.io/github/license/rsocket/rsocket-go.svg)](https://github.com/rsocket/rsocket-go/blob/master/LICENSE)
+[![GitHub Release](https://img.shields.io/github/release/rsocket/rsocket-go.svg)](https://github.com/rsocket/rsocket-go/releases)
+
 # go-rsocket (WARNING: STILL IN DEVELOP!!! APIs will change at any time until release of v1.0.0)
 [RSocket](http://rsocket.io/) in golang.
 
@@ -79,19 +85,16 @@ func main() {
     			})
     		}),
     		rsocket.RequestChannel(func(payloads rsocket.Publisher) rsocket.Flux {
-    			return payloads.(rsocket.Flux)
-    			//// echo all incoming payloads
-    			//f := rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Producer) {
-    			//	req.
-    			//		DoFinally(func() {
-    			//			emitter.Complete()
-    			//		}).
-    			//		SubscribeOn(rsocket.ElasticScheduler()).
-    			//		Subscribe(func(item rsocket.Payload) {
-    			//			emitter.Next(rsocket.NewPayload(item.Data(), item.Metadata()))
-    			//		})
-    			//})
-    			//return f
+    			// eg: copy all incoming payloads
+    			return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Producer) {
+    				payloads.Subscribe(ctx, rsocket.OnNext(func(ctx context.Context, s rsocket.Subscription, payload rsocket.Payload) {
+    					emitter.Next(rsocket.NewPayload(payload.Data(), payload.Metadata()))    					
+    				}), rsocket.OnComplete(func(ctx context.Context) {
+    				    emitter.Complete()
+    				}))
+    			})
+    			// Or just Echo
+    			// return payloads.(rsocket.Flux)
     		}),
     	)
     	err := rsocket.Receive().
@@ -105,18 +108,20 @@ func main() {
     			log.Println("metadata:", string(setup.Metadata()))
     			log.Println("SETUP END:----------------")
 
-    			sendingSocket.
-    				RequestResponse(rsocket.NewPayloadString("ping", "From server")).
+    			sendingSocket.RequestResponse(rsocket.NewPayloadString("ping", "From server")).
+    				DoOnSuccess(func(ctx context.Context, s rsocket.Subscription, payload rsocket.Payload) {
+    					log.Println("rcv response from client:", payload)
+    				}).
     				SubscribeOn(rsocket.ElasticScheduler()).
-    				Subscribe(context.Background(), func(ctx context.Context, item rsocket.Payload) {
-    					log.Println("rcv response from client:", item)
-    				})
+    				Subscribe(context.Background())
 
     			return responder
     		}).
     		Transport("127.0.0.1:8001").
     		Serve()
-    	panic(err)
+    	if err != nil {
+    		panic(err)	
+    	}
 }
 
 ```
