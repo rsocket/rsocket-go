@@ -5,8 +5,19 @@ import (
 	"fmt"
 )
 
+const (
+	minRequestStreamFrameLen = initReqLen
+)
+
 type frameRequestStream struct {
 	*baseFrame
+}
+
+func (p *frameRequestStream) validate() (err error) {
+	if p.body.Len() < minRequestStreamFrameLen {
+		err = errIncompleteFrame
+	}
+	return
 }
 
 func (p *frameRequestStream) String() string {

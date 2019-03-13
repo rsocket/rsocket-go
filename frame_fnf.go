@@ -6,6 +6,10 @@ type frameFNF struct {
 	*baseFrame
 }
 
+func (p *frameFNF) validate() (err error) {
+	return
+}
+
 func (p *frameFNF) String() string {
 	return fmt.Sprintf("frameFNF{%s,data=%s,metadata=%s}", p.header, p.Data(), p.Metadata())
 }

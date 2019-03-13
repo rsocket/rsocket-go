@@ -6,8 +6,25 @@ import (
 	"time"
 )
 
+const (
+	versionLen       = 4
+	timeLen          = 4
+	tokenLen         = 2
+	metadataLen      = 1
+	dataLen          = 1
+	minSetupFrameLen = versionLen + timeLen*2 + tokenLen + metadataLen + dataLen
+)
+
 type frameSetup struct {
 	*baseFrame
+}
+
+func (p *frameSetup) validate() (err error) {
+	if p.Len() < minSetupFrameLen {
+		err = errIncompleteFrame
+	}
+
+	return
 }
 
 func (p *frameSetup) String() string {

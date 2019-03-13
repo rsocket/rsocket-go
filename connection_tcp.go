@@ -4,10 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"time"
 )
+
+var errIncompleteFrame = errors.New("incomplete frame")
 
 var bytesOfKeepalive []byte
 
@@ -141,13 +144,7 @@ func (p *tcpRConnection) onRcv(ctx context.Context, f *baseFrame) error {
 	var frame Frame
 	switch f.header.Type() {
 	case tSetup:
-		setupFrame := &frameSetup{f}
-		interval := setupFrame.TimeBetweenKeepalive()
-		if interval != p.kaInterval {
-			p.kaTicker.Stop()
-			p.kaTicker = time.NewTicker(interval)
-		}
-		frame = setupFrame
+		frame = &frameSetup{f}
 	case tKeepalive:
 		frame = &frameKeepalive{f}
 	case tRequestResponse:
@@ -171,6 +168,19 @@ func (p *tcpRConnection) onRcv(ctx context.Context, f *baseFrame) error {
 	default:
 		return ErrInvalidFrame
 	}
+
+	if err := frame.validate(); err != nil {
+		return err
+	}
+
+	if setupFrame, ok := frame.(*frameSetup); ok {
+		interval := setupFrame.TimeBetweenKeepalive()
+		if interval != p.kaInterval {
+			p.kaTicker.Stop()
+			p.kaTicker = time.NewTicker(interval)
+		}
+	}
+
 	//now := time.Now()
 	//defer func() {
 	//	logger.Debugf("handle %s: cost=%s\n", f.header.Type(), time.Now().Sub(now))

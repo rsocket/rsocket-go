@@ -5,8 +5,22 @@ import (
 	"fmt"
 )
 
+const (
+	errCodeLen       = 4
+	errDataOff       = errCodeLen
+	minErrorFrameLen = errCodeLen
+)
+
 type frameError struct {
 	*baseFrame
+}
+
+func (p *frameError) validate() (err error) {
+	if p.Len() < minErrorFrameLen {
+		err = errIncompleteFrame
+	}
+
+	return
 }
 
 func (p *frameError) Error() string {
@@ -19,7 +33,7 @@ func (p *frameError) ErrorCode() ErrorCode {
 }
 
 func (p *frameError) ErrorData() []byte {
-	return p.body.Bytes()[4:]
+	return p.body.Bytes()[errDataOff:]
 }
 
 func createError(streamID uint32, code ErrorCode, data []byte) *frameError {

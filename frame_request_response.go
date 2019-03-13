@@ -6,6 +6,10 @@ type frameRequestResponse struct {
 	*baseFrame
 }
 
+func (p *frameRequestResponse) validate() (err error) {
+	return
+}
+
 func (p *frameRequestResponse) String() string {
 	return fmt.Sprintf("frameRequestResponse{%s,data=%s,metadata=%s}", p.header, p.Data(), p.Metadata())
 }

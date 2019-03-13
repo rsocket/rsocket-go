@@ -5,8 +5,21 @@ import (
 	"fmt"
 )
 
+const (
+	initReqLen                = 4
+	minRequestChannelFrameLen = initReqLen
+)
+
 type frameRequestChannel struct {
 	*baseFrame
+}
+
+func (p *frameRequestChannel) validate() (err error) {
+	if p.body.Len() < minRequestChannelFrameLen {
+		err = errIncompleteFrame
+	}
+
+	return
 }
 
 func (p *frameRequestChannel) String() string {
@@ -18,11 +31,11 @@ func (p *frameRequestChannel) InitialRequestN() uint32 {
 }
 
 func (p *frameRequestChannel) Metadata() []byte {
-	return p.trySliceMetadata(4)
+	return p.trySliceMetadata(initReqLen)
 }
 
 func (p *frameRequestChannel) Data() []byte {
-	return p.trySliceData(4)
+	return p.trySliceData(initReqLen)
 }
 
 func createRequestChannel(sid uint32, n uint32, data, metadata []byte, flags ...rFlags) *frameRequestChannel {

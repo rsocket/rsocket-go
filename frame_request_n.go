@@ -5,8 +5,21 @@ import (
 	"fmt"
 )
 
+const (
+	reqNLen             = 4
+	minRequestNFrameLen = reqNLen
+)
+
 type frameRequestN struct {
 	*baseFrame
+}
+
+func (p *frameRequestN) validate() (err error) {
+	if p.body.Len() < minRequestNFrameLen {
+		err = errIncompleteFrame
+	}
+
+	return
 }
 
 func (p *frameRequestN) String() string {

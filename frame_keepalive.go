@@ -2,15 +2,23 @@ package rsocket
 
 import (
 	"encoding/binary"
-	"fmt"
+)
+
+const (
+	lastRecvPosLen       = 8
+	minKeepaliveFrameLen = lastRecvPosLen
 )
 
 type frameKeepalive struct {
 	*baseFrame
 }
 
-func (p *frameKeepalive) String() string {
-	return fmt.Sprintf("frameKeepalive{%s,lastReceivedPosition=%d,data=%s}", p.header, p.LastReceivedPosition(), p.Data())
+func (p *frameKeepalive) validate() (err error) {
+	if p.body.Len() < minKeepaliveFrameLen {
+		err = errIncompleteFrame
+	}
+
+	return
 }
 
 func (p *frameKeepalive) LastReceivedPosition() uint64 {
@@ -18,7 +26,7 @@ func (p *frameKeepalive) LastReceivedPosition() uint64 {
 }
 
 func (p *frameKeepalive) Data() []byte {
-	return p.body.Bytes()[8:]
+	return p.body.Bytes()[lastRecvPosLen:]
 }
 
 func createKeepalive(position uint64, data []byte, respond bool) *frameKeepalive {
