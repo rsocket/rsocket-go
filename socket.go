@@ -430,10 +430,9 @@ func (p *duplexRSocket) nextStreamID() uint32 {
 	if p.serverMode {
 		// 2,4,6,8...
 		return 2 * atomic.AddUint32(&p.requestStreamID, 1)
-	} else {
-		// 1,3,5,7
-		return 2*(atomic.AddUint32(&p.requestStreamID, 1)-1) + 1
 	}
+	// 1,3,5,7
+	return 2*(atomic.AddUint32(&p.requestStreamID, 1)-1) + 1
 }
 
 func (p *duplexRSocket) setPublisher(sid uint32, pub Publisher) {

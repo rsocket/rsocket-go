@@ -10,5 +10,5 @@ func newClientTransportTCP(addr string, keepaliveInterval, keepaliveMaxLifetime 
 	if err != nil {
 		return nil, err
 	}
-	return newTransportClient(newTcpRConnection(c, keepaliveInterval, keepaliveMaxLifetime, true)), nil
+	return newTransportClient(newTCPRConnection(c, keepaliveInterval, keepaliveMaxLifetime, true)), nil
 }

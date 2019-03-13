@@ -1,5 +1,6 @@
 package rsocket
 
+// ErrorCode is code for RSocket error.
 type ErrorCode uint32
 
 var errorCodeMap = map[ErrorCode]string{
@@ -23,20 +24,33 @@ func (p ErrorCode) String() string {
 }
 
 const (
-	ErrorCodeInvalidSetup     ErrorCode = 0x00000001
+	// ErrorCodeInvalidSetup means the setup frame is invalid for the server.
+	ErrorCodeInvalidSetup ErrorCode = 0x00000001
+	// ErrorCodeUnsupportedSetup means some (or all) of the parameters specified by the client are unsupported by the server.
 	ErrorCodeUnsupportedSetup ErrorCode = 0x00000002
-	ErrorCodeRejectedSetup    ErrorCode = 0x00000003
-	ErrorCodeRejectedResume   ErrorCode = 0x00000004
-	ErrorCodeConnectionError  ErrorCode = 0x00000101
-	ErrorCodeConnectionClose  ErrorCode = 0x00000102
+	// ErrorCodeRejectedSetup means server rejected the setup, it can specify the reason in the payload.
+	ErrorCodeRejectedSetup ErrorCode = 0x00000003
+	// ErrorCodeRejectedResume means server rejected the resume, it can specify the reason in the payload.
+	ErrorCodeRejectedResume ErrorCode = 0x00000004
+	// ErrorCodeConnectionError means the connection is being terminated.
+	ErrorCodeConnectionError ErrorCode = 0x00000101
+	// ErrorCodeConnectionClose means the connection is being terminated.
+	ErrorCodeConnectionClose ErrorCode = 0x00000102
+	// ErrorCodeApplicationError means application layer logic generating a Reactive Streams onError event.
 	ErrorCodeApplicationError ErrorCode = 0x00000201
-	ErrorCodeRejected         ErrorCode = 0x00000202
-	ErrorCodeCanceled         ErrorCode = 0x00000203
-	ErrorCodeInvalid          ErrorCode = 0x00000204
+	// ErrorCodeRejected means Responder reject it.
+	ErrorCodeRejected ErrorCode = 0x00000202
+	// ErrorCodeCanceled means the Responder canceled the request but may have started processing it (similar to REJECTED but doesn't guarantee lack of side-effects).
+	ErrorCodeCanceled ErrorCode = 0x00000203
+	// ErrorCodeInvalid means the request is invalid.
+	ErrorCodeInvalid ErrorCode = 0x00000204
 )
 
+// RError is RSocket Error interface.
 type RError interface {
 	error
+	// ErrorCode returns ErrorCode.
 	ErrorCode() ErrorCode
+	// ErrorData returns data of Error.
 	ErrorData() []byte
 }

@@ -7,30 +7,47 @@ import (
 	"time"
 )
 
+// ClientSocket is Client Side of a RSocket socket. Sends Frames to a RSocket Server.
 type ClientSocket interface {
 	io.Closer
 	RSocket
 }
 
+// ClientSocketAcceptor is alias for RSocket handler function.
 type ClientSocketAcceptor = func(socket RSocket) RSocket
 
+// ClientStarter can be used to start a client.
 type ClientStarter interface {
+	// Start start a client socket.
 	Start() (ClientSocket, error)
 }
 
+// ClientBuilder can be used to build a RSocket client.
 type ClientBuilder interface {
+	// KeepAlive defines current client keepalive settings.
 	KeepAlive(tickPeriod, ackTimeout time.Duration, missedAcks int) ClientBuilder
+	// DataMimeType is used to set payload data MIME type.
+	// Default MIME type is `application/binary`.
 	DataMimeType(mime string) ClientBuilder
+	// MetadataMimeType is used to set payload metadata MIME type.
+	// Default MIME type is `application/binary`.
 	MetadataMimeType(mime string) ClientBuilder
+	// SetupPayload set the setup payload.
 	SetupPayload(setup Payload) ClientBuilder
+	// Transport set transport for current RSocket client.
+	// In current version, you can use `$HOST:$PORT` string as TCP transport.
 	Transport(transport string) ClientStarter
+	// Acceptor set acceptor for RSocket client.
 	Acceptor(acceptor ClientSocketAcceptor) ClientTransportBuilder
 }
 
+// ClientTransportBuilder is used to build a RSocket client with custom transport string.
 type ClientTransportBuilder interface {
+	// Transport set transport string.
 	Transport(transport string) ClientStarter
 }
 
+// Connect create a new RSocket client builder with default settings.
 func Connect() ClientBuilder {
 	return &implClientBuilder{
 		keepaliveInteval:     defaultKeepaliveInteval,

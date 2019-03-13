@@ -71,11 +71,11 @@ func (p *frameSetup) MIME() (metadata []byte, data []byte) {
 	offset := p.seekMIME()
 	raw := p.body.Bytes()
 	l1 := int(raw[offset])
-	offset += 1
+	offset++
 	m1 := raw[offset : offset+l1]
 	offset += l1
 	l2 := int(raw[offset])
-	offset += 1
+	offset++
 	m2 := raw[offset : offset+l2]
 	return m1, m2
 }

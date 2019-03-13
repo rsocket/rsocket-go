@@ -2,12 +2,16 @@ package rsocket
 
 import "context"
 
+// SignalType is the signal of reactive events like `OnNext`, `OnComplete`, `OnCancel` and `OnError`.
 type SignalType int8
 
 const (
 	signalDefault SignalType = iota
+	// SignalComplete indicated that subscriber was completed.
 	SignalComplete
+	// SignalCancel indicates that subscriber was cancelled.
 	SignalCancel
+	// SignalError indicates that subscriber has some faults.
 	SignalError
 	signalRequest
 	signalSubscribe
@@ -16,49 +20,90 @@ const (
 	signalNextAfter
 )
 
+// FnConsumer is alias of consumer function.
 type FnConsumer = func(ctx context.Context, payload Payload)
+
+// FnOnComplete is alias of `OnComplete` handler.
 type FnOnComplete = func(ctx context.Context)
+
+// FnOnNext is alias of `OnNext` handler.
 type FnOnNext = func(ctx context.Context, s Subscription, payload Payload)
+
+// FnOnCancel is alias of `OnCancel` handler.
 type FnOnCancel = func(ctx context.Context)
+
+// FnOnSubscribe is alias of `OnSubscribe` handler.
 type FnOnSubscribe = func(ctx context.Context, s Subscription)
+
+// FnOnRequest is alias of `OnRequest` handler.
 type FnOnRequest = func(ctx context.Context, n int)
+
+// FnOnError is alias of `OnError` handler.
 type FnOnError = func(ctx context.Context, err error)
+
+// FnOnFinally is alias of `OnFinally` handler.
 type FnOnFinally = func(ctx context.Context, st SignalType)
 
+// Disposable is a disposable resource.
 type Disposable interface {
+	// Dispose dispose current resource.
 	Dispose()
 }
 
+// Publisher is a provider of a potentially unbounded number of sequenced elements, \
+// publishing them according to the demand received from its Subscriber(s).
 type Publisher interface {
+	// Subscribe subscribe elements from a publisher, returns a Disposable.
+	// You can add some custome options.
+	// Using `OnSubscribe`, `OnNext`, `OnComplete` and `OnError` as handler wrapper.
 	Subscribe(ctx context.Context, ops ...OpSubscriber) Disposable
 }
 
+// Subscriber consume elements from a Publisher and handle events.
 type Subscriber interface {
+	// OnSubscribe handle event when subscribe begin.
 	OnSubscribe(ctx context.Context, s Subscription)
+	// OnNext handle event when a new element produced.
 	OnNext(ctx context.Context, s Subscription, payload Payload)
+	// OnComplete handle event when subscribe finish.
 	OnComplete(ctx context.Context)
+	// OnError handle event when an error occurred。
 	OnError(ctx context.Context, err error)
 }
 
+// Subscription means a Subscrber's subscription.
 type Subscription interface {
+	// Request pull next n elements. (It was used for FlowControl)
+	// When you call it, subscriber will emit `OnRequest` event and you can use `DoOnRequest` catch it.
 	Request(n int)
+	// Cancel cancel the current subscriber.
+	// Subscirber will emit `OnCancel` event and you can use `DoOnCancel` catch it.
 	Cancel()
+
 	n() int
 }
 
+// Processor process publisher and subscriber.
 type Processor interface {
 	Publisher
 	Subscriber
 }
 
+// Producer produce elements as you wish.
 type Producer interface {
+	// Next append next element.
 	Next(payload Payload)
+	// Error means some bad things happend.
 	Error(err error)
+	// Complete means production completed.
 	Complete()
 }
 
+// MonoProducer likes Producer, but it produce single element.
 type MonoProducer interface {
+	// Success append payload.
 	Success(payload Payload)
+	// Error means some bad things happend.
 	Error(err error)
 }
 

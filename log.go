@@ -4,16 +4,20 @@ import (
 	"log"
 )
 
-// LogFunc
+// LogFunc is alias of logger function.
 type LogFunc = func(string, ...interface{})
 
-// LogLevel
+// LogLevel is level of logger.
 type LogLevel int8
 
 const (
+	// LogLevelDebug is DEBUG level.
 	LogLevelDebug LogLevel = iota
+	// LogLevelInfo is INFO level.
 	LogLevelInfo
+	// LogLevelWarn is WARN level.
 	LogLevelWarn
+	// LogLevelError is ERROR level.
 	LogLevelError
 )
 
@@ -26,7 +30,7 @@ var logger loggerR = &loggerWrapper{
 }
 
 // SetLoggerLevel set global RSocket log level.
-// There're 4 log levels for choose: LogLevelDebug,LogLevelInfo,LogLevelWarn and LogLevelError.
+// Available levels are `LogLevelDebug`, `LogLevelInfo`, `LogLevelWarn` and `LogLevelError`.
 func SetLoggerLevel(level LogLevel) {
 	logger.(*loggerWrapper).lvl = level
 }

@@ -111,13 +111,18 @@ func newFlags(flags ...rFlags) rFlags {
 	return fg
 }
 
+// Frame is a single message containing a request, response, or protocol processing.
 type Frame interface {
 	io.WriterTo
+	// Header returns frame header.
+	Header() header
+	// Release release resources of frame.
+	Release()
+	// Len returns length of frame.
+	Len() int
+
 	validate() error
 	setHeader(h header)
-	Header() header
-	Release()
-	Len() int
 }
 
 type baseFrame struct {

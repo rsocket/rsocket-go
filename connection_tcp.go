@@ -188,7 +188,7 @@ func (p *tcpRConnection) onRcv(ctx context.Context, f *baseFrame) error {
 	return p.handler(ctx, frame)
 }
 
-func newTcpRConnection(c io.ReadWriteCloser, keepaliveInterval, keepaliveMaxLifetime time.Duration, reportKeepalive bool) *tcpRConnection {
+func newTCPRConnection(c io.ReadWriteCloser, keepaliveInterval, keepaliveMaxLifetime time.Duration, reportKeepalive bool) *tcpRConnection {
 	return &tcpRConnection{
 		c:         c,
 		w:         bufio.NewWriterSize(c, defaultConnTcpWriteBuffSize),
