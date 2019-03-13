@@ -93,7 +93,7 @@ type Processor interface {
 type Producer interface {
 	// Next append next element.
 	Next(payload Payload)
-	// Error means some bad things happended.
+	// Error means some bad things happened.
 	Error(err error)
 	// Complete means production completed.
 	Complete()
@@ -103,7 +103,7 @@ type Producer interface {
 type MonoProducer interface {
 	// Success append payload.
 	Success(payload Payload)
-	// Error means some bad things happended.
+	// Error means some bad things happened.
 	Error(err error)
 }
 
