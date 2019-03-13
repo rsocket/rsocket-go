@@ -77,7 +77,7 @@ type Subscription interface {
 	// When you call it, subscriber will emit `OnRequest` event and you can use `DoOnRequest` catch it.
 	Request(n int)
 	// Cancel cancel the current subscriber.
-	// Subscirber will emit `OnCancel` event and you can use `DoOnCancel` catch it.
+	// Subscribers will emit `OnCancel` event and you can use `DoOnCancel` catch it.
 	Cancel()
 
 	n() int
@@ -93,7 +93,7 @@ type Processor interface {
 type Producer interface {
 	// Next append next element.
 	Next(payload Payload)
-	// Error means some bad things happend.
+	// Error means some bad things happended.
 	Error(err error)
 	// Complete means production completed.
 	Complete()
@@ -103,7 +103,7 @@ type Producer interface {
 type MonoProducer interface {
 	// Success append payload.
 	Success(payload Payload)
-	// Error means some bad things happend.
+	// Error means some bad things happended.
 	Error(err error)
 }
 
