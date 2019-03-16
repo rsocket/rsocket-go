@@ -135,7 +135,7 @@ func (p *fluxProcessor) Complete() {
 	}
 }
 
-func (p *fluxProcessor) Subscribe(ctx context.Context, ops ...OpSubscriber) Disposable {
+func (p *fluxProcessor) Subscribe(ctx context.Context, ops ...OptSubscribe) Disposable {
 	for _, it := range ops {
 		it(p.hooks)
 	}
@@ -203,6 +203,7 @@ func (p *fluxProcessor) OnError(ctx context.Context, err error) {
 	p.hooks.OnError(ctx, err)
 }
 
+// NewFlux returns a new Flux.
 func NewFlux(fn func(ctx context.Context, producer Producer)) Flux {
 	return &fluxProcessor{
 		lock:         &sync.Mutex{},

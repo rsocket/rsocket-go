@@ -56,7 +56,7 @@ type Publisher interface {
 	// Subscribe subscribe elements from a publisher, returns a Disposable.
 	// You can add some custome options.
 	// Using `OnSubscribe`, `OnNext`, `OnComplete` and `OnError` as handler wrapper.
-	Subscribe(ctx context.Context, ops ...OpSubscriber) Disposable
+	Subscribe(ctx context.Context, ops ...OptSubscribe) Disposable
 }
 
 // Subscriber consume elements from a Publisher and handle events.
@@ -107,54 +107,84 @@ type MonoProducer interface {
 	Error(err error)
 }
 
+// Mono completes successfully by emitting an element, or with an error.
 type Mono interface {
 	Publisher
+	// DoAfterSuccess register handler after emitting element successfully.
 	DoAfterSuccess(fn FnConsumer) Mono
+	// DoOnSubscribe register handler on subscribe begin.
 	DoOnSubscribe(fn FnOnSubscribe) Mono
+	// DoOnSuccess register handler when emitting element successfully.
 	DoOnSuccess(fn FnOnNext) Mono
+	// DoOnError register handler when an exception occurs.
 	DoOnError(fn FnOnError) Mono
+	// DoOnCancel register handler when Mono was canceled.
 	DoOnCancel(fn FnOnCancel) Mono
+	// DoFinally register handler when Mono was terminated.
+	// DoFinally will definitely be executed.
 	DoFinally(fn FnOnFinally) Mono
+	// SubscribeOn specify scheduler for subscriber.
 	SubscribeOn(s Scheduler) Mono
+	// PublishOn specify scheduler for publisher.
 	PublishOn(s Scheduler) Mono
 }
 
+// Flux emits 0 to N elements, and then completes (successfully or with an error).
 type Flux interface {
 	Publisher
+	// LimitRate limits the number of elements in batches.
 	LimitRate(n int) Flux
+	// DoOnRequest register handler when subsccriber request more elements.
 	DoOnRequest(fn FnOnRequest) Flux
+	// DoOnSubscribe register handler when subscribe begin.
 	DoOnSubscribe(fn FnOnSubscribe) Flux
+	// DoOnNext register handler when emitting next element.
 	DoOnNext(fn FnOnNext) Flux
+	// DoOnNext register handler after emitting next element.
 	DoAfterNext(fn FnConsumer) Flux
+	// DoOnComplete register handler when Flux was completed.
 	DoOnComplete(fn FnOnComplete) Flux
+	// DoOnError register handler when an exception occurs.
 	DoOnError(fn FnOnError) Flux
+	// DoOnCancel register handler when Mono was canceled.
 	DoOnCancel(fn FnOnCancel) Flux
+	// DoFinally register handler when Mono was terminated.
+	// DoFinally will definitely be executed.
 	DoFinally(fn FnOnFinally) Flux
+	// SubscribeOn specify scheduler for subscriber.
 	SubscribeOn(s Scheduler) Flux
+	// PublishOn specify scheduler for publisher.
 	PublishOn(s Scheduler) Flux
 }
 
-type OpSubscriber func(*hooks)
+// OptSubscribe is option of subscribe.
+type OptSubscribe func(*hooks)
 
-func OnNext(fn FnOnNext) OpSubscriber {
+// OnNext sets handler for OnNext.
+func OnNext(fn FnOnNext) OptSubscribe {
 	return func(hooks *hooks) {
 		hooks.DoOnNext(fn)
 	}
 }
 
-func OnComplete(fn FnOnComplete) OpSubscriber {
+// OnComplete sets handler for OnComplete.
+func OnComplete(fn FnOnComplete) OptSubscribe {
 	return func(hooks *hooks) {
 		hooks.DoOnComplete(fn)
 	}
 }
 
-func OnSubscribe(fn FnOnSubscribe) OpSubscriber {
+// OnSubscribe sets handler for OnSubscribe.
+// Also you can use DoOnSubscribe in Mono or Flux.
+func OnSubscribe(fn FnOnSubscribe) OptSubscribe {
 	return func(hooks *hooks) {
 		hooks.DoOnSubscribe(fn)
 	}
 }
 
-func OnError(fn FnOnError) OpSubscriber {
+// OnError sets handler for OnError.
+// Also you can use DoOnError in Mono or Flux.
+func OnError(fn FnOnError) OptSubscribe {
 	return func(hooks *hooks) {
 		hooks.DoOnError(fn)
 	}

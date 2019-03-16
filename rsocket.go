@@ -1,34 +1,70 @@
 package rsocket
 
-import "errors"
-
-var (
-	MimeTypeBinary = []byte("application/binary")
-	MimeTypeJSON   = []byte("application/json")
+import (
+	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/framing"
+	"time"
 )
 
-var (
-	ErrInvalidTransport   = errors.New("rsocket: invalid transport")
-	ErrInvalidFrame       = errors.New("rsocket: invalid frame")
-	ErrInvalidContext     = errors.New("rsocket: invalid context")
-	ErrInvalidFrameLength = errors.New("rsocket: invalid frame length")
-	ErrReleasedResource   = errors.New("rsocket: resource has been released")
-	ErrInvalidEmitter     = errors.New("rsocket: invalid emitter")
-	ErrHandlerNil         = errors.New("rsocket: handler cannot be nil")
-	ErrHandlerExist       = errors.New("rsocket: handler exists already")
-	ErrSendFull           = errors.New("rsocket: frame send channel is full")
-)
+var defaultMimeType = []byte("application/binary")
 
+// Payload is a stream message (upstream or downstream).
+// It contains data associated with a stream created by a previous request.
+// In Reactive Streams and Rx this is the 'onNext' event.
+type Payload interface {
+	// Metadata returns raw metadata bytes.
+	Metadata() []byte
+	// Data returns raw data bytes.
+	Data() []byte
+	// Release release all resources of payload.
+	// Some payload implements is pooled, so you must release resoures after using it.
+	Release()
+}
+
+// NewPayload create a new payload.
+func NewPayload(data []byte, metadata []byte) Payload {
+	return framing.NewFramePayload(0, data, metadata)
+}
+
+// NewPayloadString create a new payload with strings.
+func NewPayloadString(data string, metadata string) Payload {
+	return NewPayload([]byte(data), []byte(metadata))
+}
+
+// SetupPayload is particular payload for RSocket Setup.
+type SetupPayload interface {
+	Payload
+	// DataMimeType returns MIME type of data.
+	DataMimeType() string
+	// MetadataMimeType returns MIME type of metadata.
+	MetadataMimeType() string
+	// TimeBetweenKeepalive returns interval duration of keepalive.
+	TimeBetweenKeepalive() time.Duration
+	// MaxLifetime returns max lifetime of RSocket connection.
+	MaxLifetime() time.Duration
+	// Version return RSocket protocol version.
+	Version() common.Version
+}
+
+// ServerAcceptor is alias for server accepter.
 type ServerAcceptor = func(setup SetupPayload, sendingSocket RSocket) RSocket
 
+// RSocket is a contract providing different interaction models for RSocket protocol.
 type RSocket interface {
+	// FireAndForget is a single one-way message.
 	FireAndForget(payload Payload)
+	// MetadataPush sends asynchronous Metadata frame.
 	MetadataPush(payload Payload)
+	// RequestResponse request single response.
 	RequestResponse(payload Payload) Mono
+	// RequestStream request a completable stream.
 	RequestStream(payload Payload) Flux
+	// RequestChannel request a completable stream in both directions.
 	RequestChannel(payloads Publisher) Flux
 }
 
+// NewAbstractSocket returns an abstract implementation of RSocket.
+// You can specify the actual implementation of any request.
 func NewAbstractSocket(opts ...OptAbstractSocket) RSocket {
 	sk := &abstractRSocket{}
 	for _, fn := range opts {
@@ -37,32 +73,38 @@ func NewAbstractSocket(opts ...OptAbstractSocket) RSocket {
 	return sk
 }
 
+// OptAbstractSocket is option for abstract socket.
 type OptAbstractSocket func(*abstractRSocket)
 
+// MetadataPush register request handler for MetadataPush.
 func MetadataPush(fn func(payload Payload)) OptAbstractSocket {
 	return func(socket *abstractRSocket) {
 		socket.metadataPush = fn
 	}
 }
 
+// FireAndForget register request handler for FireAndForget.
 func FireAndForget(fn func(payload Payload)) OptAbstractSocket {
 	return func(opts *abstractRSocket) {
 		opts.fireAndForget = fn
 	}
 }
 
+// RequestResponse register request handler for RequestResponse.
 func RequestResponse(fn func(payload Payload) Mono) OptAbstractSocket {
 	return func(opts *abstractRSocket) {
 		opts.requestResponse = fn
 	}
 }
 
+// RequestStream register request handler for RequestStream.
 func RequestStream(fn func(payload Payload) Flux) OptAbstractSocket {
 	return func(opts *abstractRSocket) {
 		opts.requestStream = fn
 	}
 }
 
+// RequestChannel register request handler for RequestChannel.
 func RequestChannel(fn func(payloads Publisher) Flux) OptAbstractSocket {
 	return func(opts *abstractRSocket) {
 		opts.requestChannel = fn
