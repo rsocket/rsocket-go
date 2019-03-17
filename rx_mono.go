@@ -114,7 +114,7 @@ func (p *defaultMonoProcessor) PublishOn(s Scheduler) Mono {
 	return p
 }
 
-func (p *defaultMonoProcessor) Subscribe(ctx context.Context, others ...OpSubscriber) Disposable {
+func (p *defaultMonoProcessor) Subscribe(ctx context.Context, others ...OptSubscribe) Disposable {
 	for _, fn := range others {
 		fn(p.hooks)
 	}
@@ -156,6 +156,7 @@ func (p *defaultMonoProcessor) Subscribe(ctx context.Context, others ...OpSubscr
 	return p
 }
 
+// NewMono returns a new Mono.
 func NewMono(fn func(sink MonoProducer)) Mono {
 	return &defaultMonoProcessor{
 		lock:         &sync.Mutex{},

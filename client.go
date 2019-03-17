@@ -2,6 +2,10 @@ package rsocket
 
 import (
 	"context"
+	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/framing"
+	"github.com/rsocket/rsocket-go/logger"
+	"github.com/rsocket/rsocket-go/transport"
 	"io"
 	"runtime"
 	"time"
@@ -34,26 +38,26 @@ type ClientBuilder interface {
 	MetadataMimeType(mime string) ClientBuilder
 	// SetupPayload set the setup payload.
 	SetupPayload(setup Payload) ClientBuilder
-	// Transport set transport for current RSocket client.
-	// In current version, you can use `$HOST:$PORT` string as TCP transport.
+	// Transport set Transport for current RSocket client.
+	// In current version, you can use `$HOST:$PORT` string as TCP Transport.
 	Transport(transport string) ClientStarter
 	// Acceptor set acceptor for RSocket client.
 	Acceptor(acceptor ClientSocketAcceptor) ClientTransportBuilder
 }
 
-// ClientTransportBuilder is used to build a RSocket client with custom transport string.
+// ClientTransportBuilder is used to build a RSocket client with custom Transport string.
 type ClientTransportBuilder interface {
-	// Transport set transport string.
+	// Transport set Transport string.
 	Transport(transport string) ClientStarter
 }
 
 // Connect create a new RSocket client builder with default settings.
 func Connect() ClientBuilder {
 	return &implClientBuilder{
-		keepaliveInteval:     defaultKeepaliveInteval,
-		keepaliveMaxLifetime: defaultKeepaliveMaxLifetime,
-		dataMimeType:         MimeTypeBinary,
-		metadataMimeType:     MimeTypeBinary,
+		keepaliveInteval:     common.DefaultKeepaliveInteval,
+		keepaliveMaxLifetime: common.DefaultKeepaliveMaxLifetime,
+		dataMimeType:         defaultMimeType,
+		metadataMimeType:     defaultMimeType,
 	}
 }
 
@@ -116,12 +120,12 @@ func (p *implClientBuilder) Transport(transport string) ClientStarter {
 }
 
 func (p *implClientBuilder) Start() (ClientSocket, error) {
-	tp, err := newClientTransportTCP(p.addr, p.keepaliveInteval, p.keepaliveMaxLifetime)
+	tp, err := transport.NewClientTransportTCP(p.addr, p.keepaliveInteval, p.keepaliveMaxLifetime)
 	if err != nil {
 		return nil, err
 	}
 	sendingScheduler := NewElasticScheduler(runtime.NumCPU())
-	tp.onClose(func() {
+	tp.OnClose(func() {
 		_ = sendingScheduler.Close()
 	})
 	requester := newDuplexRSocket(tp, false, sendingScheduler)
@@ -133,7 +137,7 @@ func (p *implClientBuilder) Start() (ClientSocket, error) {
 			logger.Debugf("client closed: %s\n", err)
 		}
 	}(context.Background())
-	setup := createSetup(defaultVersion, p.keepaliveInteval, p.keepaliveMaxLifetime, nil, p.metadataMimeType, p.dataMimeType, p.setupData, p.setupMetadata)
+	setup := framing.NewFrameSetup(common.DefaultVersion, p.keepaliveInteval, p.keepaliveMaxLifetime, nil, p.metadataMimeType, p.dataMimeType, p.setupData, p.setupMetadata)
 	if err := tp.Send(setup); err != nil {
 		return nil, err
 	}

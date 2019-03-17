@@ -2,7 +2,12 @@ package rsocket
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/framing"
+	"github.com/rsocket/rsocket-go/logger"
+	"github.com/rsocket/rsocket-go/transport"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -17,7 +22,7 @@ var (
 
 type duplexRSocket struct {
 	responder       RSocket
-	tp              transport
+	tp              transport.Transport
 	serverMode      bool
 	requestStreamID uint32
 	messages        *sync.Map // sid -> rx
@@ -40,11 +45,11 @@ func (p *duplexRSocket) Close() error {
 }
 
 func (p *duplexRSocket) FireAndForget(payload Payload) {
-	_ = p.tp.Send(createFNF(p.nextStreamID(), payload.Data(), payload.Metadata()))
+	_ = p.tp.Send(framing.NewFrameFNF(p.nextStreamID(), payload.Data(), payload.Metadata()))
 }
 
 func (p *duplexRSocket) MetadataPush(payload Payload) {
-	_ = p.tp.Send(createMetadataPush(payload.Metadata()))
+	_ = p.tp.Send(framing.NewFrameMetadataPush(payload.Metadata()))
 }
 
 func (p *duplexRSocket) RequestResponse(payload Payload) Mono {
@@ -57,14 +62,14 @@ func (p *duplexRSocket) RequestResponse(payload Payload) Mono {
 	resp.
 		DoFinally(func(ctx context.Context, sig SignalType) {
 			if sig == SignalCancel {
-				_ = p.tp.Send(createCancel(sid))
+				_ = p.tp.Send(framing.NewFrameCancel(sid))
 			}
 			p.unsetPublisher(sid)
 		})
 
 	p.scheduler.Do(context.Background(), func(ctx context.Context) {
 		defer payload.Release()
-		if err := p.tp.Send(createRequestResponse(sid, payload.Data(), payload.Metadata())); err != nil {
+		if err := p.tp.Send(framing.NewFrameRequestResponse(sid, payload.Data(), payload.Metadata())); err != nil {
 			resp.(MonoProducer).Error(err)
 		}
 	})
@@ -78,7 +83,7 @@ func (p *duplexRSocket) RequestStream(payload Payload) Flux {
 
 	merge := struct {
 		sid uint32
-		tp  transport
+		tp  transport.Transport
 	}{sid, p.tp}
 
 	flux.
@@ -88,15 +93,15 @@ func (p *duplexRSocket) RequestStream(payload Payload) Flux {
 		DoFinally(func(ctx context.Context, sig SignalType) {
 			p.unsetPublisher(sid)
 			if sig == SignalCancel {
-				_ = merge.tp.Send(createCancel(merge.sid))
+				_ = merge.tp.Send(framing.NewFrameCancel(merge.sid))
 			}
 		}).
 		DoOnRequest(func(ctx context.Context, n int) {
-			_ = merge.tp.Send(createRequestN(merge.sid, uint32(n)))
+			_ = merge.tp.Send(framing.NewFrameRequestN(merge.sid, uint32(n)))
 		}).
 		DoOnSubscribe(func(ctx context.Context, s Subscription) {
 			defer payload.Release()
-			if err := merge.tp.Send(createRequestStream(merge.sid, uint32(s.n()), payload.Data(), payload.Metadata())); err != nil {
+			if err := merge.tp.Send(framing.NewFrameRequestStream(merge.sid, uint32(s.n()), payload.Data(), payload.Metadata())); err != nil {
 				flux.(Producer).Error(err)
 			}
 		})
@@ -114,33 +119,33 @@ func (p *duplexRSocket) RequestChannel(payloads Publisher) Flux {
 
 	var idx uint32
 	merge := struct {
-		tp  transport
+		tp  transport.Transport
 		sid uint32
 		i   *uint32
 	}{p.tp, sid, &idx}
 
 	inputs.
 		DoFinally(func(ctx context.Context, sig SignalType) {
-			_ = merge.tp.Send(createPayloadFrame(merge.sid, nil, nil, flagComplete))
+			_ = merge.tp.Send(framing.NewFramePayload(merge.sid, nil, nil, framing.FlagComplete))
 		}).
 		SubscribeOn(p.scheduler).
 		Subscribe(context.Background(), OnNext(func(ctx context.Context, sub Subscription, item Payload) {
 			defer item.Release()
 			// TODO: request N
 			if atomic.AddUint32(merge.i, 1) == 1 {
-				_ = merge.tp.Send(createRequestChannel(merge.sid, math.MaxUint32, item.Data(), item.Metadata(), flagNext))
+				_ = merge.tp.Send(framing.NewFrameRequestChannel(merge.sid, math.MaxUint32, item.Data(), item.Metadata(), framing.FlagNext))
 			} else {
-				_ = merge.tp.Send(createPayloadFrame(merge.sid, item.Data(), item.Metadata(), flagNext))
+				_ = merge.tp.Send(framing.NewFramePayload(merge.sid, item.Data(), item.Metadata(), framing.FlagNext))
 			}
 		}))
 
 	return fx
 }
 
-func (p *duplexRSocket) respondRequestResponse(input Frame) error {
+func (p *duplexRSocket) respondRequestResponse(input framing.Frame) error {
 	// 0. do some convert jobs
-	f := input.(*frameRequestResponse)
-	sid := f.header.StreamID()
+	f := input.(*framing.FrameRequestResponse)
+	sid := f.Header().StreamID()
 	// 1. execute socket handler
 	send, err := func() (mono Mono, err error) {
 		defer func() {
@@ -156,7 +161,7 @@ func (p *duplexRSocket) respondRequestResponse(input Frame) error {
 	}
 	// 3. send error with unsupported handler
 	if send == nil {
-		_ = p.writeError(sid, createError(sid, ErrorCodeApplicationError, unsupportedRequestResponse))
+		_ = p.writeError(sid, framing.NewFrameError(sid, common.ErrorCodeApplicationError, unsupportedRequestResponse))
 		return nil
 	}
 	// 4. register publisher
@@ -172,31 +177,28 @@ func (p *duplexRSocket) respondRequestResponse(input Frame) error {
 		}).
 		SubscribeOn(p.scheduler).
 		Subscribe(context.Background(), OnNext(func(ctx context.Context, sub Subscription, item Payload) {
-			v, ok := item.(*frameRequestResponse)
+			v, ok := item.(*framing.FrameRequestResponse)
 			if !ok || v != f {
-				_ = p.tp.Send(createPayloadFrame(sid, item.Data(), item.Metadata(), flagNext|flagComplete))
+				_ = p.tp.Send(framing.NewFramePayload(sid, item.Data(), item.Metadata(), framing.FlagNext|framing.FlagComplete))
 				return
 			}
 			// reuse request frame, reduce copy
-			fg := flagNext | flagComplete
+			fg := framing.FlagNext | framing.FlagComplete
 			if len(v.Metadata()) > 0 {
-				fg |= flagMetadata
+				fg |= framing.FlagMetadata
 			}
-			send := &framePayload{
-				&baseFrame{
-					header: createHeader(sid, tPayload, fg),
-					body:   v.body,
-				},
+			send := &framing.FramePayload{
+				BaseFrame: framing.NewBaseFrame(framing.NewFrameHeader(sid, framing.FrameTypePayload, fg), v.Body()),
 			}
-			v.body = nil
+			v.SetBody(nil)
 			_ = p.tp.Send(send)
 		}))
 	return nil
 }
 
-func (p *duplexRSocket) respondRequestChannel(input Frame) error {
-	f := input.(*frameRequestChannel)
-	sid := f.header.StreamID()
+func (p *duplexRSocket) respondRequestChannel(input framing.Frame) error {
+	f := input.(*framing.FrameRequestChannel)
+	sid := f.Header().StreamID()
 	inputs := NewFlux(nil)
 	outputs, err := func() (flux Flux, err error) {
 		defer func() {
@@ -204,7 +206,7 @@ func (p *duplexRSocket) respondRequestChannel(input Frame) error {
 		}()
 		flux = p.responder.RequestChannel(inputs.(Flux))
 		if flux == nil {
-			err = createError(sid, ErrorCodeApplicationError, unsupportedRequestChannel)
+			err = framing.NewFrameError(sid, common.ErrorCodeApplicationError, unsupportedRequestChannel)
 		}
 		return
 	}()
@@ -216,7 +218,7 @@ func (p *duplexRSocket) respondRequestChannel(input Frame) error {
 	initialRequestN := f.InitialRequestN()
 	inputs.(Producer).Next(f)
 	// TODO: process send error
-	_ = p.tp.Send(createRequestN(sid, initialRequestN))
+	_ = p.tp.Send(framing.NewFrameRequestN(sid, initialRequestN))
 
 	if inputs != outputs {
 		// auto release frame for each consumer
@@ -233,14 +235,14 @@ func (p *duplexRSocket) respondRequestChannel(input Frame) error {
 			_ = p.writeError(sid, err)
 		}).
 		DoOnComplete(func(ctx context.Context) {
-			_ = p.tp.Send(createPayloadFrame(sid, nil, nil, flagComplete))
+			_ = p.tp.Send(framing.NewFramePayload(sid, nil, nil, framing.FlagComplete))
 		}).
 		SubscribeOn(p.scheduler).
-		Subscribe(context.Background(), p.toSender(sid, flagNext))
+		Subscribe(context.Background(), p.toSender(sid, framing.FlagNext))
 	return nil
 }
 
-func (p *duplexRSocket) respondMetadataPush(input Frame) error {
+func (p *duplexRSocket) respondMetadataPush(input framing.Frame) error {
 	p.scheduler.Do(context.Background(), func(ctx context.Context) {
 		defer input.Release()
 		defer func() {
@@ -248,12 +250,12 @@ func (p *duplexRSocket) respondMetadataPush(input Frame) error {
 				logger.Errorf("respond metadata push failed: %s\n", e)
 			}
 		}()
-		p.responder.MetadataPush(input.(*frameMetadataPush))
+		p.responder.MetadataPush(input.(*framing.FrameMetadataPush))
 	})
 	return nil
 }
 
-func (p *duplexRSocket) respondFNF(input Frame) error {
+func (p *duplexRSocket) respondFNF(input framing.Frame) error {
 	p.scheduler.Do(context.Background(), func(ctx context.Context) {
 		defer input.Release()
 		defer func() {
@@ -261,14 +263,14 @@ func (p *duplexRSocket) respondFNF(input Frame) error {
 				logger.Errorf("respond FireAndForget failed: %s\n", e)
 			}
 		}()
-		p.responder.FireAndForget(input.(*frameFNF))
+		p.responder.FireAndForget(input.(*framing.FrameFNF))
 	})
 	return nil
 }
 
-func (p *duplexRSocket) respondRequestStream(input Frame) error {
-	f := input.(*frameRequestStream)
-	sid := f.header.StreamID()
+func (p *duplexRSocket) respondRequestStream(input framing.Frame) error {
+	f := input.(*framing.FrameRequestStream)
+	sid := f.Header().StreamID()
 
 	// 1. execute request stream handler
 	resp, err := func() (resp Flux, err error) {
@@ -277,7 +279,7 @@ func (p *duplexRSocket) respondRequestStream(input Frame) error {
 		}()
 		resp = p.responder.RequestStream(f)
 		if resp == nil {
-			err = createError(sid, ErrorCodeApplicationError, unsupportedRequestStream)
+			err = framing.NewFrameError(sid, common.ErrorCodeApplicationError, unsupportedRequestStream)
 		}
 		return
 	}()
@@ -297,7 +299,7 @@ func (p *duplexRSocket) respondRequestStream(input Frame) error {
 			p.unsetPublisher(sid)
 		}).
 		DoOnComplete(func(ctx context.Context) {
-			_ = p.tp.Send(createPayloadFrame(sid, nil, nil, flagComplete))
+			_ = p.tp.Send(framing.NewFramePayload(sid, nil, nil, framing.FlagComplete))
 		}).
 		DoOnError(func(ctx context.Context, err error) {
 			_ = p.writeError(sid, err)
@@ -305,32 +307,29 @@ func (p *duplexRSocket) respondRequestStream(input Frame) error {
 		SubscribeOn(p.scheduler).
 		Subscribe(context.Background(), OnSubscribe(func(ctx context.Context, s Subscription) {
 			s.Request(int(f.InitialRequestN()))
-		}), p.toSender(sid, flagNext))
+		}), p.toSender(sid, framing.FlagNext))
 	return nil
 }
 
 func (p *duplexRSocket) writeError(sid uint32, err error) error {
-	switch v := err.(type) {
-	case *frameError:
+	v, ok := err.(*framing.FrameError)
+	if ok {
 		return p.tp.Send(v)
-	case RError:
-		return p.tp.Send(createError(sid, v.ErrorCode(), v.ErrorData()))
-	default:
-		return p.tp.Send(createError(sid, ErrorCodeApplicationError, []byte(err.Error())))
 	}
+	return p.tp.Send(framing.NewFrameError(sid, common.ErrorCodeApplicationError, []byte(err.Error())))
 }
 
 func (p *duplexRSocket) bindResponder(socket RSocket) {
 	p.responder = socket
-	p.tp.handleRequestResponse(p.respondRequestResponse)
-	p.tp.handleMetadataPush(p.respondMetadataPush)
-	p.tp.handleFNF(p.respondFNF)
-	p.tp.handleRequestStream(p.respondRequestStream)
-	p.tp.handleRequestChannel(p.respondRequestChannel)
+	p.tp.HandleRequestResponse(p.respondRequestResponse)
+	p.tp.HandleMetadataPush(p.respondMetadataPush)
+	p.tp.HandleFNF(p.respondFNF)
+	p.tp.HandleRequestStream(p.respondRequestStream)
+	p.tp.HandleRequestChannel(p.respondRequestChannel)
 }
 
 func (p *duplexRSocket) start() {
-	p.tp.handleCancel(func(frame Frame) (err error) {
+	p.tp.HandleCancel(func(frame framing.Frame) (err error) {
 		logger.Warnf("incoming cancel frame: %s\n", frame)
 		defer frame.Release()
 		sid := frame.Header().StreamID()
@@ -341,12 +340,12 @@ func (p *duplexRSocket) start() {
 		v.(Disposable).Dispose()
 		return nil
 	})
-	p.tp.handleError(func(input Frame) (err error) {
-		f := input.(*frameError)
+	p.tp.HandleError(func(input framing.Frame) (err error) {
+		f := input.(*framing.FrameError)
 		logger.Errorf("handle error frame: %s\n", f)
-		v, ok := p.messages.Load(f.header.StreamID())
+		v, ok := p.messages.Load(f.Header().StreamID())
 		if !ok {
-			return fmt.Errorf("invalid stream id: %d", f.header.StreamID())
+			return fmt.Errorf("invalid stream id: %d", f.Header().StreamID())
 		}
 		switch foo := v.(type) {
 		case Mono:
@@ -367,10 +366,10 @@ func (p *duplexRSocket) start() {
 		return
 	})
 
-	p.tp.handleRequestN(func(input Frame) (err error) {
-		f := input.(*frameRequestN)
+	p.tp.HandleRequestN(func(input framing.Frame) (err error) {
+		f := input.(*framing.FrameRequestN)
 		defer f.Release()
-		sid := f.header.StreamID()
+		sid := f.Header().StreamID()
 		found, ok := p.messages.Load(sid)
 		if !ok {
 			return fmt.Errorf("non-exists stream id: %d", sid)
@@ -383,9 +382,9 @@ func (p *duplexRSocket) start() {
 		return nil
 	})
 
-	p.tp.handlePayload(func(input Frame) (err error) {
-		f := input.(*framePayload)
-		sid := f.header.StreamID()
+	p.tp.HandlePayload(func(input framing.Frame) (err error) {
+		f := input.(*framing.FramePayload)
+		sid := f.Header().StreamID()
 		v, ok := p.messages.Load(sid)
 		if !ok {
 			return fmt.Errorf("non-exist stream id: %d", sid)
@@ -394,9 +393,9 @@ func (p *duplexRSocket) start() {
 		case MonoProducer:
 			vv.Success(f)
 		case Producer:
-			if f.header.Flag().Check(flagNext) {
+			if f.Header().Flag().Check(framing.FlagNext) {
 				vv.Next(f)
-			} else if f.header.Flag().Check(flagComplete) {
+			} else if f.Header().Flag().Check(framing.FlagComplete) {
 				vv.Complete()
 			}
 		}
@@ -404,24 +403,26 @@ func (p *duplexRSocket) start() {
 	})
 }
 
-func (p *duplexRSocket) toSender(sid uint32, fg rFlags) OpSubscriber {
+func (p *duplexRSocket) toSender(sid uint32, fg framing.FrameFlag) OptSubscribe {
 	merge := struct {
-		tp  transport
+		tp  transport.Transport
 		sid uint32
-		fg  rFlags
+		fg  framing.FrameFlag
 	}{p.tp, sid, fg}
 	return OnNext(func(ctx context.Context, sub Subscription, payload Payload) {
 		switch v := payload.(type) {
-		case *framePayload:
-			if v.header.Flag().Check(flagMetadata) {
-				v.setHeader(createHeader(merge.sid, tPayload, merge.fg|flagMetadata))
+		case *framing.FramePayload:
+			if v.Header().Flag().Check(framing.FlagMetadata) {
+				h := framing.NewFrameHeader(merge.sid, framing.FrameTypePayload, merge.fg|framing.FlagMetadata)
+				v.SetHeader(h)
 			} else {
-				v.setHeader(createHeader(merge.sid, tPayload, merge.fg))
+				h := framing.NewFrameHeader(merge.sid, framing.FrameTypePayload, merge.fg)
+				v.SetHeader(h)
 			}
 			_ = merge.tp.Send(v)
 		default:
 			defer payload.Release()
-			_ = merge.tp.Send(createPayloadFrame(merge.sid, payload.Data(), payload.Metadata(), merge.fg))
+			_ = merge.tp.Send(framing.NewFramePayload(merge.sid, payload.Data(), payload.Metadata(), merge.fg))
 		}
 	})
 }
@@ -443,14 +444,14 @@ func (p *duplexRSocket) unsetPublisher(sid uint32) {
 	p.messages.Delete(sid)
 }
 
-func newDuplexRSocket(tp transport, serverMode bool, scheduler Scheduler) *duplexRSocket {
+func newDuplexRSocket(tp transport.Transport, serverMode bool, scheduler Scheduler) *duplexRSocket {
 	sk := &duplexRSocket{
 		tp:         tp,
 		serverMode: serverMode,
 		messages:   &sync.Map{},
 		scheduler:  scheduler,
 	}
-	tp.onClose(func() {
+	tp.OnClose(func() {
 		sk.releaseAll()
 	})
 
@@ -474,11 +475,26 @@ func newDuplexRSocket(tp transport, serverMode bool, scheduler Scheduler) *duple
 				}
 			}
 		}()
-		tp.onClose(func() {
+		tp.OnClose(func() {
 			tk.Stop()
 			close(done)
 		})
 	}
 	defer sk.start()
 	return sk
+}
+
+// toError try convert something to error
+func toError(err interface{}) error {
+	if err == nil {
+		return nil
+	}
+	switch v := err.(type) {
+	case error:
+		return v
+	case string:
+		return errors.New(v)
+	default:
+		return fmt.Errorf("%s", v)
+	}
 }

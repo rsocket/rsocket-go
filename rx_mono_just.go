@@ -78,7 +78,7 @@ func (p *justMonoProcessor) PublishOn(s Scheduler) Mono {
 	return p
 }
 
-func (p *justMonoProcessor) Subscribe(ctx context.Context, ops ...OpSubscriber) Disposable {
+func (p *justMonoProcessor) Subscribe(ctx context.Context, ops ...OptSubscribe) Disposable {
 	for _, it := range ops {
 		it(p.hooks)
 	}
@@ -91,10 +91,11 @@ func (p *justMonoProcessor) Subscribe(ctx context.Context, ops ...OpSubscriber) 
 	return p
 }
 
-func JustMono(item Payload) Mono {
+// JustMono returns a new Mono with single element.
+func JustMono(element Payload) Mono {
 	return &justMonoProcessor{
 		subScheduler: ImmediateScheduler(),
 		hooks:        newHooks(),
-		item:         item,
+		item:         element,
 	}
 }

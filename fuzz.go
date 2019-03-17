@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/rsocket/rsocket-go/framing"
+	"github.com/rsocket/rsocket-go/common"
 )
 
 func Fuzz(data []byte) int {
@@ -15,35 +17,35 @@ func Fuzz(data []byte) int {
 	decoder := newLengthBasedFrameDecoder(buf)
 
 	err := decoder.handle(func(raw []byte) error {
-		h := parseHeaderBytes(data)
-		bf := borrowByteBuffer()
-		f := &baseFrame{h, bf}
+		h := framing.ParseFrameHeader(data)
+		bf := common.BorrowByteBuffer()
+		f := framing.NewBaseFrame(h, bf)
 
-		var frame Frame
+		var frame framing.Frame
 
-		switch f.header.Type() {
-		case tSetup:
-			frame = &frameSetup{f}
-		case tKeepalive:
-			frame = &frameKeepalive{f}
-		case tRequestResponse:
-			frame = &frameRequestResponse{f}
-		case tRequestFNF:
-			frame = &frameFNF{f}
-		case tRequestStream:
-			frame = &frameRequestStream{f}
-		case tRequestChannel:
-			frame = &frameRequestChannel{f}
-		case tCancel:
-			frame = &frameCancel{f}
-		case tPayload:
-			frame = &framePayload{f}
-		case tMetadataPush:
-			frame = &frameMetadataPush{f}
-		case tError:
-			frame = &frameError{f}
-		case tRequestN:
-			frame = &frameRequestN{f}
+		switch f.Header().Type() {
+		case framing.FrameTypeSetup:
+			frame = &framing.FrameSetup{BaseFrame: f}
+		case framing.FrameTypeKeepalive:
+			frame = &framing.FrameKeepalive{BaseFrame: f}
+		case framing.FrameTypeRequestResponse:
+			frame = &framing.FrameRequestResponse{BaseFrame: f}
+		case framing.FrameTypeRequestFNF:
+			frame = &framing.FrameFNF{BaseFrame: f}
+		case framing.FrameTypeRequestStream:
+			frame = &framing.FrameRequestStream{BaseFrame: f}
+		case framing.FrameTypeRequestChannel:
+			frame = &framing.FrameRequestChannel{BaseFrame: f}
+		case framing.FrameTypeCancel:
+			frame = &framing.FrameCancel{BaseFrame: f}
+		case framing.FrameTypePayload:
+			frame = &framing.FramePayload{BaseFrame: f}
+		case framing.FrameTypeMetadataPush:
+			frame = &framing.FrameMetadataPush{BaseFrame: f}
+		case framing.FrameTypeError:
+			frame = &framing.FrameError{BaseFrame: f}
+		case framing.FrameTypeRequestN:
+			frame = &framing.FrameRequestN{BaseFrame: f}
 		default:
 			return ErrInvalidFrame
 		}
