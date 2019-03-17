@@ -2,6 +2,8 @@ package extension
 
 import "fmt"
 
+// ParseRoutingTags parse routing tags in metadata.
+// See: https://github.com/rsocket/rsocket/blob/master/Extensions/Routing.md
 func ParseRoutingTags(bs []byte) (tags []string, err error) {
 	totals := len(bs)
 	cursor := 0
