@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -17,24 +19,24 @@ func init() {
 }
 
 func main() {
-	//rsocket.SetLoggerLevel(rsocket.LogLevelDebug)
+	//logger.SetLoggerLevel(logger.LogLevelDebug)
 	err := createEchoServer("127.0.0.1", 8001)
 	panic(err)
 }
 
 func createEchoServer(host string, port int) error {
 	responder := rsocket.NewAbstractSocket(
-		rsocket.MetadataPush(func(payload rsocket.Payload) {
-			log.Println("GOT METADATA_PUSH:", payload)
+		rsocket.MetadataPush(func(item payload.Payload) {
+			log.Println("GOT METADATA_PUSH:", item)
 		}),
-		rsocket.FireAndForget(func(payload rsocket.Payload) {
-			log.Println("GOT FNF:", payload)
+		rsocket.FireAndForget(func(elem payload.Payload) {
+			log.Println("GOT FNF:", elem)
 		}),
-		rsocket.RequestResponse(func(payload rsocket.Payload) rsocket.Mono {
+		rsocket.RequestResponse(func(pl payload.Payload) rx.Mono {
 			// just echo
-			return rsocket.JustMono(payload)
+			return rx.JustMono(pl)
 		}),
-		rsocket.RequestStream(func(payload rsocket.Payload) rsocket.Flux {
+		rsocket.RequestStream(func(pl payload.Payload) rx.Flux {
 			// for test: client metadata is totals as string
 
 			// Here is my Java client code:
@@ -56,14 +58,14 @@ func createEchoServer(host string, port int) error {
 			//		throw new Errorf(e);
 			//	}
 			//}
-			s := string(payload.Data())
-			m := string(payload.Metadata())
+			s := string(pl.Data())
+			m := string(pl.Metadata())
 			log.Println("data:", s, "metadata:", m)
 			totals := 100
-			if n, err := strconv.Atoi(string(payload.Metadata())); err == nil {
+			if n, err := strconv.Atoi(string(pl.Metadata())); err == nil {
 				totals = n
 			}
-			return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Producer) {
+			return rx.NewFlux(func(ctx context.Context, emitter rx.Producer) {
 				for i := 0; i < totals; i++ {
 					// You can use context for graceful coroutine shutdown, stop produce.
 					select {
@@ -72,31 +74,30 @@ func createEchoServer(host string, port int) error {
 						return
 					default:
 						//time.Sleep(10 * time.Millisecond)
-						payload := rsocket.NewPayloadString(fmt.Sprintf("%s_%d", s, i), m)
-						emitter.Next(payload)
+						_ = emitter.Next(payload.NewString(fmt.Sprintf("%s_%d", s, i), m))
 					}
 				}
 				emitter.Complete()
 			})
 		}),
-		rsocket.RequestChannel(func(payloads rsocket.Publisher) rsocket.Flux {
-			return payloads.(rsocket.Flux)
-			//// echo all incoming payloads
-			//f := rsocket.NewFlux(func(emitter rsocket.FluxEmitter) {
-			//	req.
-			//		DoFinally(func() {
+		rsocket.RequestChannel(func(payloads rx.Publisher) rx.Flux {
+			return payloads.(rx.Flux)
+			// echo all incoming payloads
+			//return rx.NewFlux(func(ctx context.Context, emitter rx.Producer) {
+			//	payloads.(rx.Flux).
+			//		DoFinally(func(ctx context.Context, st rx.SignalType) {
 			//			emitter.Complete()
 			//		}).
-			//		SubscribeOn(rsocket.ElasticScheduler()).
-			//		Subscribe(func(item rsocket.Payload) {
-			//			emitter.Next(rsocket.NewPayload(item.Data(), item.Metadata()))
-			//		})
+			//		DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+			//			_ = emitter.Next(payload.New(elem.Data(), elem.Metadata()))
+			//		}).
+			//		SubscribeOn(rx.ElasticScheduler()).
+			//		Subscribe(context.Background())
 			//})
-			//return f
 		}),
 	)
 	return rsocket.Receive().
-		Acceptor(func(setup rsocket.SetupPayload, sendingSocket rsocket.RSocket) rsocket.RSocket {
+		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.RSocket) rsocket.RSocket {
 			//log.Println("SETUP BEGIN:----------------")
 			//log.Println("maxLifeTime:", setup.MaxLifetime())
 			//log.Println("keepaliveInterval:", setup.TimeBetweenKeepalive())
@@ -106,12 +107,14 @@ func createEchoServer(host string, port int) error {
 			//log.Println("metadata:", string(setup.Metadata()))
 			//log.Println("SETUP END:----------------")
 
+			// NOTICE: request client for something.
 			//sendingSocket.
-			//	RequestResponse(rsocket.NewPayloadString("ping", "From server")).
-			//	SubscribeOn(rsocket.ElasticScheduler()).
-			//	Subscribe(context.Background(), func(ctx context.Context, item rsocket.Payload) {
-			//		//log.Println("rcv response from client:", item)
-			//	})
+			//	RequestResponse(payload.NewString("ping", "From server")).
+			//	DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+			//		log.Println("rcv response from client:", elem)
+			//	}).
+			//	SubscribeOn(rx.ElasticScheduler()).
+			//	Subscribe(context.Background())
 
 			return responder
 		}).

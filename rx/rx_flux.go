@@ -1,9 +1,10 @@
-package rsocket
+package rx
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/rsocket/rsocket-go/payload"
 	"math"
 	"sync"
 )
@@ -19,7 +20,7 @@ type fluxProcessor struct {
 	subScheduler Scheduler
 }
 
-func (p *fluxProcessor) n() int {
+func (p *fluxProcessor) N() int {
 	return int(p.q.tickets)
 }
 
@@ -39,11 +40,11 @@ func (p *fluxProcessor) DoFinally(fn FnOnFinally) Flux {
 
 func (p *fluxProcessor) LimitRate(n int) Flux {
 	if n < 1 {
-		p.q.SetRate(0)
+		p.q.setRate(0, 0)
 	} else if n >= math.MaxInt32 {
-		p.q.SetRate(math.MaxInt32)
+		p.q.setRate(math.MaxInt32, math.MaxInt32)
 	} else {
-		p.q.SetRate(int32(n))
+		p.q.setRate(int32(n), int32(n))
 	}
 	return p
 }
@@ -90,11 +91,11 @@ func (p *fluxProcessor) PublishOn(s Scheduler) Flux {
 
 func (p *fluxProcessor) Request(n int) {
 	if n > math.MaxInt32 {
-		p.q.RequestN(math.MaxInt32)
+		p.q.requestN(math.MaxInt32)
 	} else if n < 0 {
-		p.q.RequestN(0)
+		p.q.requestN(0)
 	} else {
-		p.q.RequestN(int32(n))
+		p.q.requestN(int32(n))
 	}
 }
 
@@ -108,12 +109,13 @@ func (p *fluxProcessor) Cancel() {
 
 }
 
-func (p *fluxProcessor) Next(v Payload) {
+func (p *fluxProcessor) Next(elem payload.Payload) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if p.sig == signalDefault {
-		_ = p.q.Add(v)
+		return p.q.add(elem)
 	}
+	return errWrongSignal
 }
 
 func (p *fluxProcessor) Error(e error) {
@@ -168,7 +170,7 @@ func (p *fluxProcessor) Subscribe(ctx context.Context, ops ...OptSubscribe) Disp
 		}()
 		p.OnSubscribe(ctx, p)
 		for {
-			v, ok := p.q.Poll(ctx)
+			v, ok := p.q.poll(ctx)
 			if !ok {
 				break
 			}
@@ -191,8 +193,8 @@ func (p *fluxProcessor) OnSubscribe(ctx context.Context, s Subscription) {
 	p.hooks.OnSubscribe(ctx, s)
 }
 
-func (p *fluxProcessor) OnNext(ctx context.Context, s Subscription, v Payload) {
-	p.hooks.OnNext(ctx, s, v)
+func (p *fluxProcessor) OnNext(ctx context.Context, s Subscription, elem payload.Payload) {
+	p.hooks.OnNext(ctx, s, elem)
 }
 
 func (p *fluxProcessor) OnComplete(ctx context.Context) {

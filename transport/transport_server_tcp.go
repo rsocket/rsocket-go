@@ -3,8 +3,8 @@ package transport
 import (
 	"context"
 	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/common/logger"
 	"github.com/rsocket/rsocket-go/framing"
-	"github.com/rsocket/rsocket-go/logger"
 	"net"
 	"sync"
 )

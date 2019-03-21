@@ -50,6 +50,7 @@ const (
 
 // Error defines.
 var (
+	ErrFrameLengthExceed  = errors.New("rsocket: frame length is greater than 24bits")
 	ErrInvalidTransport   = errors.New("rsocket: invalid Transport")
 	ErrInvalidFrame       = errors.New("rsocket: invalid frame")
 	ErrInvalidContext     = errors.New("rsocket: invalid context")

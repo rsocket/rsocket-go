@@ -2,6 +2,7 @@ package framing
 
 import (
 	"encoding/binary"
+	"fmt"
 	"github.com/rsocket/rsocket-go/common"
 )
 
@@ -13,6 +14,10 @@ const (
 // FrameKeepalive is keepalive frame.
 type FrameKeepalive struct {
 	*BaseFrame
+}
+
+func (p *FrameKeepalive) String() string {
+	return fmt.Sprintf("FrameKeepalive{%s,lastReceivedPosition=%d,data=%s}", p.Header(), p.LastReceivedPosition(), string(p.Data()))
 }
 
 // Validate returns error if frame is invalid.

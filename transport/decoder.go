@@ -3,8 +3,8 @@ package transport
 import (
 	"bufio"
 	"errors"
-	"github.com/rsocket/rsocket-go/framing"
 	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/framing"
 	"io"
 )
 

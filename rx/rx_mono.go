@@ -1,9 +1,10 @@
-package rsocket
+package rx
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/rsocket/rsocket-go/payload"
 	"sync"
 )
 
@@ -13,13 +14,13 @@ type defaultMonoProcessor struct {
 	hooks        *hooks
 	pubScheduler Scheduler
 	subScheduler Scheduler
-	r            Payload
+	r            payload.Payload
 	e            error
 	sig          SignalType
 	done         chan struct{}
 }
 
-func (p *defaultMonoProcessor) n() int {
+func (p *defaultMonoProcessor) N() int {
 	return 0
 }
 
@@ -72,8 +73,8 @@ func (p *defaultMonoProcessor) OnSubscribe(ctx context.Context, s Subscription) 
 	p.hooks.OnSubscribe(ctx, s)
 }
 
-func (p *defaultMonoProcessor) OnNext(ctx context.Context, s Subscription, payload Payload) {
-	p.hooks.OnNext(ctx, s, payload)
+func (p *defaultMonoProcessor) OnNext(ctx context.Context, s Subscription, elem payload.Payload) {
+	p.hooks.OnNext(ctx, s, elem)
 }
 
 func (p *defaultMonoProcessor) OnComplete(ctx context.Context) {
@@ -84,14 +85,16 @@ func (p *defaultMonoProcessor) OnError(ctx context.Context, err error) {
 	p.hooks.OnError(ctx, err)
 }
 
-func (p *defaultMonoProcessor) Success(payload Payload) {
+func (p *defaultMonoProcessor) Success(elem payload.Payload) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if p.sig == signalDefault {
-		p.r = payload
-		p.sig = SignalComplete
-		close(p.done)
+	if p.sig != signalDefault {
+		return errWrongSignal
 	}
+	p.r = elem
+	p.sig = SignalComplete
+	close(p.done)
+	return nil
 }
 
 func (p *defaultMonoProcessor) Error(err error) {

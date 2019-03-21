@@ -25,40 +25,40 @@ func ParseMIME(str string) (mime MIME, ok bool) {
 // All MIMEs
 const (
 	ApplicationAvro MIME = iota
-	ApplicationCbor
+	ApplicationCBOR
 	ApplicationGraphql
 	ApplicationGzip
 	ApplicationJavascript
-	ApplicationJson
+	ApplicationJSON
 	ApplicationOctetStream
-	ApplicationPdf
+	ApplicationPDF
 	ApplicationThrift
 	ApplicationProtobuf
-	ApplicationXml
+	ApplicationXML
 	ApplicationZip
-	AudioAac
-	AudioMp3
-	AudioMp4
-	AudioMpeg3
-	AudioMpeg
-	AudioOgg
+	AudioAAC
+	AudioMP3
+	AudioMP4
+	AudioMPEG3
+	AudioMPEG
+	AudioOGG
 	AudioOpus
 	AudioVorbis
-	ImageBmp
-	ImageGif
-	ImageHeicSequence
-	ImageHeic
-	ImageHeifSequence
-	ImageHeif
-	ImageJpeg
-	ImagePng
-	ImageTiff
+	ImageBMP
+	ImageGIF
+	ImageHEICSequence
+	ImageHEIC
+	ImageHEIFSequence
+	ImageHEIF
+	ImageJPEG
+	ImagePNG
+	ImageTIFF
 	MultipartMixed
-	TextCss
-	TextCsv
-	TextHtml
+	TextCSS
+	TextCSV
+	TextHTML
 	TextPlain
-	TextXml
+	TextXML
 	VideoH264
 	VideoH265
 	VideoVP8
@@ -70,40 +70,40 @@ const (
 func init() {
 	mimeTypes = map[MIME]string{
 		ApplicationAvro:          "application/avro",
-		ApplicationCbor:          "application/cbor",
+		ApplicationCBOR:          "application/cbor",
 		ApplicationGraphql:       "application/graphql",
 		ApplicationGzip:          "application/gzip",
 		ApplicationJavascript:    "application/javascript",
-		ApplicationJson:          "application/json",
+		ApplicationJSON:          "application/json",
 		ApplicationOctetStream:   "application/octet-stream",
-		ApplicationPdf:           "application/pdf",
+		ApplicationPDF:           "application/pdf",
 		ApplicationThrift:        "application/vnd.apache.thrift.binary",
 		ApplicationProtobuf:      "application/vnd.google.protobuf",
-		ApplicationXml:           "application/xml",
+		ApplicationXML:           "application/xml",
 		ApplicationZip:           "application/zip",
-		AudioAac:                 "audio/aac",
-		AudioMp3:                 "audio/mp3",
-		AudioMp4:                 "audio/mp4",
-		AudioMpeg3:               "audio/mpeg3",
-		AudioMpeg:                "audio/mpeg",
-		AudioOgg:                 "audio/ogg",
+		AudioAAC:                 "audio/aac",
+		AudioMP3:                 "audio/mp3",
+		AudioMP4:                 "audio/mp4",
+		AudioMPEG3:               "audio/mpeg3",
+		AudioMPEG:                "audio/mpeg",
+		AudioOGG:                 "audio/ogg",
 		AudioOpus:                "audio/opus",
 		AudioVorbis:              "audio/vorbis",
-		ImageBmp:                 "image/bmp",
-		ImageGif:                 "image/gif",
-		ImageHeicSequence:        "image/heic-sequence",
-		ImageHeic:                "image/heic",
-		ImageHeifSequence:        "image/heif-sequence",
-		ImageHeif:                "image/heif",
-		ImageJpeg:                "image/jpeg",
-		ImagePng:                 "image/png",
-		ImageTiff:                "image/tiff",
+		ImageBMP:                 "image/bmp",
+		ImageGIF:                 "image/gif",
+		ImageHEICSequence:        "image/heic-sequence",
+		ImageHEIC:                "image/heic",
+		ImageHEIFSequence:        "image/heif-sequence",
+		ImageHEIF:                "image/heif",
+		ImageJPEG:                "image/jpeg",
+		ImagePNG:                 "image/png",
+		ImageTIFF:                "image/tiff",
 		MultipartMixed:           "multipart/mixed",
-		TextCss:                  "text/css",
-		TextCsv:                  "text/csv",
-		TextHtml:                 "text/html",
+		TextCSS:                  "text/css",
+		TextCSV:                  "text/csv",
+		TextHTML:                 "text/html",
 		TextPlain:                "text/plain",
-		TextXml:                  "text/xml",
+		TextXML:                  "text/xml",
 		VideoH264:                "video/H264",
 		VideoH265:                "video/H265",
 		VideoVP8:                 "video/VP8",

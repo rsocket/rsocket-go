@@ -1,8 +1,9 @@
-package rsocket
+package rx
 
 import (
 	"context"
 	"fmt"
+	"github.com/rsocket/rsocket-go/payload"
 	"log"
 	"math/rand"
 	"testing"
@@ -19,14 +20,16 @@ func TestBQueue_SetRate(t *testing.T) {
 		log.Println("n:", i)
 	}
 	go func() {
-		defer qu.Close()
+		defer func() {
+			_ = qu.Close()
+		}()
 		for i := 0; i < 100; i++ {
 			//time.Sleep(10 * time.Millisecond)
-			_ = qu.Add(NewPayloadString(fmt.Sprintf("foo@%d", i), "aa"))
+			_ = qu.add(payload.NewString(fmt.Sprintf("foo@%d", i), "aa"))
 		}
 	}()
 	for {
-		v, ok := qu.Poll(context.Background())
+		v, ok := qu.poll(context.Background())
 		if !ok {
 			break
 		}
@@ -43,23 +46,23 @@ func TestQueue_Poll(t *testing.T) {
 
 	go func(ctx context.Context) {
 		defer close(done)
-		qu.RequestN(2)
+		qu.requestN(2)
 		n := 0
 		for {
-			v, ok := qu.Poll(ctx)
+			v, ok := qu.poll(ctx)
 			if !ok {
 				break
 			}
 			n++
 			log.Println("next:", v)
 			if n%2 == 0 {
-				qu.RequestN(2)
+				qu.requestN(2)
 			}
 		}
 	}(context.Background())
 	go func() {
 		for i := 0; i < 1000; i++ {
-			if err := qu.Add(NewPayloadString(fmt.Sprintf("foo@%d", i), "aa")); err != nil {
+			if err := qu.add(payload.NewString(fmt.Sprintf("foo@%d", i), "aa")); err != nil {
 				log.Println("add err:", err)
 			}
 		}

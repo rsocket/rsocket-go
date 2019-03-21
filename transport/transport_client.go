@@ -3,8 +3,9 @@ package transport
 import (
 	"context"
 	"fmt"
+	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/common/logger"
 	"github.com/rsocket/rsocket-go/framing"
-	"github.com/rsocket/rsocket-go/logger"
 	"sync"
 )
 
@@ -15,7 +16,11 @@ type clientTransportImpl struct {
 }
 
 func (p *clientTransportImpl) Send(frame framing.Frame) (err error) {
-	err = p.conn.Send(frame)
+	if framing.HeaderLen+frame.Len() > common.MaxUint24 {
+		err = common.ErrFrameLengthExceed
+	} else {
+		err = p.conn.Send(frame)
+	}
 	if err != nil {
 		frame.Release()
 	}

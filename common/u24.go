@@ -5,6 +5,9 @@ import (
 	"io"
 )
 
+// MaxUint24 is the max value of Uint24.
+const MaxUint24 = 16777215
+
 // Uint24 is 3 bytes unsigned integer.
 type Uint24 [3]byte
 

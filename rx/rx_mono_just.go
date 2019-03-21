@@ -1,16 +1,17 @@
-package rsocket
+package rx
 
 import (
 	"context"
+	"github.com/rsocket/rsocket-go/payload"
 )
 
 type justMonoProcessor struct {
-	item         Payload
+	item         payload.Payload
 	hooks        *hooks
 	subScheduler Scheduler
 }
 
-func (p *justMonoProcessor) n() int {
+func (p *justMonoProcessor) N() int {
 	return 0
 }
 
@@ -32,8 +33,8 @@ func (p *justMonoProcessor) OnSubscribe(ctx context.Context, s Subscription) {
 	p.hooks.OnSubscribe(ctx, s)
 }
 
-func (p *justMonoProcessor) OnNext(ctx context.Context, s Subscription, payload Payload) {
-	p.hooks.OnNext(ctx, s, payload)
+func (p *justMonoProcessor) OnNext(ctx context.Context, s Subscription, elem payload.Payload) {
+	p.hooks.OnNext(ctx, s, elem)
 }
 
 func (p *justMonoProcessor) OnComplete(ctx context.Context) {
@@ -92,7 +93,7 @@ func (p *justMonoProcessor) Subscribe(ctx context.Context, ops ...OptSubscribe) 
 }
 
 // JustMono returns a new Mono with single element.
-func JustMono(element Payload) Mono {
+func JustMono(element payload.Payload) Mono {
 	return &justMonoProcessor{
 		subScheduler: ImmediateScheduler(),
 		hooks:        newHooks(),

@@ -188,7 +188,6 @@ func NewBaseFrame(h FrameHeader, body *common.ByteBuff) *BaseFrame {
 		header: h,
 		body:   body,
 	}
-
 }
 
 func (p *BaseFrame) trySeekMetadataLen(offset int) int {

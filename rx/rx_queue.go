@@ -1,7 +1,8 @@
-package rsocket
+package rx
 
 import (
 	"context"
+	"github.com/rsocket/rsocket-go/payload"
 	"math"
 	"sync/atomic"
 )
@@ -9,15 +10,15 @@ import (
 type bQueue struct {
 	rate       int32
 	tickets    int32
-	data       chan Payload
+	data       chan payload.Payload
 	breaker    chan struct{}
 	onRequestN func(int32)
 	polling    bool
 }
 
-func (p *bQueue) SetRate(n int32) {
-	atomic.StoreInt32(&(p.rate), n)
-	atomic.StoreInt32(&(p.tickets), 0)
+func (p *bQueue) setRate(init, rate int32) {
+	atomic.StoreInt32(&(p.rate), rate)
+	atomic.StoreInt32(&(p.tickets), init)
 }
 
 func (p *bQueue) Close() error {
@@ -27,7 +28,7 @@ func (p *bQueue) Close() error {
 	return nil
 }
 
-func (p *bQueue) RequestN(n int32) {
+func (p *bQueue) requestN(n int32) {
 	if n < 0 {
 		return
 	}
@@ -43,17 +44,17 @@ func (p *bQueue) RequestN(n int32) {
 	}
 }
 
-func (p *bQueue) Add(payload Payload) (err error) {
+func (p *bQueue) add(elem payload.Payload) (err error) {
 	defer func() {
 		if e, ok := recover().(error); ok {
 			err = e
 		}
 	}()
-	p.data <- payload
+	p.data <- elem
 	return
 }
 
-func (p *bQueue) Poll(ctx context.Context) (payload Payload, ok bool) {
+func (p *bQueue) poll(ctx context.Context) (elem payload.Payload, ok bool) {
 	p.polling = true
 	defer func() {
 		p.polling = false
@@ -70,7 +71,7 @@ func (p *bQueue) Poll(ctx context.Context) (payload Payload, ok bool) {
 		}
 		if foo == 0 {
 			if n := atomic.LoadInt32(&(p.rate)); n > 0 {
-				p.RequestN(n)
+				p.requestN(n)
 			}
 			<-p.breaker
 		}
@@ -86,7 +87,7 @@ func newQueue(cap int, tickets int32, rate int32) *bQueue {
 	return &bQueue{
 		rate:    rate,
 		tickets: tickets,
-		data:    make(chan Payload, cap),
+		data:    make(chan payload.Payload, cap),
 		breaker: make(chan struct{}, 1),
 	}
 }

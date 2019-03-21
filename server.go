@@ -2,32 +2,45 @@ package rsocket
 
 import (
 	"github.com/rsocket/rsocket-go/framing"
+	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/transport"
 	"sync"
 )
 
-// ServerBuilder can be used to build a RSocket server.
-type ServerBuilder interface {
-	// Acceptor register server acceptor which is used to handle incoming RSockets.
-	Acceptor(acceptor ServerAcceptor) ServerTransportBuilder
-}
+const serverWorkerPoolSize = 1000
 
-// ServerTransportBuilder is used to build a RSocket server with custom Transport string.
-type ServerTransportBuilder interface {
-	// Transport specifiy transport string.
-	Transport(transport string) Start
-}
+type (
+	// ServerBuilder can be used to build a RSocket server.
+	ServerBuilder interface {
+		// Acceptor register server acceptor which is used to handle incoming RSockets.
+		Acceptor(acceptor ServerAcceptor) ServerTransportBuilder
+	}
 
-// Start start a RSocket server.
-type Start interface {
-	// Serve serve RSocket server.
-	Serve() error
+	// ServerTransportBuilder is used to build a RSocket server with custom Transport string.
+	ServerTransportBuilder interface {
+		// Transport specify transport string.
+		Transport(transport string) Start
+	}
+
+	// Start start a RSocket server.
+	Start interface {
+		// Serve serve RSocket server.
+		Serve() error
+	}
+)
+
+// Receive receives server connections from client RSockets.
+func Receive() ServerBuilder {
+	return &xServer{
+		responses: &sync.Map{},
+		scheduler: rx.NewElasticScheduler(serverWorkerPoolSize),
+	}
 }
 
 type xServer struct {
 	addr      string
 	acc       ServerAcceptor
-	scheduler Scheduler
+	scheduler rx.Scheduler
 	responses *sync.Map // sid -> flux/mono
 }
 
@@ -56,12 +69,4 @@ func (p *xServer) Serve() error {
 		return nil
 	})
 	return t.Listen()
-}
-
-// Receive receives server connections from client RSockets.
-func Receive() ServerBuilder {
-	return &xServer{
-		responses: &sync.Map{},
-		scheduler: NewElasticScheduler(1000),
-	}
 }

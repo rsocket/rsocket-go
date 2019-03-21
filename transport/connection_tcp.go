@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"context"
 	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/common/logger"
 	"github.com/rsocket/rsocket-go/framing"
-	"github.com/rsocket/rsocket-go/logger"
 	"io"
 	"sync"
 	"time"
@@ -169,6 +169,8 @@ func (p *tcpRConnection) onRcv(ctx context.Context, f *framing.BaseFrame) error 
 		frame = &framing.FrameError{BaseFrame: f}
 	case framing.FrameTypeRequestN:
 		frame = &framing.FrameRequestN{BaseFrame: f}
+	case framing.FrameTypeLease:
+		frame = &framing.FrameLease{BaseFrame: f}
 	default:
 		return common.ErrInvalidFrame
 	}

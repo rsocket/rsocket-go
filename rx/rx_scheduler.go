@@ -1,4 +1,4 @@
-package rsocket
+package rx
 
 import (
 	"context"

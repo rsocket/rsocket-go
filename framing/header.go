@@ -52,6 +52,7 @@ func NewFrameHeader(streamID uint32, frameType FrameType, flags ...FrameFlag) Fr
 	binary.BigEndian.PutUint32(h[:], streamID)
 	binary.BigEndian.PutUint16(h[4:], uint16(frameType)<<10|uint16(fg))
 	return h
+
 }
 
 // ParseFrameHeader parse a header from bytes.
@@ -59,5 +60,5 @@ func ParseFrameHeader(bs []byte) FrameHeader {
 	_ = bs[HeaderLen-1]
 	var bb [HeaderLen]byte
 	copy(bb[:], bs[:HeaderLen])
-	return FrameHeader(bb)
+	return bb
 }

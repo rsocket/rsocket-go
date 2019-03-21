@@ -1,9 +1,12 @@
 package benchmark
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
 	"github.com/stretchr/testify/assert"
 	"log"
 	_ "net/http/pprof"
@@ -28,13 +31,12 @@ func doOnce(host string, port int, totals int) {
 	log.Println("SETUP:", time.Now().Sub(now))
 	now = time.Now()
 	for _, client := range clients {
-		client.RequestResponse(rsocket.NewPayload(data, md)).
-			DoFinally(func(ctx context.Context, sig rsocket.SignalType) {
+		client.RequestResponse(payload.New(data, md)).
+			DoFinally(func(ctx context.Context, sig rx.SignalType) {
 				wg.Done()
 			}).
-			SubscribeOn(rsocket.ElasticScheduler()).
-			Subscribe(ctx, rsocket.OnNext(func(ctx context.Context, sub rsocket.Subscription, payload rsocket.Payload) {
-			}))
+			SubscribeOn(rx.ElasticScheduler()).
+			Subscribe(ctx)
 	}
 	wg.Wait()
 	cost := time.Now().Sub(now)
@@ -81,19 +83,39 @@ func TestClient_RequestResponse(t *testing.T) {
 	ctx := context.Background()
 	for i := 0; i < n; i++ {
 		md := []byte(fmt.Sprintf("benchmark_test_%d", i))
-		client.RequestResponse(rsocket.NewPayload(data, md)).
-			//DoFinally(func(ctx context.Context, sig rsocket.SignalType) {
-			//
-			//}).
-			SubscribeOn(rsocket.ElasticScheduler()).
-			Subscribe(ctx, rsocket.OnNext(func(ctx context.Context, sub rsocket.Subscription, payload rsocket.Payload) {
-				assert.Equal(t, data, payload.Data(), "data doesn't match")
-				assert.Equal(t, md, payload.Metadata(), "metadata doesn't match")
+		client.RequestResponse(payload.New(data, md)).
+			SubscribeOn(rx.ElasticScheduler()).
+			DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+				assert.Equal(t, data, elem.Data(), "data doesn't match")
+				assert.Equal(t, md, elem.Metadata(), "metadata doesn't match")
 				wg.Done()
-			}))
+			}).
+			Subscribe(ctx)
 	}
 	wg.Wait()
 	cost := time.Now().Sub(now)
 	log.Println(n, "COST:", cost)
 	log.Println(n, "QPS:", float64(n)/cost.Seconds())
+}
+
+func createClient(host string, port int) rsocket.ClientSocket {
+	client, err := rsocket.Connect().
+		SetupPayload(payload.NewString("你好", "世界")).
+		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
+			return rsocket.NewAbstractSocket(
+				rsocket.RequestResponse(func(p payload.Payload) rx.Mono {
+					log.Println("rcv reqresp from server:", p)
+					if bytes.Equal(p.Data(), []byte("ping")) {
+						return rx.JustMono(payload.NewString("pong", "from client"))
+					}
+					return rx.JustMono(p)
+				}),
+			)
+		}).
+		Transport(fmt.Sprintf("%s:%d", host, port)).
+		Start()
+	if err != nil {
+		panic(err)
+	}
+	return client
 }
