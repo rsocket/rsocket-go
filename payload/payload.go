@@ -17,6 +17,10 @@ type Payload interface {
 	// Release release all resources of payload.
 	// Some payload implements is pooled, so you must release resoures after using it.
 	Release()
+	// Get Metadata as utf-8 string
+	GetMetadataUtf8() string
+	// Get data as utf-8 string
+	GetDataUtf8() string
 }
 
 // SetupPayload is particular payload for RSocket Setup.
