@@ -17,6 +17,8 @@ type Payload interface {
 	// Release release all resources of payload.
 	// Some payload implements is pooled, so you must release resoures after using it.
 	Release()
+	// Returns whether the payload has metadata, useful for tell if metadata is empty or not present.
+	HasMetadata() bool
 	// Get Metadata as utf-8 string
 	GetMetadataUtf8() string
 	// Get data as utf-8 string
