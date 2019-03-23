@@ -58,11 +58,11 @@ func createEchoServer(host string, port int) error {
 			//		throw new Errorf(e);
 			//	}
 			//}
-			s := string(pl.Data())
-			m := string(pl.Metadata())
+			s := pl.DataUTF8()
+			m, _ := pl.MetadataUTF8()
 			log.Println("data:", s, "metadata:", m)
 			totals := 100
-			if n, err := strconv.Atoi(string(pl.Metadata())); err == nil {
+			if n, err := strconv.Atoi(m); err == nil {
 				totals = n
 			}
 			return rx.NewFlux(func(ctx context.Context, emitter rx.Producer) {

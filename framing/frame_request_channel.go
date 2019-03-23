@@ -25,7 +25,9 @@ func (p *FrameRequestChannel) Validate() (err error) {
 }
 
 func (p *FrameRequestChannel) String() string {
-	return fmt.Sprintf("FrameRequestChannel{%s,data=%s,metadata=%s,initialRequestN=%d}", p.header, p.Data(), p.Metadata(), p.InitialRequestN())
+	m, _ := p.MetadataUTF8()
+	return fmt.Sprintf("FrameRequestChannel{%s,data=%s,metadata=%s,initialRequestN=%d}",
+		p.header, p.DataUTF8(), m, p.InitialRequestN())
 }
 
 // InitialRequestN returns initial N.
@@ -34,13 +36,27 @@ func (p *FrameRequestChannel) InitialRequestN() uint32 {
 }
 
 // Metadata returns metadata bytes.
-func (p *FrameRequestChannel) Metadata() []byte {
+func (p *FrameRequestChannel) Metadata() ([]byte, bool) {
 	return p.trySliceMetadata(initReqLen)
 }
 
 // Data returns data bytes.
 func (p *FrameRequestChannel) Data() []byte {
 	return p.trySliceData(initReqLen)
+}
+
+// MetadataUTF8 returns metadata as UTF8 string.
+func (p *FrameRequestChannel) MetadataUTF8() (metadata string, ok bool) {
+	raw, ok := p.Metadata()
+	if ok {
+		metadata = string(raw)
+	}
+	return
+}
+
+// DataUTF8 returns data as UTF8 string.
+func (p *FrameRequestChannel) DataUTF8() string {
+	return string(p.Data())
 }
 
 // NewFrameRequestChannel returns a new RequestChannel frame.

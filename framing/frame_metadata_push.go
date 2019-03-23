@@ -18,17 +18,32 @@ func (p *FrameMetadataPush) Validate() (err error) {
 }
 
 func (p *FrameMetadataPush) String() string {
-	return fmt.Sprintf("FrameMetadataPush{%s,metadata=%s}", p.header, p.Metadata())
+	m, _ := p.MetadataUTF8()
+	return fmt.Sprintf("FrameMetadataPush{%s,metadata=%s}", p.header, m)
 }
 
 // Metadata returns metadata bytes.
-func (p *FrameMetadataPush) Metadata() []byte {
-	return p.body.Bytes()
+func (p *FrameMetadataPush) Metadata() ([]byte, bool) {
+	return p.body.Bytes(), true
 }
 
 // Data returns data bytes.
 func (p *FrameMetadataPush) Data() []byte {
 	return nil
+}
+
+// MetadataUTF8 returns metadata as UTF8 string.
+func (p *FrameMetadataPush) MetadataUTF8() (metadata string, ok bool) {
+	raw, ok := p.Metadata()
+	if ok {
+		metadata = string(raw)
+	}
+	return
+}
+
+// DataUTF8 returns data as UTF8 string.
+func (p *FrameMetadataPush) DataUTF8() (data string) {
+	return
 }
 
 // NewFrameMetadataPush returns a new metadata push frame.

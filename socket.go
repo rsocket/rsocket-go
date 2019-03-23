@@ -46,11 +46,13 @@ func (p *duplexRSocket) Close() error {
 }
 
 func (p *duplexRSocket) FireAndForget(payload payload.Payload) {
-	_ = p.tp.Send(framing.NewFrameFNF(p.nextStreamID(), payload.Data(), payload.Metadata()))
+	metadata, _ := payload.Metadata()
+	_ = p.tp.Send(framing.NewFrameFNF(p.nextStreamID(), payload.Data(), metadata))
 }
 
 func (p *duplexRSocket) MetadataPush(payload payload.Payload) {
-	_ = p.tp.Send(framing.NewFrameMetadataPush(payload.Metadata()))
+	metadata, _ := payload.Metadata()
+	_ = p.tp.Send(framing.NewFrameMetadataPush(metadata))
 }
 
 func (p *duplexRSocket) RequestResponse(pl payload.Payload) rx.Mono {
@@ -70,7 +72,8 @@ func (p *duplexRSocket) RequestResponse(pl payload.Payload) rx.Mono {
 
 	p.scheduler.Do(context.Background(), func(ctx context.Context) {
 		defer pl.Release()
-		if err := p.tp.Send(framing.NewFrameRequestResponse(sid, pl.Data(), pl.Metadata())); err != nil {
+		metadata, _ := pl.Metadata()
+		if err := p.tp.Send(framing.NewFrameRequestResponse(sid, pl.Data(), metadata)); err != nil {
 			resp.(rx.MonoProducer).Error(err)
 		}
 	})
@@ -102,7 +105,8 @@ func (p *duplexRSocket) RequestStream(elem payload.Payload) rx.Flux {
 		}).
 		DoOnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			defer elem.Release()
-			if err := merge.tp.Send(framing.NewFrameRequestStream(merge.sid, uint32(s.N()), elem.Data(), elem.Metadata())); err != nil {
+			metadata, _ := elem.Metadata()
+			if err := merge.tp.Send(framing.NewFrameRequestStream(merge.sid, uint32(s.N()), elem.Data(), metadata)); err != nil {
 				flux.(rx.Producer).Error(err)
 			}
 		})
@@ -134,9 +138,11 @@ func (p *duplexRSocket) RequestChannel(payloads rx.Publisher) rx.Flux {
 			defer item.Release()
 			// TODO: request N
 			if atomic.AddUint32(merge.i, 1) == 1 {
-				_ = merge.tp.Send(framing.NewFrameRequestChannel(merge.sid, math.MaxUint32, item.Data(), item.Metadata(), framing.FlagNext))
+				metadata, _ := item.Metadata()
+				_ = merge.tp.Send(framing.NewFrameRequestChannel(merge.sid, math.MaxUint32, item.Data(), metadata, framing.FlagNext))
 			} else {
-				_ = merge.tp.Send(framing.NewFramePayload(merge.sid, item.Data(), item.Metadata(), framing.FlagNext))
+				metadata, _ := item.Metadata()
+				_ = merge.tp.Send(framing.NewFramePayload(merge.sid, item.Data(), metadata, framing.FlagNext))
 			}
 		}))
 
@@ -180,12 +186,13 @@ func (p *duplexRSocket) respondRequestResponse(input framing.Frame) error {
 		Subscribe(context.Background(), rx.OnNext(func(ctx context.Context, sub rx.Subscription, item payload.Payload) {
 			v, ok := item.(*framing.FrameRequestResponse)
 			if !ok || v != f {
-				_ = p.tp.Send(framing.NewFramePayload(sid, item.Data(), item.Metadata(), framing.FlagNext|framing.FlagComplete))
+				metadata, _ := item.Metadata()
+				_ = p.tp.Send(framing.NewFramePayload(sid, item.Data(), metadata, framing.FlagNext|framing.FlagComplete))
 				return
 			}
 			// reuse request frame, reduce copy
 			fg := framing.FlagNext | framing.FlagComplete
-			if len(v.Metadata()) > 0 {
+			if _, ok := v.Metadata(); ok {
 				fg |= framing.FlagMetadata
 			}
 			send := &framing.FramePayload{
@@ -217,7 +224,7 @@ func (p *duplexRSocket) respondRequestChannel(input framing.Frame) error {
 
 	p.setPublisher(sid, inputs)
 	initialRequestN := f.InitialRequestN()
-	inputs.(rx.Producer).Next(f)
+	_ = inputs.(rx.Producer).Next(f)
 	// TODO: process send error
 	_ = p.tp.Send(framing.NewFrameRequestN(sid, initialRequestN))
 
@@ -436,7 +443,8 @@ func (p *duplexRSocket) toSender(sid uint32, fg framing.FrameFlag) rx.OptSubscri
 			_ = merge.tp.Send(v)
 		default:
 			defer elem.Release()
-			_ = merge.tp.Send(framing.NewFramePayload(merge.sid, elem.Data(), elem.Metadata(), merge.fg))
+			metadata, _ := elem.Metadata()
+			_ = merge.tp.Send(framing.NewFramePayload(merge.sid, elem.Data(), metadata, merge.fg))
 		}
 	})
 }

@@ -16,11 +16,12 @@ func (p *FramePayload) Validate() (err error) {
 }
 
 func (p *FramePayload) String() string {
-	return fmt.Sprintf("FramePayload{%s,data=%s,metadata=%s}", p.header, string(p.Data()), string(p.Metadata()))
+	m, _ := p.MetadataUTF8()
+	return fmt.Sprintf("FramePayload{%s,data=%s,metadata=%s}", p.header, p.DataUTF8(), m)
 }
 
 // Metadata returns metadata bytes.
-func (p *FramePayload) Metadata() []byte {
+func (p *FramePayload) Metadata() ([]byte, bool) {
 	return p.trySliceMetadata(0)
 }
 
@@ -29,18 +30,17 @@ func (p *FramePayload) Data() []byte {
 	return p.trySliceData(0)
 }
 
-// Returns whether the payload has metadata
-func (p *FramePayload) HasMetadata() bool {
-	return len(p.Data()) > 0
+// MetadataUTF8 returns metadata as UTF8 string.
+func (p *FramePayload) MetadataUTF8() (metadata string, ok bool) {
+	raw, ok := p.Metadata()
+	if ok {
+		metadata = string(raw)
+	}
+	return
 }
 
-// MetaData returns as utf-8 string
-func (p *FramePayload) GetMetadataUtf8() string {
-	return string(p.Metadata())
-}
-
-// Data returns as utf-8 string
-func (p *FramePayload) GetDataUtf8() string {
+// DataUTF8 returns data as UTF8 string.
+func (p *FramePayload) DataUTF8() string {
 	return string(p.Data())
 }
 

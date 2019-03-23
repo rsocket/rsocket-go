@@ -204,12 +204,12 @@ func (p *BaseFrame) trySeekMetadataLen(offset int) int {
 	return common.NewUint24Bytes(raw).AsInt()
 }
 
-func (p *BaseFrame) trySliceMetadata(offset int) []byte {
+func (p *BaseFrame) trySliceMetadata(offset int) ([]byte, bool) {
 	n := p.trySeekMetadataLen(offset)
 	if n < 1 {
-		return nil
+		return nil, false
 	}
-	return p.body.Bytes()[offset+3 : offset+3+n]
+	return p.body.Bytes()[offset+3 : offset+3+n], true
 }
 
 func (p *BaseFrame) trySliceData(offset int) []byte {

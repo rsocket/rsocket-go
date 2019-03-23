@@ -30,9 +30,10 @@ func (p *FrameSetup) Validate() (err error) {
 }
 
 func (p *FrameSetup) String() string {
+	m, _ := p.MetadataUTF8()
 	return fmt.Sprintf(
 		"FrameSetup{%s,version=%s,keepaliveInterval=%s,keepaliveMaxLifetime=%s,token=%s,dataMimeType=%s,metadataMimeType=%s,data=%s,metadata=%s}",
-		p.header, p.Version(), p.TimeBetweenKeepalive(), p.MaxLifetime(), p.Token(), p.DataMimeType(), p.MetadataMimeType(), p.Data(), p.Metadata(),
+		p.header, p.Version(), p.TimeBetweenKeepalive(), p.MaxLifetime(), p.Token(), p.DataMimeType(), p.MetadataMimeType(), p.DataUTF8(), m,
 	)
 }
 
@@ -76,9 +77,9 @@ func (p *FrameSetup) MetadataMimeType() string {
 }
 
 // Metadata returns metadata bytes.
-func (p *FrameSetup) Metadata() []byte {
+func (p *FrameSetup) Metadata() ([]byte, bool) {
 	if !p.header.Flag().Check(FlagMetadata) {
-		return nil
+		return nil, false
 	}
 	offset := p.seekMetadata()
 	return p.trySliceMetadata(offset)
@@ -88,6 +89,20 @@ func (p *FrameSetup) Metadata() []byte {
 func (p *FrameSetup) Data() []byte {
 	offset := p.seekMetadata()
 	return p.trySliceData(offset)
+}
+
+// MetadataUTF8 returns metadata as UTF8 string
+func (p *FrameSetup) MetadataUTF8() (metadata string, ok bool) {
+	raw, ok := p.Metadata()
+	if ok {
+		metadata = string(raw)
+	}
+	return
+}
+
+// DataUTF8 returns data as UTF8 string.
+func (p *FrameSetup) DataUTF8() string {
+	return string(p.Data())
 }
 
 func (p *FrameSetup) mime() (metadata []byte, data []byte) {

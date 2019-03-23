@@ -11,18 +11,18 @@ import (
 // In Reactive Streams and Rx this is the 'onNext' event.
 type Payload interface {
 	// Metadata returns raw metadata bytes.
-	Metadata() []byte
+	// The ok result indicates whether metadata exists.
+	Metadata() (metadata []byte, ok bool)
+	// MetadataUTF8 returns metadata as UTF8 string.
+	// The ok result indicates whether metadata exists.
+	MetadataUTF8() (metadata string, ok bool)
 	// Data returns raw data bytes.
 	Data() []byte
+	// DataUTF8 returns data as UTF8 string.
+	DataUTF8() string
 	// Release release all resources of payload.
 	// Some payload implements is pooled, so you must release resoures after using it.
 	Release()
-	// Returns whether the payload has metadata, useful for tell if metadata is empty or not present.
-	HasMetadata() bool
-	// Get Metadata as utf-8 string
-	GetMetadataUtf8() string
-	// Get data as utf-8 string
-	GetDataUtf8() string
 }
 
 // SetupPayload is particular payload for RSocket Setup.

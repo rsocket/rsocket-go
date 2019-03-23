@@ -27,7 +27,8 @@ func (p *FrameLease) Validate() (err error) {
 }
 
 func (p *FrameLease) String() string {
-	return fmt.Sprintf("FrameLease{%s,timeToLive=%d,numberOfRequests=%d,metadata=%s}", p.header, p.TimeToLive(), p.NumberOfRequests(), p.Metadata())
+	return fmt.Sprintf("FrameLease{%s,timeToLive=%d,numberOfRequests=%d,metadata=%s}",
+		p.header, p.TimeToLive(), p.NumberOfRequests(), string(p.Metadata()))
 }
 
 // TimeToLive returns time to live duration.

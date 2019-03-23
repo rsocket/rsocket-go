@@ -12,7 +12,8 @@ func TestFramePayload_Basic(t *testing.T) {
 	data := []byte("world")
 	f := NewFramePayload(123, data, metadata)
 
-	assert.Equal(t, metadata, f.Metadata(), "metadata failed")
+	metadata1, _ := f.Metadata()
+	assert.Equal(t, metadata, metadata1, "metadata failed")
 	assert.Equal(t, data, f.Data(), "data failed")
 
 	bf := &bytes.Buffer{}
@@ -27,7 +28,9 @@ func TestFramePayload_Basic(t *testing.T) {
 			body:   bb,
 		},
 	}
-	assert.Equal(t, metadata, f2.Metadata(), "metadata failed 2")
+
+	metadata2, _ := f2.Metadata()
+	assert.Equal(t, metadata, metadata2, "metadata failed 2")
 	assert.Equal(t, data, f2.Data(), "data failed 2")
 	assert.Equal(t, f.header[:], f2.header[:])
 }

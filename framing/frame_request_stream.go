@@ -24,7 +24,9 @@ func (p *FrameRequestStream) Validate() (err error) {
 }
 
 func (p *FrameRequestStream) String() string {
-	return fmt.Sprintf("FrameRequestStream{%s,data=%s,metadata=%s,initialRequestN=%d}", p.header, p.Data(), p.Metadata(), p.InitialRequestN())
+	m, _ := p.MetadataUTF8()
+	return fmt.Sprintf("FrameRequestStream{%s,data=%s,metadata=%s,initialRequestN=%d}",
+		p.header, p.DataUTF8(), m, p.InitialRequestN())
 }
 
 // InitialRequestN returns initial request N.
@@ -33,13 +35,27 @@ func (p *FrameRequestStream) InitialRequestN() uint32 {
 }
 
 // Metadata returns metadata bytes.
-func (p *FrameRequestStream) Metadata() []byte {
+func (p *FrameRequestStream) Metadata() ([]byte, bool) {
 	return p.trySliceMetadata(4)
 }
 
 // Data returns data bytes.
 func (p *FrameRequestStream) Data() []byte {
 	return p.trySliceData(4)
+}
+
+// MetadataUTF8 returns metadata as UTF8 string.
+func (p *FrameRequestStream) MetadataUTF8() (metadata string, ok bool) {
+	raw, ok := p.Metadata()
+	if ok {
+		metadata = string(raw)
+	}
+	return
+}
+
+// DataUTF8 returns data as UTF8 string.
+func (p *FrameRequestStream) DataUTF8() string {
+	return string(p.Data())
 }
 
 // NewFrameRequestStream returns a new request stream frame.

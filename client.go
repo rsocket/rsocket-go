@@ -106,8 +106,7 @@ func (p *implClientBuilder) SetupPayload(setup payload.Payload) ClientBuilder {
 		copy(data2, data)
 		p.setupData = data2
 	}
-	metadata := setup.Metadata()
-	if len(metadata) > 0 {
+	if metadata, ok := setup.Metadata(); ok {
 		metadata2 := make([]byte, len(metadata))
 		copy(metadata2, metadata)
 		p.setupMetadata = metadata2

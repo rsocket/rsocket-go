@@ -87,7 +87,8 @@ func TestClient_RequestResponse(t *testing.T) {
 			SubscribeOn(rx.ElasticScheduler()).
 			DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
 				assert.Equal(t, data, elem.Data(), "data doesn't match")
-				assert.Equal(t, md, elem.Metadata(), "metadata doesn't match")
+				metadata, _ := elem.Metadata()
+				assert.Equal(t, md, metadata, "metadata doesn't match")
 				wg.Done()
 			}).
 			Subscribe(ctx)

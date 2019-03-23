@@ -75,8 +75,9 @@ func TestClient_RequestResponse(t *testing.T) {
 		}).
 		DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
 			log.Println("rcv:", elem)
-			assert.Equal(t, "hello", string(elem.Data()))
-			assert.Equal(t, "world", string(elem.Metadata()))
+			assert.Equal(t, "hello", elem.DataUTF8())
+			metadata, _ := elem.MetadataUTF8()
+			assert.Equal(t, "world", metadata)
 		}).
 		Subscribe(context.Background())
 }
@@ -102,8 +103,9 @@ func TestClient_RequestStream(t *testing.T) {
 		DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
 			time.Sleep(500 * time.Millisecond)
 			log.Println("rcv:", elem)
-			assert.Equal(t, fmt.Sprintf("hello_%d", totals), string(elem.Data()), "bad data")
-			assert.Equal(t, fmt.Sprintf("%d", c), string(elem.Metadata()), "bad metadata")
+			assert.Equal(t, fmt.Sprintf("hello_%d", totals), elem.DataUTF8(), "bad data")
+			metadata, _ := elem.MetadataUTF8()
+			assert.Equal(t, fmt.Sprintf("%d", c), metadata, "bad metadata")
 			totals++
 		}).
 		Subscribe(context.Background())
