@@ -29,6 +29,21 @@ func (p *FramePayload) Data() []byte {
 	return p.trySliceData(0)
 }
 
+// Returns whether the payload has metadata
+func (p *FramePayload) HasMetadata() bool {
+	return len(p.Data()) > 0
+}
+
+// MetaData returns as utf-8 string
+func (p *FramePayload) GetMetadataUtf8() string {
+	return string(p.Metadata())
+}
+
+// Data returns as utf-8 string
+func (p *FramePayload) GetDataUtf8() string {
+	return string(p.Data())
+}
+
 // NewFramePayload returns a new payload frame.
 func NewFramePayload(id uint32, data, metadata []byte, flags ...FrameFlag) *FramePayload {
 	fg := newFlags(flags...)
