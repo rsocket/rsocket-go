@@ -1,5 +1,5 @@
 # rsocket-go
-![logo](./logo.png)
+![logo](./logo.jpg)
 
 [![Slack](https://img.shields.io/badge/slack-rsocket--go-blue.svg)](https://rsocket.slack.com/messages/C9VGZ5MV3)
 [![GoDoc](https://godoc.org/github.com/rsocket/rsocket-go?status.svg)](https://godoc.org/github.com/rsocket/rsocket-go)
@@ -85,7 +85,7 @@ func main() {
 
 #### Mono
 
-`Mono` completes successfully by emitting an element, or with an error. 
+`Mono` completes successfully by emitting an element, or with an error.
 Here is a tiny example:
 
 ```go
@@ -156,7 +156,7 @@ func main() {
 
 #### RequestN
 
-`Flux` support **backpressure**. 
+`Flux` support **backpressure**.
 
 You can call func `Request` in `Subscription` or use `LimitRate` before subscribe.
 
