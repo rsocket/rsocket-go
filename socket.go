@@ -26,19 +26,12 @@ type duplexRSocket struct {
 	tp              transport.Transport
 	serverMode      bool
 	requestStreamID uint32
-	messages        *sync.Map // sid -> rx
+	messages        *publishersMap
 	scheduler       rx.Scheduler
 }
 
 func (p *duplexRSocket) releaseAll() {
-	disposables := make([]rx.Disposable, 0)
-	p.messages.Range(func(key, value interface{}) bool {
-		disposables = append(disposables, value.(rx.Disposable))
-		return true
-	})
-	for _, value := range disposables {
-		value.Dispose()
-	}
+	p.messages.Dispose()
 }
 
 func (p *duplexRSocket) Close() error {
@@ -61,13 +54,18 @@ func (p *duplexRSocket) RequestResponse(pl payload.Payload) rx.Mono {
 	resp.DoAfterSuccess(func(ctx context.Context, elem payload.Payload) {
 		elem.Release()
 	})
-	p.setPublisher(sid, resp)
+
+	p.messages.put(sid, &publishers{
+		mode:      msgStoreModeRequestResponse,
+		receiving: resp,
+	})
+
 	resp.
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
 			if sig == rx.SignalCancel {
 				_ = p.tp.Send(framing.NewFrameCancel(sid))
 			}
-			p.unsetPublisher(sid)
+			p.messages.remove(sid)
 		})
 
 	p.scheduler.Do(context.Background(), func(ctx context.Context) {
@@ -83,7 +81,11 @@ func (p *duplexRSocket) RequestResponse(pl payload.Payload) rx.Mono {
 func (p *duplexRSocket) RequestStream(elem payload.Payload) rx.Flux {
 	sid := p.nextStreamID()
 	flux := rx.NewFlux(nil)
-	p.setPublisher(sid, flux)
+
+	p.messages.put(sid, &publishers{
+		mode:      msgStoreModeRequestStream,
+		receiving: flux,
+	})
 
 	merge := struct {
 		sid uint32
@@ -95,7 +97,7 @@ func (p *duplexRSocket) RequestStream(elem payload.Payload) rx.Flux {
 			elem.Release()
 		}).
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
-			p.unsetPublisher(sid)
+			p.messages.remove(sid)
 			if sig == rx.SignalCancel {
 				_ = merge.tp.Send(framing.NewFrameCancel(merge.sid))
 			}
@@ -113,25 +115,35 @@ func (p *duplexRSocket) RequestStream(elem payload.Payload) rx.Flux {
 	return flux
 }
 
-func (p *duplexRSocket) RequestChannel(payloads rx.Publisher) rx.Flux {
+func (p *duplexRSocket) RequestChannel(publisher rx.Publisher) rx.Flux {
 	sid := p.nextStreamID()
-	inputs := payloads.(rx.Flux)
-	fx := rx.NewFlux(nil)
-	p.messages.Store(sid, fx)
-	fx.DoFinally(func(ctx context.Context, sig rx.SignalType) {
-		p.messages.Delete(sid)
+	sending := publisher.(rx.Flux)
+	receiving := rx.NewFlux(nil)
+
+	p.messages.put(sid, &publishers{
+		mode:      msgStoreModeRequestChannel,
+		sending:   sending,
+		receiving: receiving,
+	})
+
+	receiving.DoFinally(func(ctx context.Context, sig rx.SignalType) {
+		// TODO: graceful close
+		p.messages.remove(sid)
 	})
 
 	var idx uint32
 	merge := struct {
-		tp  transport.Transport
-		sid uint32
-		i   *uint32
-	}{p.tp, sid, &idx}
+		pubs *publishersMap
+		tp   transport.Transport
+		sid  uint32
+		i    *uint32
+	}{p.messages, p.tp, sid, &idx}
 
-	inputs.
+	sending.
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
-			_ = merge.tp.Send(framing.NewFramePayload(merge.sid, nil, nil, framing.FlagComplete))
+			if sig == rx.SignalComplete {
+				_ = merge.tp.Send(framing.NewFramePayload(merge.sid, nil, nil, framing.FlagComplete))
+			}
 		}).
 		SubscribeOn(p.scheduler).
 		Subscribe(context.Background(), rx.OnNext(func(ctx context.Context, sub rx.Subscription, item payload.Payload) {
@@ -146,38 +158,41 @@ func (p *duplexRSocket) RequestChannel(payloads rx.Publisher) rx.Flux {
 			}
 		}))
 
-	return fx
+	return receiving
 }
 
 func (p *duplexRSocket) respondRequestResponse(input framing.Frame) error {
 	// 0. do some convert jobs
-	f := input.(*framing.FrameRequestResponse)
-	sid := f.Header().StreamID()
+	receiving := input.(*framing.FrameRequestResponse)
+	sid := receiving.Header().StreamID()
 	// 1. execute socket handler
-	send, err := func() (mono rx.Mono, err error) {
+	sending, err := func() (mono rx.Mono, err error) {
 		defer func() {
 			err = toError(recover())
 		}()
-		mono = p.responder.RequestResponse(f)
+		mono = p.responder.RequestResponse(receiving)
 		return
 	}()
-	// 2. send error with panic
+	// 2. sending error with panic
 	if err != nil {
 		_ = p.writeError(sid, err)
 		return nil
 	}
-	// 3. send error with unsupported handler
-	if send == nil {
+	// 3. sending error with unsupported handler
+	if sending == nil {
 		_ = p.writeError(sid, framing.NewFrameError(sid, common.ErrorCodeApplicationError, unsupportedRequestResponse))
 		return nil
 	}
 	// 4. register publisher
-	p.setPublisher(sid, send)
+	p.messages.put(sid, &publishers{
+		mode:    msgStoreModeRequestResponse,
+		sending: sending,
+	})
 	// 5. async subscribe publisher
-	send.
+	sending.
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
-			p.unsetPublisher(sid)
-			f.Release()
+			p.messages.remove(sid)
+			receiving.Release()
 		}).
 		DoOnError(func(ctx context.Context, err error) {
 			_ = p.writeError(sid, err)
@@ -185,7 +200,7 @@ func (p *duplexRSocket) respondRequestResponse(input framing.Frame) error {
 		SubscribeOn(p.scheduler).
 		Subscribe(context.Background(), rx.OnNext(func(ctx context.Context, sub rx.Subscription, item payload.Payload) {
 			v, ok := item.(*framing.FrameRequestResponse)
-			if !ok || v != f {
+			if !ok || v != receiving {
 				metadata, _ := item.Metadata()
 				_ = p.tp.Send(framing.NewFramePayload(sid, item.Data(), metadata, framing.FlagNext|framing.FlagComplete))
 				return
@@ -207,12 +222,13 @@ func (p *duplexRSocket) respondRequestResponse(input framing.Frame) error {
 func (p *duplexRSocket) respondRequestChannel(input framing.Frame) error {
 	f := input.(*framing.FrameRequestChannel)
 	sid := f.Header().StreamID()
-	inputs := rx.NewFlux(nil)
-	outputs, err := func() (flux rx.Flux, err error) {
+	initN := int(f.InitialRequestN())
+	receiving := rx.NewFlux(nil)
+	sending, err := func() (flux rx.Flux, err error) {
 		defer func() {
 			err = toError(recover())
 		}()
-		flux = p.responder.RequestChannel(inputs.(rx.Flux))
+		flux = p.responder.RequestChannel(receiving.(rx.Flux))
 		if flux == nil {
 			err = framing.NewFrameError(sid, common.ErrorCodeApplicationError, unsupportedRequestChannel)
 		}
@@ -222,22 +238,58 @@ func (p *duplexRSocket) respondRequestChannel(input framing.Frame) error {
 		return p.writeError(sid, err)
 	}
 
-	p.setPublisher(sid, inputs)
-	initialRequestN := f.InitialRequestN()
-	_ = inputs.(rx.Producer).Next(f)
-	// TODO: process send error
-	_ = p.tp.Send(framing.NewFrameRequestN(sid, initialRequestN))
+	p.messages.put(sid, &publishers{
+		mode:      msgStoreModeRequestChannel,
+		sending:   sending,
+		receiving: receiving,
+	})
 
-	if inputs != outputs {
+	if err := receiving.(rx.Producer).Next(f); err != nil {
+		f.Release()
+	}
+
+	receiving.
+		DoFinally(func(ctx context.Context, st rx.SignalType) {
+			found, ok := p.messages.load(sid)
+			if !ok {
+				return
+			}
+			if found.sending == nil {
+				p.messages.remove(sid)
+			} else {
+				found.receiving = nil
+			}
+		}).
+		DoOnRequest(func(ctx context.Context, n int) {
+			if n != math.MaxInt32 {
+				_ = p.tp.Send(framing.NewFrameRequestN(sid, uint32(n)))
+			}
+		}).
+		DoOnSubscribe(func(ctx context.Context, s rx.Subscription) {
+			n := uint32(s.N())
+			if n == math.MaxInt32 {
+				_ = p.tp.Send(framing.NewFrameRequestN(sid, n))
+			}
+		})
+
+	if receiving != sending {
 		// auto release frame for each consumer
-		inputs.DoAfterNext(func(ctx context.Context, item payload.Payload) {
+		receiving.DoAfterNext(func(ctx context.Context, item payload.Payload) {
 			item.Release()
 		})
 	}
 
-	outputs.
+	sending.
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
-			p.unsetPublisher(sid)
+			found, ok := p.messages.load(sid)
+			if !ok {
+				return
+			}
+			if found.receiving == nil {
+				p.messages.remove(sid)
+			} else {
+				found.sending = nil
+			}
 		}).
 		DoOnError(func(ctx context.Context, err error) {
 			_ = p.writeError(sid, err)
@@ -246,7 +298,9 @@ func (p *duplexRSocket) respondRequestChannel(input framing.Frame) error {
 			_ = p.tp.Send(framing.NewFramePayload(sid, nil, nil, framing.FlagComplete))
 		}).
 		SubscribeOn(p.scheduler).
-		Subscribe(context.Background(), p.toSender(sid, framing.FlagNext))
+		Subscribe(context.Background(), rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
+			s.Request(initN)
+		}), p.toSender(sid, framing.FlagNext))
 	return nil
 }
 
@@ -298,13 +352,16 @@ func (p *duplexRSocket) respondRequestStream(input framing.Frame) error {
 	}
 
 	// 3. register publisher
-	p.setPublisher(sid, resp)
+	p.messages.put(sid, &publishers{
+		mode:    msgStoreModeRequestStream,
+		sending: resp,
+	})
 
 	// 4. async subscribe publisher
 	resp.
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
+			p.messages.remove(sid)
 			f.Release()
-			p.unsetPublisher(sid)
 		}).
 		DoOnComplete(func(ctx context.Context) {
 			_ = p.tp.Send(framing.NewFramePayload(sid, nil, nil, framing.FlagComplete))
@@ -337,82 +394,84 @@ func (p *duplexRSocket) bindResponder(socket RSocket) {
 }
 
 func (p *duplexRSocket) start() {
-	p.tp.HandleCancel(func(frame framing.Frame) (err error) {
-		logger.Warnf("incoming cancel frame: %s\n", frame)
+	p.tp.HandleCancel(func(frame framing.Frame) error {
 		defer frame.Release()
 		sid := frame.Header().StreamID()
-		v, ok := p.messages.Load(sid)
-		if !ok {
-			return fmt.Errorf("invalid stream id: %d", sid)
+		if v, ok := p.messages.load(sid); ok {
+			v.sending.(rx.Disposable).Dispose()
 		}
-		v.(rx.Disposable).Dispose()
 		return nil
 	})
 	p.tp.HandleError(func(input framing.Frame) (err error) {
 		f := input.(*framing.FrameError)
 		logger.Errorf("handle error frame: %s\n", f)
-		v, ok := p.messages.Load(f.Header().StreamID())
+		sid := f.Header().StreamID()
+		v, ok := p.messages.load(sid)
 		if !ok {
-			return fmt.Errorf("invalid stream id: %d", f.Header().StreamID())
+			return fmt.Errorf("invalid stream id: %d", sid)
 		}
-		switch foo := v.(type) {
-		case rx.Mono:
-			foo.DoFinally(func(ctx context.Context, sig rx.SignalType) {
+
+		switch v.mode {
+		case msgStoreModeRequestResponse:
+			v.receiving.(rx.Mono).DoFinally(func(ctx context.Context, st rx.SignalType) {
 				f.Release()
 			})
-		case rx.Flux:
-			foo.DoFinally(func(ctx context.Context, sig rx.SignalType) {
+			v.receiving.(rx.MonoProducer).Error(f)
+		case msgStoreModeRequestStream, msgStoreModeRequestChannel:
+			v.receiving.(rx.Flux).DoFinally(func(ctx context.Context, st rx.SignalType) {
 				f.Release()
 			})
-		}
-		switch foo := v.(type) {
-		case rx.MonoProducer:
-			foo.Error(f)
-		case rx.Producer:
-			foo.Error(f)
+			v.receiving.(rx.Producer).Error(f)
+		default:
+			panic("unreachable")
 		}
 		return
 	})
 
 	p.tp.HandleRequestN(func(input framing.Frame) (err error) {
+		defer input.Release()
 		f := input.(*framing.FrameRequestN)
-		defer f.Release()
 		sid := f.Header().StreamID()
-		found, ok := p.messages.Load(sid)
+		v, ok := p.messages.load(sid)
 		if !ok {
 			return fmt.Errorf("non-exists stream id: %d", sid)
 		}
-		flux, ok := found.(rx.Flux)
-		if !ok {
-			return fmt.Errorf("unsupport request n: streamId=%d", sid)
+		// RequestN is always for sending.
+		target := v.sending.(rx.Subscription)
+		n := int(f.N())
+		switch v.mode {
+		case msgStoreModeRequestStream, msgStoreModeRequestChannel:
+			target.Request(n)
+		default:
+			panic("unreachable")
 		}
-		flux.(rx.Subscription).Request(int(f.N()))
-		return nil
+		return
 	})
 
 	p.tp.HandlePayload(func(input framing.Frame) (err error) {
 		f := input.(*framing.FramePayload)
 		sid := f.Header().StreamID()
-		v, ok := p.messages.Load(sid)
+		v, ok := p.messages.load(sid)
 		if !ok {
 			return fmt.Errorf("non-exist stream id: %d", sid)
 		}
-		switch vv := v.(type) {
-		case rx.MonoProducer:
-			if err := vv.Success(f); err != nil {
+		switch v.mode {
+		case msgStoreModeRequestResponse:
+			if err := v.receiving.(rx.MonoProducer).Success(f); err != nil {
 				f.Release()
 				logger.Warnf("produce payload failed: %s\n", err.Error())
 			}
-		case rx.Producer:
+		case msgStoreModeRequestStream, msgStoreModeRequestChannel:
+			receiving := v.receiving.(rx.Producer)
 			fg := f.Header().Flag()
 			if fg.Check(framing.FlagNext) {
-				if err := vv.Next(f); err != nil {
+				if err := receiving.Next(f); err != nil {
 					f.Release()
 					logger.Warnf("produce payload failed: %s\n", err.Error())
 				}
 			}
 			if fg.Check(framing.FlagComplete) {
-				vv.Complete()
+				receiving.Complete()
 				if !fg.Check(framing.FlagNext) {
 					f.Release()
 				}
@@ -458,19 +517,11 @@ func (p *duplexRSocket) nextStreamID() uint32 {
 	return 2*(atomic.AddUint32(&p.requestStreamID, 1)-1) + 1
 }
 
-func (p *duplexRSocket) setPublisher(sid uint32, pub rx.Publisher) {
-	p.messages.Store(sid, pub)
-}
-
-func (p *duplexRSocket) unsetPublisher(sid uint32) {
-	p.messages.Delete(sid)
-}
-
 func newDuplexRSocket(tp transport.Transport, serverMode bool, scheduler rx.Scheduler) *duplexRSocket {
 	sk := &duplexRSocket{
 		tp:         tp,
 		serverMode: serverMode,
-		messages:   &sync.Map{},
+		messages:   newMessageStore(),
 		scheduler:  scheduler,
 	}
 	tp.OnClose(func() {
@@ -478,6 +529,58 @@ func newDuplexRSocket(tp transport.Transport, serverMode bool, scheduler rx.Sche
 	})
 	sk.start()
 	return sk
+}
+
+type msgStoreMode int8
+
+const (
+	msgStoreModeRequestResponse msgStoreMode = iota
+	msgStoreModeRequestStream
+	msgStoreModeRequestChannel
+)
+
+type publishers struct {
+	mode               msgStoreMode
+	sending, receiving rx.Publisher
+}
+
+type publishersMap struct {
+	m *sync.Map
+}
+
+func (p *publishersMap) Dispose() {
+	p.m.Range(func(key, value interface{}) bool {
+		vv := value.(*publishers)
+		if vv.receiving != nil {
+			vv.receiving.(rx.Disposable).Dispose()
+		}
+		if vv.sending != nil {
+			vv.sending.(rx.Disposable).Dispose()
+		}
+		return true
+	})
+}
+
+func (p *publishersMap) put(id uint32, value *publishers) {
+	p.m.Store(id, value)
+}
+
+func (p *publishersMap) load(id uint32) (v *publishers, ok bool) {
+	found, ok := p.m.Load(id)
+	if ok {
+		v = found.(*publishers)
+	}
+	return
+}
+
+func (p *publishersMap) remove(id uint32) {
+	p.m.Delete(id)
+}
+
+func newMessageStore() *publishersMap {
+	return &publishersMap{
+		m: &sync.Map{},
+	}
 }
 
 // toError try convert something to error

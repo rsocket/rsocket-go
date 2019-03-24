@@ -190,35 +190,38 @@ func NewBaseFrame(h FrameHeader, body *common.ByteBuff) *BaseFrame {
 	}
 }
 
-func (p *BaseFrame) trySeekMetadataLen(offset int) int {
+func (p *BaseFrame) trySeekMetadataLen(offset int) (n int, hasMetadata bool) {
 	raw := p.body.Bytes()
 	if offset > 0 {
 		raw = raw[offset:]
 	}
-	if !p.header.Flag().Check(FlagMetadata) {
-		return 0
+	hasMetadata = p.header.Flag().Check(FlagMetadata)
+	if !hasMetadata {
+		return
 	}
 	if len(raw) < 3 {
-		return -1
+		n = -1
+	} else {
+		n = common.NewUint24Bytes(raw).AsInt()
 	}
-	return common.NewUint24Bytes(raw).AsInt()
+	return
 }
 
 func (p *BaseFrame) trySliceMetadata(offset int) ([]byte, bool) {
-	n := p.trySeekMetadataLen(offset)
-	if n < 1 {
+	n, ok := p.trySeekMetadataLen(offset)
+	if !ok || n < 0 {
 		return nil, false
 	}
 	return p.body.Bytes()[offset+3 : offset+3+n], true
 }
 
 func (p *BaseFrame) trySliceData(offset int) []byte {
-	n := p.trySeekMetadataLen(offset)
+	n, ok := p.trySeekMetadataLen(offset)
+	if !ok {
+		return p.body.Bytes()
+	}
 	if n < 0 {
 		return nil
-	}
-	if n == 0 {
-		return p.body.Bytes()
 	}
 	return p.body.Bytes()[offset+n+3:]
 }

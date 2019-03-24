@@ -22,8 +22,6 @@ func (p *bQueue) setRate(init, rate int32) {
 }
 
 func (p *bQueue) Close() error {
-	//p.tickets = math.MaxInt32
-	//close(p.breaker)
 	close(p.data)
 	return nil
 }

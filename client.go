@@ -139,7 +139,7 @@ func (p *implClientBuilder) Start() (ClientSocket, error) {
 	}
 	go func(ctx context.Context) {
 		if err := tp.Start(ctx); err != nil {
-			logger.Debugf("client closed: %s\n", err)
+			logger.Debugf("client exit: %s\n", err)
 		}
 	}(context.Background())
 	setup := framing.NewFrameSetup(common.DefaultVersion, p.keepaliveInteval, p.keepaliveMaxLifetime, nil, p.metadataMimeType, p.dataMimeType, p.setupData, p.setupMetadata)

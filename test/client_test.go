@@ -29,9 +29,27 @@ func init() {
 				rsocket.RequestResponse(func(msg payload.Payload) rx.Mono {
 					return rx.JustMono(payload.NewString("foo", "bar"))
 				}),
+				rsocket.RequestStream(func(msg payload.Payload) rx.Flux {
+					log.Println("receive:", msg)
+					return rx.Range(0, 10).
+						Map(func(n int) payload.Payload {
+							return payload.NewString(fmt.Sprintf("from_golang_%d", n), "stream")
+						})
+				}),
+				rsocket.RequestChannel(func(msgs rx.Publisher) rx.Flux {
+					rx.ToFlux(msgs).
+						SubscribeOn(rx.ElasticScheduler()). // <-- use elastic scheduler, DO NOT block here!
+						DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+							log.Println("receive channel:", elem)
+						})
+					return rx.Range(0, 10).
+						Map(func(n int) payload.Payload {
+							return payload.NewString(fmt.Sprintf("from_golang_%d", n), "channel")
+						})
+				}),
 			)
 		}).
-		Transport("127.0.0.1:7878").
+		Transport("127.0.0.1:8000").
 		Start()
 	if err != nil {
 		log.Fatal(err)
@@ -113,14 +131,13 @@ func TestClient_RequestStream(t *testing.T) {
 }
 
 func TestClient_RequestChannel(t *testing.T) {
+	//logger.SetLoggerLevel(logger.LogLevelDebug)
 	done := make(chan struct{})
+	sending := rx.Range(0, 10).Map(func(n int) payload.Payload {
+		return payload.NewString("h", "b")
+	})
 	client.
-		RequestChannel(rx.NewFlux(func(ctx context.Context, emitter rx.Producer) {
-			for i := 0; i < 10; i++ {
-				_ = emitter.Next(payload.NewString("h", "b"))
-			}
-			emitter.Complete()
-		})).
+		RequestChannel(sending).
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
 			close(done)
 		}).

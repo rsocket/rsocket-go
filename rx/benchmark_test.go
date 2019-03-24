@@ -20,8 +20,8 @@ func Benchmark_Mono(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		rx.
-			NewMono(func(sink rx.MonoProducer) {
-				sink.Success(testPayload)
+			NewMono(func(ctx context.Context, sink rx.MonoProducer) {
+				_ = sink.Success(testPayload)
 			}).
 			DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
 				wg.Done()
@@ -58,7 +58,7 @@ func Benchmark_Flux(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		rx.
 			NewFlux(func(ctx context.Context, producer rx.Producer) {
-				producer.Next(testPayload)
+				_ = producer.Next(testPayload)
 				producer.Complete()
 			}).
 			DoFinally(func(ctx context.Context, sig rx.SignalType) {

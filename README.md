@@ -10,8 +10,9 @@
 rsocket-go is an implementation of the [RSocket](http://rsocket.io/) protocol in Go. It is still under development, APIs are unstable and maybe change at any time until release of v1.0.0. **Please do not use it in a production environment**.
 
 ## Features
- - Design For Golang
+ - Design For Golang.
  - Thin [reactive-streams](http://www.reactive-streams.org/) implementation.
+ - Simulate Java SDK API.
 
 ## Getting started
 
@@ -99,7 +100,8 @@ import (
 
 func main() {
 	// Create a Mono which produce a simple payload.
-	mono := rx.NewMono(func(sink rx.MonoProducer) {
+	mono := rx.NewMono(func(ctx context.Context, sink rx.MonoProducer) {
+		// Use context API if you want.
 		sink.Success(payload.NewString("foo", "bar"))
 	})
 
@@ -154,13 +156,14 @@ func main() {
 
 ```
 
-#### RequestN
+#### Backpressure & RequestN
 
 `Flux` support **backpressure**.
 
 You can call func `Request` in `Subscription` or use `LimitRate` before subscribe.
 
 ```go
+// Here is an example which consume Payload one by one.
 flux.Subscribe(
     context.Background(),
     rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
@@ -188,10 +191,10 @@ flux.Subscribe(
  - [x] RequestFNF
  - [x] RequestResponse
  - [x] RequestStream
- - [x] RequestChannel (Improve is needed.)
+ - [x] RequestChannel
 
 ##### Others
- - [ ] Tuning
+ - [ ] Resume
  - [x] Keepalive
  - [ ] Fragmentation
  - [x] Thin Reactor
@@ -200,4 +203,4 @@ flux.Subscribe(
  - [x] Flow Control: RequestN
  - [ ] Flow Control: Lease
  - [ ] Load Balance
- - [ ] Reconnect
+ - [ ] Reconnect 
