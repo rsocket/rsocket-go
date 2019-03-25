@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
 	"io"
 	"io/ioutil"
 	"net/url"
@@ -18,6 +20,7 @@ import (
 	"github.com/mkideal/cli"
 	clix "github.com/mkideal/cli/ext"
 	"github.com/rsocket/rsocket-go"
+	rlog "github.com/rsocket/rsocket-go/common/logger"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -56,11 +59,11 @@ type opts struct {
 
 func (opts *opts) configureLogging() (err error) {
 	if opts.Debug {
-		rsocket.SetLoggerLevel(rsocket.LogLevelDebug)
+		rlog.SetLoggerLevel(rlog.LogLevelDebug)
 
 		opts.Logger, err = zap.NewDevelopment()
 	} else {
-		rsocket.SetLoggerLevel(rsocket.LogLevelInfo)
+		rlog.SetLoggerLevel(rlog.LogLevelInfo)
 
 		opts.Logger, err = zap.NewProduction()
 	}
@@ -71,64 +74,60 @@ func (opts *opts) configureLogging() (err error) {
 
 	rsLogger := opts.Logger.Named("rsocket").WithOptions(zap.AddCaller(), zap.AddCallerSkip(2))
 
-	rsocket.SetLoggerDebug(func(format string, args ...interface{}) {
+	rlog.SetLoggerDebug(func(format string, args ...interface{}) {
 		rsLogger.Debug(fmt.Sprintf(format, args...))
 	})
-	rsocket.SetLoggerInfo(func(format string, args ...interface{}) {
+	rlog.SetLoggerInfo(func(format string, args ...interface{}) {
 		rsLogger.Info(fmt.Sprintf(format, args...))
 	})
-	rsocket.SetLoggerWarn(func(format string, args ...interface{}) {
+	rlog.SetLoggerWarn(func(format string, args ...interface{}) {
 		rsLogger.Warn(fmt.Sprintf(format, args...))
 	})
-	rsocket.SetLoggerError(func(format string, args ...interface{}) {
+	rlog.SetLoggerError(func(format string, args ...interface{}) {
 		rsLogger.Error(fmt.Sprintf(format, args...))
 	})
 
 	return
 }
 
-func (opts *opts) createResponder(ctxt context.Context, logger *zap.Logger) (responder rsocket.RSocket) {
+func (opts *opts) createResponder(ctx context.Context, logger *zap.Logger) (responder rsocket.RSocket) {
 	return rsocket.NewAbstractSocket(
-		rsocket.MetadataPush(func(payload rsocket.Payload) {
+		rsocket.MetadataPush(func(payload payload.Payload) {
 			logger.Debug("MetadataPush", zap.Object("request", payloadMarshaler{payload}))
-
-			println(string(payload.Metadata()))
+			metadata, _ := payload.MetadataUTF8()
+			println(metadata)
 		}),
-		rsocket.FireAndForget(func(payload rsocket.Payload) {
+		rsocket.FireAndForget(func(payload payload.Payload) {
 			logger.Debug("FireAndForget", zap.Object("request", payloadMarshaler{payload}))
 
-			println(string(payload.Data()))
+			println(payload.DataUTF8())
 		}),
-		rsocket.RequestResponse(func(payload rsocket.Payload) rsocket.Mono {
+		rsocket.RequestResponse(func(payload payload.Payload) rx.Mono {
 			logger.Debug("RequestResponse", zap.Object("request", payloadMarshaler{payload}))
 
-			println(string(payload.Data()))
+			println(payload.DataUTF8())
 
-			return rsocket.JustMono(opts.singleInputPayload(ctxt))
+			return rx.JustMono(opts.singleInputPayload(ctx))
 		}),
-		rsocket.RequestStream(func(payload rsocket.Payload) rsocket.Flux {
+		rsocket.RequestStream(func(payload payload.Payload) rx.Flux {
 			logger.Debug("RequestStream", zap.Object("request", payloadMarshaler{payload}))
 
-			println(string(payload.Data()))
+			println(payload.DataUTF8())
 
 			return opts.inputPublisher()
 		}),
-		rsocket.RequestChannel(func(publisher rsocket.Publisher) rsocket.Flux {
+		rsocket.RequestChannel(func(publisher rx.Publisher) rx.Flux {
 			logger.Debug("RequestChannel")
-
-			if flux, ok := publisher.(rsocket.Flux); ok {
-				flux.
-					DoOnNext(func(ctx context.Context, s rsocket.Subscription, payload rsocket.Payload) {
-						println(string(payload.Data()))
-					}).
-					DoOnError(func(ctx context.Context, err error) {
-						println("channel error:", err)
-					})
-			}
-
-			publisher.Subscribe(ctxt, rsocket.OnNext(func(ctx context.Context, s rsocket.Subscription, payload rsocket.Payload) {
-				logger.Debug("RequestChannel", zap.Object("payload", payloadMarshaler{payload}))
-			}))
+			rx.ToFlux(publisher).
+				DoOnNext(func(ctx context.Context, s rx.Subscription, payload payload.Payload) {
+					println(payload.DataUTF8())
+				}).
+				DoOnError(func(ctx context.Context, err error) {
+					println("channel error:", err)
+				}).
+				Subscribe(ctx, rx.OnNext(func(ctx context.Context, s rx.Subscription, payload payload.Payload) {
+					logger.Debug("RequestChannel", zap.Object("payload", payloadMarshaler{payload}))
+				}))
 
 			return opts.inputPublisher()
 		}),
@@ -138,7 +137,7 @@ func (opts *opts) createResponder(ctxt context.Context, logger *zap.Logger) (res
 func (opts *opts) buildServer(ctxt context.Context, logger *zap.Logger, uri *url.URL) (server rsocket.Start) {
 	responder := opts.createResponder(ctxt, logger)
 
-	return rsocket.Receive().Acceptor(func(setup rsocket.SetupPayload, socket rsocket.RSocket) rsocket.RSocket {
+	return rsocket.Receive().Acceptor(func(setup payload.SetupPayload, socket rsocket.RSocket) rsocket.RSocket {
 		logger.Debug("Accpet connection with setup payload", zap.Object("setup", setupMarshaler{setup}))
 
 		go opts.runAllOperations(ctxt, socket)
@@ -154,7 +153,7 @@ func (opts *opts) buildClient(ctxt context.Context, logger *zap.Logger, uri *url
 		MetadataMimeType(opts.MetadataFormat()).
 		DataMimeType(opts.DataFormat())
 
-	var setup rsocket.Payload
+	var setup payload.Payload
 
 	if setup, err = opts.parseSetupPayload(); err != nil {
 		logger.Error("fail to parse setup payload", zap.Error(err))
@@ -213,7 +212,7 @@ func readData(s string) (data []byte, err error) {
 	return
 }
 
-func (opts *opts) parseSetupPayload() (setup rsocket.Payload, err error) {
+func (opts *opts) parseSetupPayload() (setup payload.Payload, err error) {
 	var data []byte
 
 	data, err = readData(opts.Setup)
@@ -222,14 +221,14 @@ func (opts *opts) parseSetupPayload() (setup rsocket.Payload, err error) {
 		return
 	}
 
-	setup = rsocket.NewPayload(data, nil)
+	setup = payload.New(data, nil)
 
 	return
 }
 
 func (opts *opts) buildMetadata() (metadata []byte, err error) {
 	if len(opts.Metadata) > 0 && len(opts.Headers) > 0 {
-		err = errors.New("Can't specify headers and metadata")
+		err = errors.New("can't specify headers and metadata")
 	} else if len(opts.Metadata) > 0 {
 		metadata, err = readData(opts.Metadata)
 	} else if len(opts.Headers) > 0 {
@@ -259,52 +258,52 @@ func (opts *opts) runAllOperations(ctxt context.Context, socket rsocket.RSocket)
 
 	for i := 0; i < opts.Operations; i++ {
 		if opts.FireAndForget {
-			payload := opts.singleInputPayload(ctxt)
+			pl := opts.singleInputPayload(ctxt)
 
-			opts.Logger.Debug("FireAndForget", zap.Object("request", payloadMarshaler{payload}))
+			opts.Logger.Debug("FireAndForget", zap.Object("request", payloadMarshaler{pl}))
 
-			socket.FireAndForget(payload)
+			socket.FireAndForget(pl)
 		} else if opts.MetadataPush {
-			payload := opts.singleInputPayload(ctxt)
+			pl := opts.singleInputPayload(ctxt)
 
-			opts.Logger.Debug("MetadataPush", zap.Object("request", payloadMarshaler{payload}))
+			opts.Logger.Debug("MetadataPush", zap.Object("request", payloadMarshaler{pl}))
 
-			socket.MetadataPush(payload)
+			socket.MetadataPush(pl)
 		} else if opts.RequestResponse {
-			payload := opts.singleInputPayload(ctxt)
+			pl := opts.singleInputPayload(ctxt)
 
-			opts.Logger.Debug("RequestResponse", zap.Object("request", payloadMarshaler{payload}))
+			opts.Logger.Debug("RequestResponse", zap.Object("request", payloadMarshaler{pl}))
 
 			socket.
-				RequestResponse(payload).
-				SubscribeOn(rsocket.ElasticScheduler()).
-				Subscribe(ctxt, rsocket.OnNext(func(ctx context.Context, s rsocket.Subscription, payload rsocket.Payload) {
+				RequestResponse(pl).
+				SubscribeOn(rx.ElasticScheduler()).
+				Subscribe(ctxt, rx.OnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
 					defer wg.Done()
 
-					opts.Logger.Debug("RequestResponse", zap.Object("response", payloadMarshaler{payload}))
+					opts.Logger.Debug("RequestResponse", zap.Object("response", payloadMarshaler{elem}))
 
-					println(string(payload.Data()))
+					println(elem.DataUTF8())
 				}))
 
 			wg.Add(1)
 		} else if opts.Stream {
-			payload := opts.singleInputPayload(ctxt)
+			pl := opts.singleInputPayload(ctxt)
 
-			opts.Logger.Debug("Stream", zap.Object("request", payloadMarshaler{payload}))
+			opts.Logger.Debug("Stream", zap.Object("request", payloadMarshaler{pl}))
 
-			var subscription rsocket.Disposable
+			var subscription rx.Disposable
 			var responses int
 
 			subscription = socket.
-				RequestStream(payload).
-				DoFinally(func(ctx context.Context, sig rsocket.SignalType) {
+				RequestStream(pl).
+				DoFinally(func(ctx context.Context, sig rx.SignalType) {
 					wg.Done()
 				}).
-				SubscribeOn(rsocket.ElasticScheduler()).
-				Subscribe(ctxt, rsocket.OnNext(func(ctx context.Context, s rsocket.Subscription, payload rsocket.Payload) {
-					opts.Logger.Debug("Stream", zap.Object("response", payloadMarshaler{payload}))
+				SubscribeOn(rx.ElasticScheduler()).
+				Subscribe(ctxt, rx.OnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+					opts.Logger.Debug("Stream", zap.Object("response", payloadMarshaler{elem}))
 
-					println(string(payload.Data()))
+					println(elem.DataUTF8())
 
 					responses++
 
@@ -321,14 +320,14 @@ func (opts *opts) runAllOperations(ctxt context.Context, socket rsocket.RSocket)
 
 			socket.
 				RequestChannel(opts.inputPublisher()).
-				DoFinally(func(ctx context.Context, sig rsocket.SignalType) {
+				DoFinally(func(ctx context.Context, sig rx.SignalType) {
 					wg.Done()
 				}).
-				SubscribeOn(rsocket.ElasticScheduler()).
-				Subscribe(ctxt, rsocket.OnNext(func(ctx context.Context, s rsocket.Subscription, payload rsocket.Payload) {
-					opts.Logger.Debug("Channel", zap.Object("response", payloadMarshaler{payload}))
+				SubscribeOn(rx.ElasticScheduler()).
+				Subscribe(ctxt, rx.OnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+					opts.Logger.Debug("Channel", zap.Object("response", payloadMarshaler{elem}))
 
-					println(string(payload.Data()))
+					println(string(elem.Data()))
 
 					responses++
 
@@ -344,26 +343,26 @@ func (opts *opts) runAllOperations(ctxt context.Context, socket rsocket.RSocket)
 	wg.Wait()
 }
 
-func (opts *opts) singleInputPayload(ctxt context.Context) rsocket.Payload {
-	c := make(chan rsocket.Payload, 1)
+func (opts *opts) singleInputPayload(ctxt context.Context) payload.Payload {
+	c := make(chan payload.Payload, 1)
 
-	subscriber := opts.inputPublisher().Subscribe(ctxt, rsocket.OnNext(func(ctx context.Context, s rsocket.Subscription, item rsocket.Payload) {
+	subscriber := opts.inputPublisher().Subscribe(ctxt, rx.OnNext(func(ctx context.Context, s rx.Subscription, item payload.Payload) {
 		c <- item
 	}))
 
 	defer subscriber.Dispose()
 
 	select {
-	case payload := <-c:
-		return payload
+	case pl := <-c:
+		return pl
 
 	case <-ctxt.Done():
 		return nil
 	}
 }
 
-func (opts *opts) inputPublisher() rsocket.Flux {
-	return rsocket.NewFlux(func(ctx context.Context, emitter rsocket.Producer) {
+func (opts *opts) inputPublisher() rx.Flux {
+	return rx.NewFlux(func(ctx context.Context, emitter rx.Producer) {
 		defer emitter.Complete()
 
 		metadata, err := opts.buildMetadata()
@@ -400,7 +399,7 @@ func (opts *opts) inputPublisher() rsocket.Flux {
 				publisher.emitLines(emitter, string(metadata))
 
 			default:
-				emitter.Next(rsocket.NewPayloadString(input, string(metadata)))
+				_ = emitter.Next(payload.NewString(input, string(metadata)))
 			}
 		}
 	})
@@ -412,7 +411,7 @@ type lineInputPublishers struct {
 	io.Reader
 }
 
-func (p *lineInputPublishers) emitLines(emitter rsocket.Producer, metadata string) {
+func (p *lineInputPublishers) emitLines(emitter rx.Producer, metadata string) {
 	ch := make(chan interface{}, 1)
 
 	go func() {
@@ -436,32 +435,31 @@ func (p *lineInputPublishers) emitLines(emitter rsocket.Producer, metadata strin
 		select {
 		case <-p.Context.Done():
 			return
-
 		case line := <-ch:
 			switch i := line.(type) {
 			case error:
 				emitter.Error(i)
-
 			case string:
-				emitter.Next(rsocket.NewPayloadString(i, metadata))
+				_ = emitter.Next(payload.NewString(i, metadata))
 			}
 		}
 	}
 }
 
 type payloadMarshaler struct {
-	rsocket.Payload
+	payload.Payload
 }
 
 func (payload payloadMarshaler) MarshalLogObject(encoder zapcore.ObjectEncoder) error {
 	encoder.AddByteString("data", payload.Data())
-	encoder.AddByteString("metadata", payload.Metadata())
+	metadata, _ := payload.Metadata()
+	encoder.AddByteString("metadata", metadata)
 
 	return nil
 }
 
 type setupMarshaler struct {
-	rsocket.SetupPayload
+	payload.SetupPayload
 }
 
 func (setup setupMarshaler) MarshalLogObject(encoder zapcore.ObjectEncoder) error {
@@ -470,7 +468,7 @@ func (setup setupMarshaler) MarshalLogObject(encoder zapcore.ObjectEncoder) erro
 	encoder.AddDuration("timeBetweenKeepalive", setup.TimeBetweenKeepalive())
 	encoder.AddDuration("maxLifetime", setup.MaxLifetime())
 	encoder.AddString("version", setup.Version().String())
-	encoder.AddObject("payload", payloadMarshaler{setup})
+	_ = encoder.AddObject("payload", payloadMarshaler{setup})
 
 	return nil
 }
@@ -490,19 +488,19 @@ func main() {
 		args := cmdline.Args()
 
 		if len(args) == 0 {
-			err = fmt.Errorf("Required arguments are missing: '%s'", "target")
+			err = fmt.Errorf("required arguments are missing: '%s'", "target")
 			return
 		}
 
 		logger.Debug("parsed opts", zap.Reflect("opts", opts))
 
-		ctxt, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		var uri *url.URL
 
 		if uri, err = url.Parse(args[0]); err != nil {
-			err = fmt.Errorf("Invalid URL, %v", err)
+			err = fmt.Errorf("invalid URL, %v", err)
 			return
 		}
 
@@ -518,7 +516,7 @@ func main() {
 			serverLogger := logger.Named("server")
 			defer serverLogger.Sync()
 
-			server := opts.buildServer(ctxt, serverLogger, uri)
+			server := opts.buildServer(ctx, serverLogger, uri)
 
 			logger.Info("start server", zap.Stringer("uri", uri))
 
@@ -532,7 +530,7 @@ func main() {
 
 		var client rsocket.ClientStarter
 
-		if client, err = opts.buildClient(ctxt, clientLogger, uri); err != nil {
+		if client, err = opts.buildClient(ctx, clientLogger, uri); err != nil {
 			logger.Warn("fail to build client", zap.Stringer("uri", uri), zap.Error(err))
 
 			return
@@ -551,7 +549,7 @@ func main() {
 		defer socket.Close()
 
 		if opts.Timeout.Duration > 0 {
-			ctxt, cancel = context.WithTimeout(ctxt, opts.Timeout.Duration)
+			ctx, cancel = context.WithTimeout(ctx, opts.Timeout.Duration)
 
 			defer cancel()
 		}
@@ -559,7 +557,7 @@ func main() {
 		c := make(chan struct{}, 1)
 
 		go func() {
-			opts.runAllOperations(ctxt, socket)
+			opts.runAllOperations(ctx, socket)
 
 			c <- struct{}{}
 
@@ -570,7 +568,7 @@ func main() {
 		case <-c:
 			break
 
-		case <-ctxt.Done():
+		case <-ctx.Done():
 			break
 		}
 
