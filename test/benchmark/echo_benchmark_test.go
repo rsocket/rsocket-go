@@ -52,7 +52,7 @@ func doOnce(host string, port int, totals int) {
 
 func TestClients_RequestResponse(t *testing.T) {
 	log.Println("---------------")
-	doOnce("127.0.0.1", 8001, 10000)
+	doOnce("127.0.0.1", 7878, 10000)
 	//log.Println("---------------")
 	//doOnce(host, 8000)
 	//log.Println("---------------")
@@ -70,7 +70,7 @@ func TestClients_RequestResponse(t *testing.T) {
 }
 
 func TestClient_RequestResponse(t *testing.T) {
-	client := createClient("127.0.0.1", 8001)
+	client := createClient("127.0.0.1", 7878)
 	defer func() {
 		_ = client.Close()
 	}()
@@ -83,7 +83,7 @@ func TestClient_RequestResponse(t *testing.T) {
 	ctx := context.Background()
 	for i := 0; i < n; i++ {
 		md := []byte(fmt.Sprintf("benchmark_test_%d", i))
-		client.RequestResponse(payload.New(data, md)).
+		client.RequestResponse(payload.NewPooled(data, md)).
 			SubscribeOn(rx.ElasticScheduler()).
 			DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
 				assert.Equal(t, data, elem.Data(), "data doesn't match")

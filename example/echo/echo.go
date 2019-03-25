@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/common/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"log"
@@ -19,8 +20,9 @@ func init() {
 }
 
 func main() {
-	//logger.SetLoggerLevel(logger.LogLevelDebug)
-	err := createEchoServer("127.0.0.1", 8001)
+	logger.SetLoggerLevel(logger.LogLevelInfo)
+	logger.SetLoggerLevel(logger.LogLevelDebug)
+	err := createEchoServer("127.0.0.1", 7878)
 	panic(err)
 }
 
@@ -35,6 +37,17 @@ func createEchoServer(host string, port int) error {
 		rsocket.RequestResponse(func(pl payload.Payload) rx.Mono {
 			// just echo
 			return rx.JustMono(pl)
+
+			// Graceful with context API.
+			//return rx.NewMono(func(ctx context.Context, sink rx.MonoProducer) {
+			//	time.Sleep(50 * time.Millisecond)
+			//	select {
+			//	case <-ctx.Done():
+			//		break
+			//	default:
+			//		sink.Success(payload.Clone(pl))
+			//	}
+			//})
 		}),
 		rsocket.RequestStream(func(pl payload.Payload) rx.Flux {
 			// for test: client metadata is totals as string
@@ -81,7 +94,19 @@ func createEchoServer(host string, port int) error {
 			})
 		}),
 		rsocket.RequestChannel(func(payloads rx.Publisher) rx.Flux {
-			return payloads.(rx.Flux)
+			rx.ToFlux(payloads).
+				//LimitRate(1).
+				SubscribeOn(rx.ElasticScheduler()).
+				DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+					log.Println("receiving:", elem)
+				}).
+				Subscribe(context.Background())
+			return rx.Range(0, 3).
+				Map(func(n int) payload.Payload {
+					return payload.NewString("from_server", fmt.Sprintf("%d", n))
+				})
+
+			//return payloads.(rx.Flux)
 			// echo all incoming payloads
 			//return rx.NewFlux(func(ctx context.Context, emitter rx.Producer) {
 			//	payloads.(rx.Flux).
@@ -89,7 +114,8 @@ func createEchoServer(host string, port int) error {
 			//			emitter.Complete()
 			//		}).
 			//		DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
-			//			_ = emitter.Next(payload.New(elem.Data(), elem.Metadata()))
+			//			metadata, _ := elem.Metadata()
+			//			_ = emitter.Next(payload.New(elem.Data(), metadata))
 			//		}).
 			//		SubscribeOn(rx.ElasticScheduler()).
 			//		Subscribe(context.Background())

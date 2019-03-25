@@ -72,7 +72,9 @@ func (p *tcpServerTransport) Listen(onReady ...func()) (err error) {
 					}
 					return
 				})
-				_ = tp.Start(ctx)
+				if err := tp.Start(ctx); err != nil {
+					logger.Debugf("transport exit: %s\n", err.Error())
+				}
 			}
 		}(ctx, c)
 	}

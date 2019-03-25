@@ -52,6 +52,8 @@ type (
 	Disposable interface {
 		// Dispose dispose current resource.
 		Dispose()
+
+		isDisposed() bool
 	}
 
 	// Publisher is a provider of a potentially unbounded number of sequenced elements, \

@@ -53,16 +53,19 @@ func (p *tcpRConnection) Start(ctx context.Context) error {
 	defer func() {
 		_ = p.Close()
 	}()
-	return p.decoder.handle(func(raw []byte) error {
+	return p.decoder.handle(func(raw []byte) (err error) {
 		defer func() {
-			_ = recover()
+			if e := recover(); e != nil {
+				logger.Errorf("decoder exit: %s\n", e)
+			}
 		}()
 		h := framing.ParseFrameHeader(raw)
 		bf := common.BorrowByteBuffer()
-		if _, err := bf.Write(raw[framing.HeaderLen:]); err != nil {
-			return err
+		_, err = bf.Write(raw[framing.HeaderLen:])
+		if err == nil {
+			err = p.onRcv(ctx, framing.NewBaseFrame(h, bf))
 		}
-		return p.onRcv(ctx, framing.NewBaseFrame(h, bf))
+		return
 	})
 }
 func (p *tcpRConnection) Write(frame framing.Frame) error {
@@ -92,7 +95,6 @@ func (p *tcpRConnection) Send(frame framing.Frame) (err error) {
 func (p *tcpRConnection) Close() (err error) {
 	p.onceClose.Do(func() {
 		close(p.snd)
-		// TODO: release unfinished frame
 		<-p.done
 		p.kaTicker.Stop()
 		err = p.c.Close()
@@ -102,7 +104,7 @@ func (p *tcpRConnection) Close() (err error) {
 
 func (p *tcpRConnection) loopSnd(ctx context.Context) {
 	defer func() {
-		logger.Debugf("connection send loop end\n")
+		logger.Debugf("send loop exit\n")
 		close(p.done)
 	}()
 
@@ -114,7 +116,7 @@ func (p *tcpRConnection) loopSnd(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			if err := ctx.Err(); err != nil {
-				logger.Errorf("send loop end: %s\n", err)
+				logger.Errorf("send loop exit: %s\n", err)
 			}
 			return
 		case t := <-p.kaTicker.C:
@@ -142,7 +144,7 @@ func (p *tcpRConnection) loopSnd(ctx context.Context) {
 	}
 }
 
-func (p *tcpRConnection) onRcv(ctx context.Context, f *framing.BaseFrame) error {
+func (p *tcpRConnection) onRcv(ctx context.Context, f *framing.BaseFrame) (err error) {
 	p.heartbeat = time.Now()
 	frameType := f.Header().Type()
 	var frame framing.Frame
@@ -175,8 +177,9 @@ func (p *tcpRConnection) onRcv(ctx context.Context, f *framing.BaseFrame) error 
 		return common.ErrInvalidFrame
 	}
 
-	if err := frame.Validate(); err != nil {
-		return err
+	err = frame.Validate()
+	if err != nil {
+		return
 	}
 
 	if logger.IsDebugEnabled() {
@@ -190,7 +193,11 @@ func (p *tcpRConnection) onRcv(ctx context.Context, f *framing.BaseFrame) error 
 			p.kaTicker = time.NewTicker(interval)
 		}
 	}
-	return p.handler(ctx, frame)
+	err = p.handler(ctx, frame)
+	if err != nil {
+		logger.Warnf("handle frame %s failed: %s\n", frame.Header().Type(), err.Error())
+	}
+	return
 }
 
 func newTCPRConnection(c io.ReadWriteCloser, keepaliveInterval, keepaliveMaxLifetime time.Duration, reportKeepalive bool) *tcpRConnection {

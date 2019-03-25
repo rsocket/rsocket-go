@@ -10,7 +10,7 @@ import (
 
 type defaultMonoProcessor struct {
 	lock         *sync.Mutex
-	gen          func(MonoProducer)
+	gen          func(context.Context, MonoProducer)
 	hooks        *hooks
 	pubScheduler Scheduler
 	subScheduler Scheduler
@@ -31,6 +31,12 @@ func (p *defaultMonoProcessor) DoAfterSuccess(fn FnConsumer) Mono {
 
 func (p *defaultMonoProcessor) Dispose() {
 	p.Cancel()
+}
+
+func (p *defaultMonoProcessor) isDisposed() bool {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	return p.sig == SignalCancel
 }
 
 func (p *defaultMonoProcessor) DoFinally(fn FnOnFinally) Mono {
@@ -59,6 +65,8 @@ func (p *defaultMonoProcessor) DoOnCancel(fn FnOnCancel) Mono {
 }
 
 func (p *defaultMonoProcessor) Cancel() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
 	if p.sig != signalDefault {
 		return
 	}
@@ -121,8 +129,13 @@ func (p *defaultMonoProcessor) Subscribe(ctx context.Context, others ...OptSubsc
 	for _, fn := range others {
 		fn(p.hooks)
 	}
+	ctx, cancel := context.WithCancel(ctx)
 	if p.gen != nil {
-		p.pubScheduler.Do(ctx, func(ctx context.Context) {
+		sche := p.pubScheduler
+		if sche == nil {
+			sche = p.subScheduler
+		}
+		sche.Do(ctx, func(ctx context.Context) {
 			defer func() {
 				rec := recover()
 				if rec == nil {
@@ -137,7 +150,7 @@ func (p *defaultMonoProcessor) Subscribe(ctx context.Context, others ...OptSubsc
 					p.Error(fmt.Errorf("%v", v))
 				}
 			}()
-			p.gen(p)
+			p.gen(ctx, p)
 		})
 	}
 	p.subScheduler.Do(ctx, func(ctx context.Context) {
@@ -153,6 +166,7 @@ func (p *defaultMonoProcessor) Subscribe(ctx context.Context, others ...OptSubsc
 		case SignalError:
 			p.OnError(ctx, p.e)
 		case SignalCancel:
+			cancel()
 			p.hooks.OnCancel(ctx)
 		}
 	})
@@ -160,13 +174,12 @@ func (p *defaultMonoProcessor) Subscribe(ctx context.Context, others ...OptSubsc
 }
 
 // NewMono returns a new Mono.
-func NewMono(fn func(sink MonoProducer)) Mono {
+func NewMono(fn func(ctx context.Context, sink MonoProducer)) Mono {
 	return &defaultMonoProcessor{
 		lock:         &sync.Mutex{},
 		gen:          fn,
 		done:         make(chan struct{}),
 		sig:          signalDefault,
-		pubScheduler: ImmediateScheduler(),
 		subScheduler: ImmediateScheduler(),
 		hooks:        newHooks(),
 	}

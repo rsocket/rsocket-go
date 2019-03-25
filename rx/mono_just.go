@@ -11,6 +11,10 @@ type justMonoProcessor struct {
 	subScheduler Scheduler
 }
 
+func (p *justMonoProcessor) isDisposed() bool {
+	return false
+}
+
 func (p *justMonoProcessor) N() int {
 	return 0
 }

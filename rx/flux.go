@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/rsocket/rsocket-go/common/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"math"
 	"sync"
@@ -31,6 +32,12 @@ func (p *fluxProcessor) DoAfterNext(fn FnConsumer) Flux {
 
 func (p *fluxProcessor) Dispose() {
 	p.Cancel()
+}
+
+func (p *fluxProcessor) isDisposed() bool {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	return p.sig == SignalCancel
 }
 
 func (p *fluxProcessor) DoFinally(fn FnOnFinally) Flux {
@@ -115,6 +122,7 @@ func (p *fluxProcessor) Next(elem payload.Payload) error {
 	if p.sig == signalDefault {
 		return p.q.add(elem)
 	}
+	logger.Errorf("emit next failed: %s\n", errWrongSignal.Error())
 	return errWrongSignal
 }
 
@@ -141,6 +149,7 @@ func (p *fluxProcessor) Subscribe(ctx context.Context, ops ...OptSubscribe) Disp
 	for _, it := range ops {
 		it(p.hooks)
 	}
+	ctx, cancel := context.WithCancel(ctx)
 	if p.gen != nil {
 		p.pubScheduler.Do(ctx, func(ctx context.Context) {
 			defer func() {
@@ -183,6 +192,7 @@ func (p *fluxProcessor) Subscribe(ctx context.Context, ops ...OptSubscribe) Disp
 		case SignalError:
 			p.OnError(ctx, p.e)
 		case SignalCancel:
+			cancel()
 			p.hooks.OnCancel(ctx)
 		}
 	})
