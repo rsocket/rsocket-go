@@ -10,19 +10,19 @@ import (
 const serverWorkerPoolSize = 1000
 
 type (
-	// ServerBuilder can be used to build a RSocket server.
+	// ServerBuilder can be used to build v RSocket server.
 	ServerBuilder interface {
 		// Acceptor register server acceptor which is used to handle incoming RSockets.
 		Acceptor(acceptor ServerAcceptor) ServerTransportBuilder
 	}
 
-	// ServerTransportBuilder is used to build a RSocket server with custom Transport string.
+	// ServerTransportBuilder is used to build v RSocket server with custom Transport string.
 	ServerTransportBuilder interface {
 		// Transport specify transport string.
 		Transport(transport string) Start
 	}
 
-	// Start start a RSocket server.
+	// Start start v RSocket server.
 	Start interface {
 		// Serve serve RSocket server.
 		Serve() error

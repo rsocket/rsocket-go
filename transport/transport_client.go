@@ -3,16 +3,17 @@ package transport
 import (
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/rsocket/rsocket-go/common"
 	"github.com/rsocket/rsocket-go/common/logger"
 	"github.com/rsocket/rsocket-go/framing"
-	"sync"
 )
 
 type clientTransportImpl struct {
 	conn     conn
 	handlers *sync.Map
-	fnClose  func()
+	fnClose  []func()
 }
 
 func (p *clientTransportImpl) Send(frame framing.Frame) (err error) {
@@ -54,15 +55,15 @@ func (p *clientTransportImpl) Start(ctx context.Context) error {
 		return fmt.Errorf("missing frame handler: type=%s", t)
 	})
 	defer func() {
-		if p.fnClose != nil {
-			p.fnClose()
+		for _, fn := range p.fnClose {
+			fn()
 		}
 	}()
 	return p.conn.Start(ctx)
 }
 
 func (p *clientTransportImpl) OnClose(fn func()) {
-	p.fnClose = fn
+	p.fnClose = append(p.fnClose, fn)
 }
 
 func (p *clientTransportImpl) HandleSetup(handler FrameHandler) {
@@ -128,5 +129,6 @@ func newTransportClient(c conn) *clientTransportImpl {
 	return &clientTransportImpl{
 		conn:     c,
 		handlers: &sync.Map{},
+		fnClose:  make([]func(), 0),
 	}
 }

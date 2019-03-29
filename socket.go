@@ -4,34 +4,44 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"sync"
+	"sync/atomic"
+
 	"github.com/rsocket/rsocket-go/common"
 	"github.com/rsocket/rsocket-go/common/logger"
 	"github.com/rsocket/rsocket-go/framing"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/transport"
-	"math"
-	"sync"
-	"sync/atomic"
 )
 
 var (
+	errSocketClosed            = errors.New("socket closed already")
 	unsupportedRequestStream   = []byte("Request-Stream not implemented.")
 	unsupportedRequestResponse = []byte("Request-Response not implemented.")
 	unsupportedRequestChannel  = []byte("Request-Channel not implemented.")
 )
 
 type duplexRSocket struct {
-	responder       RSocket
-	tp              transport.Transport
-	serverMode      bool
-	requestStreamID uint32
-	messages        *publishersMap
-	scheduler       rx.Scheduler
+	responder RSocket
+	tp        transport.Transport
+	messages  *publishersMap
+	scheduler rx.Scheduler
+	sids      *genStreamID
 }
 
 func (p *duplexRSocket) releaseAll() {
-	p.messages.Dispose()
+	p.messages.m.Range(func(key, value interface{}) bool {
+		vv := value.(*publishers)
+		if vv.receiving != nil {
+			vv.receiving.(errorProducer).Error(errSocketClosed)
+		}
+		if vv.sending != nil {
+			vv.sending.(errorProducer).Error(errSocketClosed)
+		}
+		return true
+	})
 }
 
 func (p *duplexRSocket) Close() error {
@@ -40,7 +50,7 @@ func (p *duplexRSocket) Close() error {
 
 func (p *duplexRSocket) FireAndForget(payload payload.Payload) {
 	metadata, _ := payload.Metadata()
-	_ = p.tp.Send(framing.NewFrameFNF(p.nextStreamID(), payload.Data(), metadata))
+	_ = p.tp.Send(framing.NewFrameFNF(p.sids.next(), payload.Data(), metadata))
 }
 
 func (p *duplexRSocket) MetadataPush(payload payload.Payload) {
@@ -49,7 +59,7 @@ func (p *duplexRSocket) MetadataPush(payload payload.Payload) {
 }
 
 func (p *duplexRSocket) RequestResponse(pl payload.Payload) rx.Mono {
-	sid := p.nextStreamID()
+	sid := p.sids.next()
 	resp := rx.NewMono(nil)
 	resp.DoAfterSuccess(func(ctx context.Context, elem payload.Payload) {
 		elem.Release()
@@ -79,7 +89,7 @@ func (p *duplexRSocket) RequestResponse(pl payload.Payload) rx.Mono {
 }
 
 func (p *duplexRSocket) RequestStream(elem payload.Payload) rx.Flux {
-	sid := p.nextStreamID()
+	sid := p.sids.next()
 	flux := rx.NewFlux(nil)
 
 	p.messages.put(sid, &publishers{
@@ -116,7 +126,7 @@ func (p *duplexRSocket) RequestStream(elem payload.Payload) rx.Flux {
 }
 
 func (p *duplexRSocket) RequestChannel(publisher rx.Publisher) rx.Flux {
-	sid := p.nextStreamID()
+	sid := p.sids.next()
 	sending := publisher.(rx.Flux)
 	receiving := rx.NewFlux(nil)
 
@@ -508,25 +518,17 @@ func (p *duplexRSocket) toSender(sid uint32, fg framing.FrameFlag) rx.OptSubscri
 	})
 }
 
-func (p *duplexRSocket) nextStreamID() uint32 {
-	if p.serverMode {
-		// 2,4,6,8...
-		return 2 * atomic.AddUint32(&p.requestStreamID, 1)
-	}
-	// 1,3,5,7
-	return 2*(atomic.AddUint32(&p.requestStreamID, 1)-1) + 1
-}
-
 func newDuplexRSocket(tp transport.Transport, serverMode bool, scheduler rx.Scheduler) *duplexRSocket {
 	sk := &duplexRSocket{
-		tp:         tp,
-		serverMode: serverMode,
-		messages:   newMessageStore(),
-		scheduler:  scheduler,
+		tp:        tp,
+		messages:  newMessageStore(),
+		scheduler: scheduler,
+		sids: &genStreamID{
+			serverMode: serverMode,
+			cur:        0,
+		},
 	}
-	tp.OnClose(func() {
-		sk.releaseAll()
-	})
+	tp.OnClose(sk.releaseAll)
 	sk.start()
 	return sk
 }
@@ -546,19 +548,6 @@ type publishers struct {
 
 type publishersMap struct {
 	m *sync.Map
-}
-
-func (p *publishersMap) Dispose() {
-	p.m.Range(func(key, value interface{}) bool {
-		vv := value.(*publishers)
-		if vv.receiving != nil {
-			vv.receiving.(rx.Disposable).Dispose()
-		}
-		if vv.sending != nil {
-			vv.sending.(rx.Disposable).Dispose()
-		}
-		return true
-	})
 }
 
 func (p *publishersMap) put(id uint32, value *publishers) {
@@ -581,6 +570,30 @@ func newMessageStore() *publishersMap {
 	return &publishersMap{
 		m: &sync.Map{},
 	}
+}
+
+type genStreamID struct {
+	serverMode bool
+	cur        uint32
+}
+
+func (p *genStreamID) next() uint32 {
+	var v uint32
+	if p.serverMode {
+		// 2,4,6,8...
+		v = 2 * atomic.AddUint32(&p.cur, 1)
+	} else {
+		// 1,3,5,7
+		v = 2*(atomic.AddUint32(&p.cur, 1)-1) + 1
+	}
+	if v != 0 {
+		return v
+	}
+	return p.next()
+}
+
+type errorProducer interface {
+	Error(err error)
 }
 
 // toError try convert something to error

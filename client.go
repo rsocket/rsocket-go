@@ -2,21 +2,22 @@ package rsocket
 
 import (
 	"context"
+	"io"
+	"runtime"
+	"time"
+
 	"github.com/rsocket/rsocket-go/common"
 	"github.com/rsocket/rsocket-go/common/logger"
 	"github.com/rsocket/rsocket-go/framing"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/transport"
-	"io"
-	"runtime"
-	"time"
 )
 
 var defaultMimeType = []byte("application/binary")
 
 type (
-	// ClientSocket is Client Side of a RSocket socket. Sends Frames to a RSocket Server.
+	// ClientSocket is Client Side of v RSocket socket. Sends Frames to v RSocket Server.
 	ClientSocket interface {
 		io.Closer
 		RSocket
@@ -25,14 +26,15 @@ type (
 	// ClientSocketAcceptor is alias for RSocket handler function.
 	ClientSocketAcceptor = func(socket RSocket) RSocket
 
-	// ClientStarter can be used to start a client.
+	// ClientStarter can be used to start v client.
 	ClientStarter interface {
-		// Start start a client socket.
+		// Start start v client socket.
 		Start() (ClientSocket, error)
 	}
 
-	// ClientBuilder can be used to build a RSocket client.
+	// ClientBuilder can be used to build v RSocket client.
 	ClientBuilder interface {
+		ClientTransportBuilder
 		// KeepAlive defines current client keepalive settings.
 		KeepAlive(tickPeriod, ackTimeout time.Duration, missedAcks int) ClientBuilder
 		// DataMimeType is used to set payload data MIME type.
@@ -43,27 +45,34 @@ type (
 		MetadataMimeType(mime string) ClientBuilder
 		// SetupPayload set the setup payload.
 		SetupPayload(setup payload.Payload) ClientBuilder
-		// Transport set Transport for current RSocket client.
-		// In current version, you can use `$HOST:$PORT` string as TCP Transport.
-		Transport(transport string) ClientStarter
+		// OnClose register handler when client socket closed.
+		OnClose(fn func()) ClientBuilder
 		// Acceptor set acceptor for RSocket client.
 		Acceptor(acceptor ClientSocketAcceptor) ClientTransportBuilder
+
+		// clone returns a copy of client builder.
+		clone() ClientBuilder
 	}
 
-	// ClientTransportBuilder is used to build a RSocket client with custom Transport string.
+	// ClientTransportBuilder is used to build v RSocket client with custom Transport string.
 	ClientTransportBuilder interface {
-		// Transport set Transport string.
-		Transport(transport string) ClientStarter
+		// Transport set Transport for current RSocket client.
+		// URI is used to create RSocket Transport:
+		// Example:
+		// "tcp://127.0.0.1:7878" means a TCP RSocket transport.
+		// "ws://127.0.0.1:8080/a/b/c" means a Websocket RSocket transport. (NOTICE: Websocket will be supported in the future).
+		Transport(uri string, others ...string) ClientStarter
 	}
 )
 
-// Connect create a new RSocket client builder with default settings.
+// Connect create v new RSocket client builder with default settings.
 func Connect() ClientBuilder {
 	return &implClientBuilder{
 		keepaliveInteval:     common.DefaultKeepaliveInteval,
 		keepaliveMaxLifetime: common.DefaultKeepaliveMaxLifetime,
 		dataMimeType:         defaultMimeType,
 		metadataMimeType:     defaultMimeType,
+		onCloses:             make([]func(), 0),
 	}
 }
 
@@ -76,6 +85,28 @@ type implClientBuilder struct {
 	setupData            []byte
 	setupMetadata        []byte
 	acceptor             ClientSocketAcceptor
+	onCloses             []func()
+}
+
+func (p *implClientBuilder) clone() ClientBuilder {
+	clone := &implClientBuilder{
+		keepaliveInteval:     p.keepaliveInteval,
+		keepaliveMaxLifetime: p.keepaliveMaxLifetime,
+		dataMimeType:         p.dataMimeType,
+		metadataMimeType:     p.metadataMimeType,
+		setupData:            p.setupData,
+		setupMetadata:        p.setupMetadata,
+		acceptor:             p.acceptor,
+		onCloses:             make([]func(), len(p.onCloses)),
+	}
+	copy(clone.onCloses, p.onCloses)
+	return clone
+
+}
+
+func (p *implClientBuilder) OnClose(fn func()) ClientBuilder {
+	p.onCloses = append(p.onCloses, fn)
+	return p
 }
 
 func (p *implClientBuilder) KeepAlive(tickPeriod, ackTimeout time.Duration, missedAcks int) ClientBuilder {
@@ -119,13 +150,25 @@ func (p *implClientBuilder) Acceptor(acceptor ClientSocketAcceptor) ClientTransp
 	return p
 }
 
-func (p *implClientBuilder) Transport(transport string) ClientStarter {
-	p.addr = transport
-	return p
+func (p *implClientBuilder) Transport(transport string, others ...string) ClientStarter {
+	// singleton
+	if len(others) < 1 {
+		p.addr = transport
+		return p
+	}
+	// load balance
+	uris := make([]string, 0)
+	uris = append(uris, transport)
+	uris = append(uris, others...)
+	return newBalancerStarter(p, uris)
 }
 
 func (p *implClientBuilder) Start() (ClientSocket, error) {
-	tp, err := transport.NewClientTransportTCP(p.addr, p.keepaliveInteval, p.keepaliveMaxLifetime)
+	tpURI, err := transport.ParseURI(p.addr)
+	if err != nil {
+		return nil, err
+	}
+	tp, err := tpURI.MakeClientTransport(p.keepaliveInteval, p.keepaliveMaxLifetime)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +176,9 @@ func (p *implClientBuilder) Start() (ClientSocket, error) {
 	tp.OnClose(func() {
 		_ = sendingScheduler.Close()
 	})
+	for _, it := range p.onCloses {
+		tp.OnClose(it)
+	}
 	requester := newDuplexRSocket(tp, false, sendingScheduler)
 	if p.acceptor != nil {
 		requester.bindResponder(p.acceptor(requester))

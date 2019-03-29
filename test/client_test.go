@@ -3,17 +3,18 @@ package test
 import (
 	"context"
 	"fmt"
-	"github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/common/logger"
-	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
-	"github.com/stretchr/testify/assert"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/common/logger"
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
+	"github.com/stretchr/testify/assert"
 )
 
 var client rsocket.ClientSocket
@@ -49,7 +50,7 @@ func init() {
 				}),
 			)
 		}).
-		Transport("127.0.0.1:8000").
+		Transport("tcp://127.0.0.1:7878").
 		Start()
 	if err != nil {
 		log.Fatal(err)
