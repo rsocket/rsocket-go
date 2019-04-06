@@ -54,7 +54,7 @@ func (p *tcpServerTransport) Listen(onReady ...func()) (err error) {
 	for {
 		c, err := p.listener.Accept()
 		if err != nil {
-			logger.Errorf("TCP listener break: %s\n", err)
+			logger.Errorf("protoTCP listener break: %s\n", err)
 			return err
 		}
 		go func(ctx context.Context, c net.Conn) {
@@ -80,7 +80,7 @@ func (p *tcpServerTransport) Listen(onReady ...func()) (err error) {
 	}
 }
 
-// NewTCPServerTransport returns a new server-side transport on TCP networking.
+// NewTCPServerTransport returns a new server-side transport on protoTCP networking.
 func NewTCPServerTransport(addr string) (ServerTransport, error) {
 	return &tcpServerTransport{
 		addr:      addr,

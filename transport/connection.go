@@ -2,8 +2,9 @@ package transport
 
 import (
 	"context"
-	"github.com/rsocket/rsocket-go/framing"
 	"io"
+
+	"github.com/rsocket/rsocket-go/framing"
 )
 
 type conn interface {

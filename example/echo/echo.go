@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/common/logger"
-	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"strconv"
+
+	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/common/logger"
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
 )
 
 func init() {

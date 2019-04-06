@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"github.com/rsocket/rsocket-go/common"
-	"github.com/rsocket/rsocket-go/common/logger"
-	"github.com/rsocket/rsocket-go/framing"
 	"io"
 	"sync"
 	"time"
+
+	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/common/logger"
+	"github.com/rsocket/rsocket-go/framing"
 )
 
 var bytesOfKeepalive []byte

@@ -80,6 +80,51 @@ func main() {
 
 ## Advanced
 
+### Load Balance
+
+Basic load balance feature is in preview, please checkout current master branch.
+It's a client side static load-balancer. (will be dynamic in the future.)
+It is very simple to try:
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
+)
+
+func main() {
+	// Load Balance Example
+	// It's EASY!!! Just set more than one transport URI.
+	setup := payload.NewString("こんにちは、世界!", "Go")
+	clientLB, err := rsocket.Connect().SetupPayload(setup).
+		Transport("tcp://127.0.0.1:8000", "tcp://127.0.0.1:7878").
+		Start()
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		_ = clientLB.Close()
+	}()
+	for i := 0; i < 100; i++ {
+		clientLB.RequestResponse(payload.NewString("Hello World!", fmt.Sprintf("%d", i))).
+			DoOnError(func(ctx context.Context, err error) {
+				log.Println("oops:", err)
+			}).
+			DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+				log.Println("okey:", elem)
+			}).
+			Subscribe(context.Background())
+	}
+}
+```
+
 ### Reactor API
 
 `Mono` and `Flux` are two parts of Reactor API.

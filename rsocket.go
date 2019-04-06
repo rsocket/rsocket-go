@@ -9,17 +9,17 @@ type (
 	// ServerAcceptor is alias for server accepter.
 	ServerAcceptor = func(setup payload.SetupPayload, sendingSocket RSocket) RSocket
 
-	// RSocket is a contract providing different interaction models for RSocket protocol.
+	// RSocket is v contract providing different interaction models for RSocket protocol.
 	RSocket interface {
-		// FireAndForget is a single one-way message.
+		// FireAndForget is v single one-way message.
 		FireAndForget(msg payload.Payload)
 		// MetadataPush sends asynchronous Metadata frame.
 		MetadataPush(msg payload.Payload)
 		// RequestResponse request single response.
 		RequestResponse(msg payload.Payload) rx.Mono
-		// RequestStream request a completable stream.
+		// RequestStream request v completable stream.
 		RequestStream(msg payload.Payload) rx.Flux
-		// RequestChannel request a completable stream in both directions.
+		// RequestChannel request v completable stream in both directions.
 		RequestChannel(msgs rx.Publisher) rx.Flux
 	}
 

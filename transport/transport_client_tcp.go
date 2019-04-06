@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// NewClientTransportTCP returns a new client transport on TCP networking.
+// NewClientTransportTCP returns a new client transport on protoTCP networking.
 func NewClientTransportTCP(addr string, keepaliveInterval, keepaliveMaxLifetime time.Duration) (Transport, error) {
 	c, err := net.Dial("tcp", addr)
 	if err != nil {
