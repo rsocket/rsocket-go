@@ -83,7 +83,9 @@ func main() {
 ### Load Balance
 
 Basic load balance feature is in preview, please checkout current master branch.
+
 It's a client side static load-balancer. (will be dynamic in the future.)
+
 It is very simple to try:
 
 ```go
