@@ -3,9 +3,10 @@ package rx
 import (
 	"context"
 	"fmt"
-	"github.com/rsocket/rsocket-go/payload"
 	"log"
 	"testing"
+
+	"github.com/rsocket/rsocket-go/payload"
 )
 
 func TestFluxProcessor_Request(t *testing.T) {

@@ -2,9 +2,10 @@ package extension
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/rsocket/rsocket-go/common"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestDecodeCompositeMetadata(t *testing.T) {

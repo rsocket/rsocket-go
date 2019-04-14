@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"github.com/rsocket/rsocket-go/common"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/rsocket/rsocket-go/common"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDecodeFrameSetup(t *testing.T) {

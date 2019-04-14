@@ -3,6 +3,7 @@ package framing
 import (
 	"encoding/binary"
 	"fmt"
+
 	"github.com/rsocket/rsocket-go/common"
 )
 
@@ -62,10 +63,9 @@ func (p *FrameRequestStream) DataUTF8() string {
 func NewFrameRequestStream(id uint32, n uint32, data, metadata []byte, flags ...FrameFlag) *FrameRequestStream {
 	fg := newFlags(flags...)
 	bf := common.BorrowByteBuffer()
-	for range [4]struct{}{} {
-		_ = bf.WriteByte(0)
-	}
-	binary.BigEndian.PutUint32(bf.Bytes(), n)
+	var b4 [4]byte
+	binary.BigEndian.PutUint32(b4[:], n)
+	_, _ = bf.Write(b4[:])
 	if len(metadata) > 0 {
 		fg |= FlagMetadata
 		_ = bf.WriteUint24(len(metadata))

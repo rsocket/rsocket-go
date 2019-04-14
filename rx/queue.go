@@ -2,9 +2,10 @@ package rx
 
 import (
 	"context"
-	"github.com/rsocket/rsocket-go/payload"
 	"math"
 	"sync/atomic"
+
+	"github.com/rsocket/rsocket-go/payload"
 )
 
 type bQueue struct {

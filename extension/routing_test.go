@@ -2,8 +2,9 @@ package extension
 
 import (
 	"bytes"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseRoutingTags(t *testing.T) {

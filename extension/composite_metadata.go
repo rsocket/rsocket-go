@@ -2,9 +2,10 @@ package extension
 
 import (
 	"fmt"
-	"github.com/rsocket/rsocket-go/common"
 	"io"
 	"math"
+
+	"github.com/rsocket/rsocket-go/common"
 )
 
 // CompositeMetadata provides multi Metadata payloads with different MIME types.

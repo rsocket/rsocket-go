@@ -34,6 +34,8 @@ type duplexRSocket struct {
 
 	splitter  fragmentation.Splitter
 	fragments *sync.Map // key=streamID, value=Joiner
+
+	zombie bool
 }
 
 func (p *duplexRSocket) Close() error {
@@ -92,7 +94,7 @@ func (p *duplexRSocket) RequestResponse(pl payload.Payload) rx.Mono {
 			if sig == rx.SignalCancel {
 				_ = p.tp.Send(framing.NewFrameCancel(sid))
 			}
-			p.messages.remove(sid)
+			p.removeMessage(sid)
 		})
 
 	data := pl.Data()
@@ -157,10 +159,10 @@ func (p *duplexRSocket) RequestStream(sending payload.Payload) rx.Flux {
 			elem.Release()
 		}).
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
-			p.messages.remove(merge.sid)
 			if sig == rx.SignalCancel {
 				_ = p.tp.Send(framing.NewFrameCancel(merge.sid))
 			}
+			p.removeMessage(merge.sid)
 		}).
 		DoOnRequest(func(ctx context.Context, n int) {
 			_ = p.tp.Send(framing.NewFrameRequestN(merge.sid, uint32(n)))
@@ -207,17 +209,17 @@ func (p *duplexRSocket) RequestChannel(publisher rx.Publisher) rx.Flux {
 		receiving: receiving,
 	})
 
-	receiving.DoFinally(func(ctx context.Context, sig rx.SignalType) {
-		// TODO: graceful close
-		p.messages.remove(sid)
-	})
-
 	var idx uint32
 	merge := struct {
 		pubs *publishersMap
 		sid  uint32
 		i    *uint32
 	}{p.messages, sid, &idx}
+
+	receiving.DoFinally(func(ctx context.Context, sig rx.SignalType) {
+		// TODO: graceful close
+		p.removeMessage(merge.sid)
+	})
 
 	sending.
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
@@ -312,7 +314,7 @@ func (p *duplexRSocket) respondRequestResponse(receiving fragmentation.HeaderAnd
 	// 5. async subscribe publisher
 	sending.
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
-			p.messages.remove(merge.sid)
+			p.removeMessage(merge.sid)
 			merge.r.Release()
 		}).
 		DoOnError(func(ctx context.Context, err error) {
@@ -378,7 +380,7 @@ func (p *duplexRSocket) respondRequestChannel(pl fragmentation.HeaderAndPayload)
 				return
 			}
 			if found.sending == nil {
-				p.messages.remove(sid)
+				p.removeMessage(sid)
 			} else {
 				found.receiving = nil
 			}
@@ -409,7 +411,7 @@ func (p *duplexRSocket) respondRequestChannel(pl fragmentation.HeaderAndPayload)
 				return
 			}
 			if found.receiving == nil {
-				p.messages.remove(sid)
+				p.removeMessage(sid)
 			} else {
 				found.sending = nil
 			}
@@ -509,7 +511,7 @@ func (p *duplexRSocket) respondRequestStream(receiving fragmentation.HeaderAndPa
 	// 5. async subscribe publisher
 	resp.
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
-			p.messages.remove(sid)
+			p.removeMessage(sid)
 			receiving.Release()
 		}).
 		DoOnComplete(func(ctx context.Context) {
@@ -748,6 +750,29 @@ func (p *duplexRSocket) sendPayload(sid uint32, sending payload.Payload, autoRel
 			BaseFrame: framing.NewBaseFrame(h, body),
 		})
 	})
+}
+
+func (p *duplexRSocket) markZombie() {
+	// set current socket as zombie
+	// zombie socket will exit after processing all requests.
+	p.zombie = true
+	p.tryKill()
+}
+
+func (p *duplexRSocket) tryKill() {
+	if p.messages.size() > 0 {
+		return
+	}
+	if err := p.Close(); err != nil {
+		logger.Warnf("kill zombie socket failed: %s\n", err.Error())
+	}
+}
+
+func (p *duplexRSocket) removeMessage(sid uint32) {
+	p.messages.remove(sid)
+	if p.zombie {
+		p.tryKill()
+	}
 }
 
 func newDuplexRSocket(tp transport.Transport, serverMode bool, scheduler rx.Scheduler, splitter fragmentation.Splitter) *duplexRSocket {

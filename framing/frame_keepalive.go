@@ -3,6 +3,7 @@ package framing
 import (
 	"encoding/binary"
 	"fmt"
+
 	"github.com/rsocket/rsocket-go/common"
 )
 
@@ -45,10 +46,9 @@ func NewFrameKeepalive(position uint64, data []byte, respond bool) *FrameKeepali
 		fg |= FlagRespond
 	}
 	bf := common.BorrowByteBuffer()
-	for range [8]struct{}{} {
-		_ = bf.WriteByte(0)
-	}
-	binary.BigEndian.PutUint64(bf.Bytes(), position)
+	var blank8 [8]byte
+	binary.BigEndian.PutUint64(blank8[:], position)
+	_, _ = bf.Write(blank8[:])
 	if len(data) > 0 {
 		_, _ = bf.Write(data)
 	}

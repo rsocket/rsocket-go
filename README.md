@@ -84,9 +84,9 @@ func main() {
 
 Basic load balance feature is in preview, please checkout current master branch.
 
-It's a client side static load-balancer. (will be dynamic in the future.)
+It's a client side load-balancer.
 
-It is very simple to try:
+It is very easy to use:
 
 ```go
 package main
@@ -95,6 +95,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/payload"
@@ -102,11 +103,24 @@ import (
 )
 
 func main() {
+	// Use a chan as discovery for brokers. 
+	// Writing a string slice will refresh the brokers of load balancer.  
+	brokers := make(chan []string, 0)
 	// Load Balance Example
 	// It's EASY!!! Just set more than one transport URI.
 	setup := payload.NewString("こんにちは、世界!", "Go")
-	clientLB, err := rsocket.Connect().SetupPayload(setup).
-		Transport("tcp://127.0.0.1:8000", "tcp://127.0.0.1:7878").
+	clientLB, err := rsocket.Connect().
+		SetupPayload(setup).
+		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
+            return rsocket.NewAbstractSocket(
+            	rsocket.FireAndForget(func(msg payload.Payload) {
+                    // For example:
+                    // You can refresh brokers list using FNF payload from server.
+                    brokers <- strings.Split(msg.DataUTF8(), ",")
+                }),
+            )
+        }).
+		Transports(brokers, rsocket.WithInitTransports("tcp://127.0.0.1:8000", "tcp://127.0.0.1:7878")).
 		Start()
 	if err != nil {
 		panic(err)
@@ -126,6 +140,8 @@ func main() {
 	}
 }
 ```
+
+> NOTICE: example codes are [here](./load_balance_test.go)
 
 ### Reactor API
 
@@ -254,5 +270,5 @@ flux.Subscribe(
  - [x] Error
  - [x] Flow Control: RequestN
  - [ ] Flow Control: Lease
- - [ ] Load Balance
+ - [x] Load Balance
  - [ ] Reconnect
