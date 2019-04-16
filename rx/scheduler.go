@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	elasticScheduler   = NewElasticScheduler(ants.DefaultAntsPoolSize)
+	elasticScheduler   = NewElasticScheduler(ants.DEFAULT_ANTS_POOL_SIZE)
 	immediateScheduler = &immediateSchedulerImpl{}
 )
 
