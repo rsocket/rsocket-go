@@ -2,11 +2,12 @@ package transport
 
 import (
 	"context"
+	"net"
+	"sync"
+
 	"github.com/rsocket/rsocket-go/common"
 	"github.com/rsocket/rsocket-go/common/logger"
 	"github.com/rsocket/rsocket-go/framing"
-	"net"
-	"sync"
 )
 
 type setupAcceptor = func(setup *framing.FrameSetup, tp Transport) error

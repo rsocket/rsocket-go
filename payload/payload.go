@@ -2,6 +2,7 @@ package payload
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"time"
@@ -11,8 +12,8 @@ import (
 )
 
 var (
-	errNotFile      = errors.New("target is not file")
-	errTooLargeFile = errors.New("too large file: maximum size is 16MB")
+	errNotFile               = errors.New("target is not file")
+	errTooLargePooledPayload = fmt.Sprintf("too large pooled payload: maximum size is %d", common.MaxUint24-3)
 )
 
 type (
@@ -79,6 +80,10 @@ func New(data []byte, metadata []byte) Payload {
 // Remember call Release() at last.
 // Sometimes payload will be released automatically. (eg: sent by a requester).
 func NewPooled(data, metadata []byte) Payload {
+	size := framing.CalcPayloadFrameSize(data, metadata)
+	if size > common.MaxUint24-3 {
+		panic(errTooLargePooledPayload)
+	}
 	return framing.NewFramePayload(0, data, metadata)
 }
 
@@ -100,9 +105,9 @@ func NewFile(filename string, metadata []byte) (Payload, error) {
 		return nil, errNotFile
 	}
 	// Check file size
-	if fi.Size() > common.MaxUint24 {
-		return nil, errTooLargeFile
-	}
+	//if fi.Size() > common.MaxUint24 {
+	//	return nil, errTooLargeFile
+	//}
 	bs, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err

@@ -228,8 +228,8 @@ flux.Subscribe(
 
 #### Dependencies
  - [ants](https://github.com/panjf2000/ants)
- - [bytebufferpool](github.com/valyala/bytebufferpool)
- - [testify](github.com/stretchr/testify)
+ - [bytebufferpool](https://github.com/valyala/bytebufferpool)
+ - [testify](https://github.com/stretchr/testify)
 
 ### TODO
 
@@ -248,7 +248,7 @@ flux.Subscribe(
 ##### Others
  - [ ] Resume
  - [x] Keepalive
- - [ ] Fragmentation
+ - [x] Fragmentation
  - [x] Thin Reactor
  - [x] Cancel
  - [x] Error

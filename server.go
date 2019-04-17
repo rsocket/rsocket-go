@@ -1,10 +1,12 @@
 package rsocket
 
 import (
+	"sync"
+
+	"github.com/rsocket/rsocket-go/fragmentation"
 	"github.com/rsocket/rsocket-go/framing"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/transport"
-	"sync"
 )
 
 const serverWorkerPoolSize = 1000
@@ -12,6 +14,8 @@ const serverWorkerPoolSize = 1000
 type (
 	// ServerBuilder can be used to build v RSocket server.
 	ServerBuilder interface {
+		// Fragment set fragmentation size which default is 16_777_215(16MB).
+		Fragment(mtu int) ServerBuilder
 		// Acceptor register server acceptor which is used to handle incoming RSockets.
 		Acceptor(acceptor ServerAcceptor) ServerTransportBuilder
 	}
@@ -32,16 +36,23 @@ type (
 // Receive receives server connections from client RSockets.
 func Receive() ServerBuilder {
 	return &xServer{
+		fragment:  fragmentation.MaxFragment,
 		responses: &sync.Map{},
 		scheduler: rx.NewElasticScheduler(serverWorkerPoolSize),
 	}
 }
 
 type xServer struct {
+	fragment  int
 	addr      string
 	acc       ServerAcceptor
 	scheduler rx.Scheduler
 	responses *sync.Map // sid -> flux/mono
+}
+
+func (p *xServer) Fragment(mtu int) ServerBuilder {
+	p.fragment = mtu
+	return p
 }
 
 func (p *xServer) Acceptor(acceptor ServerAcceptor) ServerTransportBuilder {
@@ -58,13 +69,17 @@ func (p *xServer) Serve() error {
 	defer func() {
 		_ = p.scheduler.Close()
 	}()
+	splitter, err := fragmentation.NewSplitter(p.fragment)
+	if err != nil {
+		return err
+	}
 	t, err := transport.NewTCPServerTransport(p.addr)
 	if err != nil {
 		return err
 	}
 	t.Accept(func(setup *framing.FrameSetup, tp transport.Transport) error {
 		defer setup.Release()
-		sendingSocket := newDuplexRSocket(tp, true, p.scheduler)
+		sendingSocket := newDuplexRSocket(tp, true, p.scheduler, splitter)
 		sendingSocket.bindResponder(p.acc(setup, sendingSocket))
 		return nil
 	})

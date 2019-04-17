@@ -4,16 +4,17 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
-	"github.com/stretchr/testify/assert"
 	"log"
 	_ "net/http/pprof"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
+	"github.com/stretchr/testify/assert"
 )
 
 func doOnce(host string, port int, totals int) {
@@ -50,25 +51,6 @@ func doOnce(host string, port int, totals int) {
 	}
 }
 
-func TestClients_RequestResponse(t *testing.T) {
-	log.Println("---------------")
-	doOnce("127.0.0.1", 7878, 10000)
-	//log.Println("---------------")
-	//doOnce(host, 8000)
-	//log.Println("---------------")
-	//doOnce(host, 8001)
-	//log.Println("---------------")
-	//doOnce(host, 8000)
-	//log.Println("---------------")
-	//doOnce(host, 8001)
-	//log.Println("---------------")
-	//doOnce(host, 8000)
-	//log.Println("---------------")
-	//doOnce(host, 8001)
-	//log.Println("---------------")
-	//doOnce(host, 8000)
-}
-
 func TestClient_RequestResponse(t *testing.T) {
 	client := createClient("127.0.0.1", 7878)
 	defer func() {
@@ -83,7 +65,7 @@ func TestClient_RequestResponse(t *testing.T) {
 	ctx := context.Background()
 	for i := 0; i < n; i++ {
 		md := []byte(fmt.Sprintf("benchmark_test_%d", i))
-		client.RequestResponse(payload.NewPooled(data, md)).
+		client.RequestResponse(payload.New(data, md)).
 			SubscribeOn(rx.ElasticScheduler()).
 			DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
 				assert.Equal(t, data, elem.Data(), "data doesn't match")
@@ -97,6 +79,11 @@ func TestClient_RequestResponse(t *testing.T) {
 	cost := time.Now().Sub(now)
 	log.Println(n, "COST:", cost)
 	log.Println(n, "QPS:", float64(n)/cost.Seconds())
+}
+
+func TestClients_RequestResponse(t *testing.T) {
+	log.Println("---------------")
+	doOnce("127.0.0.1", 7878, 10000)
 }
 
 func createClient(host string, port int) rsocket.ClientSocket {

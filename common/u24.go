@@ -1,12 +1,14 @@
 package common
 
 import (
-	"encoding/binary"
+	"fmt"
 	"io"
 )
 
 // MaxUint24 is the max value of Uint24.
 const MaxUint24 = 16777215
+
+var errMaxUint24 = fmt.Errorf("uint24 exceed max value: %d", MaxUint24)
 
 // Uint24 is 3 bytes unsigned integer.
 type Uint24 [3]byte
@@ -28,10 +30,14 @@ func (p Uint24) AsInt() int {
 }
 
 // NewUint24 returns a new uint24.
-func NewUint24(n int) Uint24 {
-	var b [4]byte
-	binary.BigEndian.PutUint32(b[:], uint32(n))
-	return [3]byte{b[1], b[2], b[3]}
+func NewUint24(n int) (v Uint24) {
+	if n > MaxUint24 {
+		panic(errMaxUint24)
+	}
+	v[0] = byte(n >> 16)
+	v[1] = byte(n >> 8)
+	v[2] = byte(n)
+	return
 }
 
 // NewUint24Bytes returns a new uint24 from bytes.

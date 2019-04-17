@@ -7,6 +7,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"strconv"
+	"strings"
 
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/common/logger"
@@ -22,7 +23,7 @@ func init() {
 
 func main() {
 	logger.SetLoggerLevel(logger.LogLevelInfo)
-	logger.SetLoggerLevel(logger.LogLevelDebug)
+	//logger.SetLoggerLevel(logger.LogLevelDebug)
 	err := createEchoServer("127.0.0.1", 7878)
 	panic(err)
 }
@@ -75,7 +76,7 @@ func createEchoServer(host string, port int) error {
 			s := pl.DataUTF8()
 			m, _ := pl.MetadataUTF8()
 			log.Println("data:", s, "metadata:", m)
-			totals := 100
+			totals := 10
 			if n, err := strconv.Atoi(m); err == nil {
 				totals = n
 			}
@@ -104,7 +105,7 @@ func createEchoServer(host string, port int) error {
 				Subscribe(context.Background())
 			return rx.Range(0, 3).
 				Map(func(n int) payload.Payload {
-					return payload.NewString("from_server", fmt.Sprintf("%d", n))
+					return payload.NewString(strings.Repeat("c", 373), fmt.Sprintf("%d", n))
 				})
 
 			//return payloads.(rx.Flux)
@@ -124,6 +125,7 @@ func createEchoServer(host string, port int) error {
 		}),
 	)
 	return rsocket.Receive().
+		//Fragment(128).
 		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.RSocket) rsocket.RSocket {
 			//log.Println("SETUP BEGIN:----------------")
 			//log.Println("maxLifeTime:", setup.MaxLifetime())
