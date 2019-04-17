@@ -226,6 +226,11 @@ flux.Subscribe(
 )
 ```
 
+#### Dependencies
+ - [ants](https://github.com/panjf2000/ants)
+ - [bytebufferpool](github.com/valyala/bytebufferpool)
+ - [testify](github.com/stretchr/testify)
+
 ### TODO
 
 #### Transport
@@ -250,4 +255,4 @@ flux.Subscribe(
  - [x] Flow Control: RequestN
  - [ ] Flow Control: Lease
  - [ ] Load Balance
- - [ ] Reconnect 
+ - [ ] Reconnect
