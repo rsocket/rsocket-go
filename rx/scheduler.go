@@ -2,12 +2,14 @@ package rx
 
 import (
 	"context"
-	"github.com/panjf2000/ants"
 	"io"
+	"math"
+
+	"github.com/panjf2000/ants"
 )
 
 var (
-	elasticScheduler   = NewElasticScheduler(ants.DEFAULT_ANTS_POOL_SIZE)
+	elasticScheduler   = NewElasticScheduler(math.MaxInt32)
 	immediateScheduler = &immediateSchedulerImpl{}
 )
 
