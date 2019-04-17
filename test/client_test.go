@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -20,35 +21,49 @@ import (
 var client rsocket.ClientSocket
 
 func init() {
+	acceptor := rsocket.NewAbstractSocket(
+		rsocket.MetadataPush(func(payload payload.Payload) {
+			log.Println("rcv MetadataPush:", payload)
+		}),
+		rsocket.FireAndForget(func(msg payload.Payload) {
+			log.Println("rcv FNF:", msg)
+		}),
+		rsocket.RequestResponse(func(msg payload.Payload) rx.Mono {
+			return rx.JustMono(msg)
+		}),
+		rsocket.RequestStream(func(msg payload.Payload) rx.Flux {
+			d := msg.DataUTF8()
+			m, _ := msg.MetadataUTF8()
+			totals, _ := strconv.Atoi(m)
+			return rx.Range(0, totals).
+				Map(func(n int) payload.Payload {
+					return payload.NewString(fmt.Sprintf("%s_%d", d, n), m)
+				})
+		}),
+		rsocket.RequestChannel(func(msgs rx.Publisher) rx.Flux {
+			return rx.ToFlux(msgs)
+		}))
+
+	go func() {
+		err := rsocket.Receive().
+			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.RSocket) rsocket.RSocket {
+				return acceptor
+			}).
+			Transport("127.0.0.1:7878").
+			Serve()
+		panic(err)
+	}()
+
+	// TODO: ugly code for waiting for server serve.
+	time.Sleep(1 * time.Second)
+
 	socket, err := rsocket.Connect().
 		SetupPayload(payload.NewString("hello", "world")).
 		MetadataMimeType("application/json").
 		DataMimeType("application/json").
 		KeepAlive(3*time.Second, 2*time.Second, 3).
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
-			return rsocket.NewAbstractSocket(
-				rsocket.RequestResponse(func(msg payload.Payload) rx.Mono {
-					return rx.JustMono(payload.NewString("foo", "bar"))
-				}),
-				rsocket.RequestStream(func(msg payload.Payload) rx.Flux {
-					log.Println("receive:", msg)
-					return rx.Range(0, 10).
-						Map(func(n int) payload.Payload {
-							return payload.NewString(fmt.Sprintf("from_golang_%d", n), "stream")
-						})
-				}),
-				rsocket.RequestChannel(func(msgs rx.Publisher) rx.Flux {
-					rx.ToFlux(msgs).
-						SubscribeOn(rx.ElasticScheduler()). // <-- use elastic scheduler, DO NOT block here!
-						DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
-							log.Println("receive channel:", elem)
-						})
-					return rx.Range(0, 10).
-						Map(func(n int) payload.Payload {
-							return payload.NewString(fmt.Sprintf("from_golang_%d", n), "channel")
-						})
-				}),
-			)
+			return acceptor
 		}).
 		Transport("tcp://127.0.0.1:7878").
 		Start()
@@ -120,8 +135,6 @@ func TestClient_RequestStream(t *testing.T) {
 			log.Println("oops...it's canceled")
 		}).
 		DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
-			time.Sleep(500 * time.Millisecond)
-			log.Println("rcv:", elem)
 			assert.Equal(t, fmt.Sprintf("hello_%d", totals), elem.DataUTF8(), "bad data")
 			metadata, _ := elem.MetadataUTF8()
 			assert.Equal(t, fmt.Sprintf("%d", c), metadata, "bad metadata")
@@ -132,7 +145,6 @@ func TestClient_RequestStream(t *testing.T) {
 }
 
 func TestClient_RequestChannel(t *testing.T) {
-	//logger.SetLoggerLevel(logger.LogLevelDebug)
 	done := make(chan struct{})
 	sending := rx.Range(0, 10).Map(func(n int) payload.Payload {
 		return payload.NewString("h", "b")
