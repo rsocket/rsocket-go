@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/rsocket/rsocket-go/common"
 	"github.com/rsocket/rsocket-go/common/logger"
 	"github.com/rsocket/rsocket-go/framing"
 )
@@ -17,11 +16,7 @@ type clientTransportImpl struct {
 }
 
 func (p *clientTransportImpl) Send(frame framing.Frame) (err error) {
-	if framing.HeaderLen+frame.Len() > common.MaxUint24 {
-		err = common.ErrFrameLengthExceed
-	} else {
-		err = p.conn.Send(frame)
-	}
+	err = p.conn.Send(frame)
 	if err != nil {
 		frame.Release()
 	}
@@ -32,28 +27,32 @@ func (p *clientTransportImpl) Close() error {
 	return p.conn.Close()
 }
 
-func (p *clientTransportImpl) Start(ctx context.Context) error {
-	p.conn.Handle(func(ctx context.Context, frame framing.Frame) (err error) {
-		t := frame.Header().Type()
-		// 1. respond keepalive
-		if t == framing.FrameTypeKeepalive {
-			p.HandleKeepalive(ctx, frame)
-			return nil
-		}
-		// 2. skip invalid metadata push
-		if t == framing.FrameTypeMetadataPush && frame.Header().StreamID() != 0 {
-			frame.Release()
-			logger.Warnf("rsocket.Transport: omit MetadataPush with non-zero stream id %d\n", frame.Header().StreamID())
-			return nil
-		}
-		// 3. trigger handler
-		if h, ok := p.handlers.Load(t); ok {
-			return h.(FrameHandler)(frame)
-		}
-		// 4. missing handler
+func (p *clientTransportImpl) onFrame(ctx context.Context, frame framing.Frame) (err error) {
+	header := frame.Header()
+	typo := header.Type()
+	// respond keepalive
+	if typo == framing.FrameTypeKeepalive {
+		p.HandleKeepalive(ctx, frame)
+		return nil
+	}
+	// skip invalid metadata push
+	if typo == framing.FrameTypeMetadataPush && header.StreamID() != 0 {
 		frame.Release()
-		return fmt.Errorf("missing frame handler: type=%s", t)
-	})
+		logger.Warnf("rsocket.Transport: omit MetadataPush with non-zero stream id %d\n", header.StreamID())
+		return nil
+	}
+
+	// trigger handler
+	if h, ok := p.handlers.Load(typo); ok {
+		return h.(FrameHandler)(frame)
+	}
+	// missing handler
+	frame.Release()
+	return fmt.Errorf("missing frame handler: type=%s", typo)
+}
+
+func (p *clientTransportImpl) Start(ctx context.Context) error {
+	p.conn.Handle(p.onFrame)
 	defer func() {
 		for _, fn := range p.fnClose {
 			fn()

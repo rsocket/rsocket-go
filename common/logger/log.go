@@ -1,6 +1,8 @@
 package logger
 
-import "log"
+import (
+	"log"
+)
 
 // LogFunc is alias of logger function.
 type LogFunc = func(string, ...interface{})

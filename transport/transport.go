@@ -29,7 +29,7 @@ type Transport interface {
 	HandleRequestStream(handler FrameHandler)
 	// HandleRequestChannel register RequestChannel frame handler.
 	HandleRequestChannel(handler FrameHandler)
-	// HandlePayload register Payload frame handler.
+	// HandlePayload register handler for processing Payload.
 	HandlePayload(handler FrameHandler)
 	// HandleRequestN register RequestN frame handler.
 	HandleRequestN(handler FrameHandler)

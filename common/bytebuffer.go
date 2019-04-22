@@ -1,8 +1,9 @@
 package common
 
 import (
-	"github.com/valyala/bytebufferpool"
 	"io"
+
+	"github.com/valyala/bytebufferpool"
 )
 
 var bPool bytebufferpool.Pool
@@ -27,13 +28,8 @@ func (p *ByteBuff) Write(bs []byte) (n int, err error) {
 
 // WriteUint24 encode and write Uint24 to current ByteBuff.
 func (p *ByteBuff) WriteUint24(n int) (err error) {
-	foo := NewUint24(n)
-	for i := 0; i < 3; i++ {
-		err = p.WriteByte(foo[i])
-		if err != nil {
-			break
-		}
-	}
+	v := NewUint24(n)
+	_, err = p.Write(v[:])
 	return
 }
 
