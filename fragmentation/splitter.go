@@ -11,8 +11,8 @@ func (s implSplitter) Split(placeholder int, data []byte, metadata []byte, onFra
 	fragment := int(s)
 	var bf *common.ByteBuff
 	lenM, lenD := len(metadata), len(data)
-	var cur1, cur2 int
-	var idx int
+	var idx, cursor1, cursor2 int
+	var follow bool
 	for {
 		bf = common.BorrowByteBuffer()
 		var wroteM int
@@ -20,26 +20,39 @@ func (s implSplitter) Split(placeholder int, data []byte, metadata []byte, onFra
 		if idx == 0 && placeholder > 0 {
 			left -= placeholder
 			for i := 0; i < placeholder; i++ {
-				_ = bf.WriteByte(0)
+				if err := bf.WriteByte(0); err != nil {
+					common.ReturnByteBuffer(bf)
+					return err
+				}
 			}
 		}
-		hasMetadata := cur1 < lenM
+		hasMetadata := cursor1 < lenM
 		if hasMetadata {
 			left -= 3
 			// write metadata length placeholder
-			_ = bf.WriteUint24(0)
-		}
-		for wrote := 0; wrote < left; wrote++ {
-			if cur1 < lenM {
-				_ = bf.WriteByte(metadata[cur1])
-				wroteM++
-				cur1++
-			} else if cur2 < lenD {
-				_ = bf.WriteByte(data[cur2])
-				cur2++
+			if err := bf.WriteUint24(0); err != nil {
+				common.ReturnByteBuffer(bf)
+				return err
 			}
 		}
-		follow := cur1+cur2 < lenM+lenD
+		begin1, begin2 := cursor1, cursor2
+		for wrote := 0; wrote < left; wrote++ {
+			if cursor1 < lenM {
+				wroteM++
+				cursor1++
+			} else if cursor2 < lenD {
+				cursor2++
+			}
+		}
+		if _, err = bf.Write(metadata[begin1:cursor1]); err != nil {
+			common.ReturnByteBuffer(bf)
+			return err
+		}
+		if _, err := bf.Write(data[begin2:cursor2]); err != nil {
+			common.ReturnByteBuffer(bf)
+			return err
+		}
+		follow = cursor1+cursor2 < lenM+lenD
 		var fg framing.FrameFlag
 		if follow {
 			fg |= framing.FlagFollow

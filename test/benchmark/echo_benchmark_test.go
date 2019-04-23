@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/stretchr/testify/assert"
@@ -59,7 +60,7 @@ func TestClient_RequestResponse(t *testing.T) {
 	wg := &sync.WaitGroup{}
 	n := 500000
 	wg.Add(n)
-	data := []byte(strings.Repeat("A", 4096))
+	data := []byte(common.RandAlphanumeric(4096))
 
 	now := time.Now()
 	ctx := context.Background()
