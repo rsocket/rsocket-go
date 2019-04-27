@@ -26,7 +26,7 @@ func TestMedianQuantile_Insert(t *testing.T) {
 				x = v
 			}
 			data[i] = x
-			median.Insert(float32(x))
+			median.Insert(float64(x))
 		}
 		sort.Sort(sort.IntSlice(data))
 		expected := data[len(data)/2]
