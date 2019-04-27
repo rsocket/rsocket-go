@@ -2,8 +2,9 @@ package framing
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestHeader_All(t *testing.T) {

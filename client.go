@@ -64,7 +64,11 @@ type (
 		// Example:
 		// "tcp://127.0.0.1:7878" means a TCP RSocket transport.
 		// "ws://127.0.0.1:8080/a/b/c" means a Websocket RSocket transport. (NOTICE: Websocket will be supported in the future).
-		Transport(uri string, others ...string) ClientStarter
+		Transport(uri string) ClientStarter
+		// Transports set transports with load balancer.
+		// Client will watch discovery and change current transports.
+		// You can custom balancer options use functions: WithInitTransports, WithQuantile, WithPendings and WithActives.
+		Transports(discovery <-chan []string, options ...OptBalancer) ClientStarter
 	}
 )
 
@@ -93,6 +97,10 @@ type implClientBuilder struct {
 	onCloses             []func()
 }
 
+func (p *implClientBuilder) Transports(discovery <-chan []string, options ...OptBalancer) ClientStarter {
+	return newBalancerStarter(p, discovery, options...)
+}
+
 func (p *implClientBuilder) Fragment(mtu int) ClientBuilder {
 	p.fragment = mtu
 	return p
@@ -100,6 +108,7 @@ func (p *implClientBuilder) Fragment(mtu int) ClientBuilder {
 
 func (p *implClientBuilder) clone() ClientBuilder {
 	clone := &implClientBuilder{
+		fragment:             p.fragment,
 		keepaliveInteval:     p.keepaliveInteval,
 		keepaliveMaxLifetime: p.keepaliveMaxLifetime,
 		dataMimeType:         p.dataMimeType,
@@ -111,7 +120,6 @@ func (p *implClientBuilder) clone() ClientBuilder {
 	}
 	copy(clone.onCloses, p.onCloses)
 	return clone
-
 }
 
 func (p *implClientBuilder) OnClose(fn func()) ClientBuilder {
@@ -160,17 +168,9 @@ func (p *implClientBuilder) Acceptor(acceptor ClientSocketAcceptor) ClientTransp
 	return p
 }
 
-func (p *implClientBuilder) Transport(transport string, others ...string) ClientStarter {
-	// singleton
-	if len(others) < 1 {
-		p.addr = transport
-		return p
-	}
-	// load balance
-	uris := make([]string, 0)
-	uris = append(uris, transport)
-	uris = append(uris, others...)
-	return newBalancerStarter(p, uris)
+func (p *implClientBuilder) Transport(transport string) ClientStarter {
+	p.addr = transport
+	return p
 }
 
 func (p *implClientBuilder) Start() (ClientSocket, error) {

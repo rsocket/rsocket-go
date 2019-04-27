@@ -2,9 +2,10 @@ package framing
 
 import (
 	"bytes"
+	"testing"
+
 	"github.com/rsocket/rsocket-go/common"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestFramePayload_Basic(t *testing.T) {

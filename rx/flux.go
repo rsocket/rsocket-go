@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/rsocket/rsocket-go/common/logger"
-	"github.com/rsocket/rsocket-go/payload"
 	"math"
 	"sync"
+
+	"github.com/rsocket/rsocket-go/common/logger"
+	"github.com/rsocket/rsocket-go/payload"
 )
 
 type fluxProcessor struct {

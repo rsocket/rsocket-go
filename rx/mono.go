@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/rsocket/rsocket-go/payload"
 	"sync"
+
+	"github.com/rsocket/rsocket-go/payload"
 )
 
 type defaultMonoProcessor struct {

@@ -3,16 +3,11 @@ package rx
 import (
 	"context"
 	"fmt"
-	"github.com/rsocket/rsocket-go/payload"
 	"log"
-	"math/rand"
 	"testing"
-	"time"
-)
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
+	"github.com/rsocket/rsocket-go/payload"
+)
 
 func TestBQueue_SetRate(t *testing.T) {
 	qu := newQueue(16, 0, 2)

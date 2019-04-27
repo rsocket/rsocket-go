@@ -2,10 +2,11 @@ package rx_test
 
 import (
 	"context"
-	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
 	"sync"
 	"testing"
+
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
 )
 
 var testPayload payload.Payload

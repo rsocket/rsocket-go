@@ -2,11 +2,15 @@ package common
 
 import (
 	"io"
+	"sync/atomic"
 
 	"github.com/valyala/bytebufferpool"
 )
 
-var bPool bytebufferpool.Pool
+var (
+	borrowed int32
+	bPool    bytebufferpool.Pool
+)
 
 // ByteBuff provides byte buffer, which can be used for minimizing.
 type ByteBuff bytebufferpool.ByteBuffer
@@ -56,11 +60,19 @@ func (p *ByteBuff) bb() *bytebufferpool.ByteBuffer {
 }
 
 // BorrowByteBuffer borrows a ByteBuff from pool.
-func BorrowByteBuffer() *ByteBuff {
-	return (*ByteBuff)(bPool.Get())
+func BorrowByteBuffer() (bb *ByteBuff) {
+	bb = (*ByteBuff)(bPool.Get())
+	atomic.AddInt32(&borrowed, 1)
+	return
 }
 
 // ReturnByteBuffer returns a ByteBuff.
 func ReturnByteBuffer(b *ByteBuff) {
 	bPool.Put((*bytebufferpool.ByteBuffer)(b))
+	atomic.AddInt32(&borrowed, -1)
+}
+
+// CountByteBuffer returns amount of ByteBuff borrowed.
+func CountByteBuffer() int {
+	return int(atomic.LoadInt32(&borrowed))
 }

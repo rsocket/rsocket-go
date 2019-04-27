@@ -3,9 +3,10 @@ package transport
 import (
 	"bufio"
 	"errors"
+	"io"
+
 	"github.com/rsocket/rsocket-go/common"
 	"github.com/rsocket/rsocket-go/framing"
-	"io"
 )
 
 const (

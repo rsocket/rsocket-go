@@ -3,8 +3,9 @@ package framing
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/rsocket/rsocket-go/common"
 	"time"
+
+	"github.com/rsocket/rsocket-go/common"
 )
 
 const (

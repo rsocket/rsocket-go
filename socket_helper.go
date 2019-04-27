@@ -26,6 +26,14 @@ type publishersMap struct {
 	m *sync.Map
 }
 
+func (p *publishersMap) size() (n int) {
+	p.m.Range(func(key, value interface{}) bool {
+		n++
+		return true
+	})
+	return
+}
+
 func (p *publishersMap) put(id uint32, value *publishers) {
 	p.m.Store(id, value)
 }
