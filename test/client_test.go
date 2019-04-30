@@ -46,7 +46,7 @@ func init() {
 
 	go func() {
 		err := rsocket.Receive().
-			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.RSocket) rsocket.RSocket {
+			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.EnhancedRSocket) rsocket.RSocket {
 				return acceptor
 			}).
 			Transport("127.0.0.1:7878").

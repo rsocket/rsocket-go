@@ -18,7 +18,7 @@ import (
 var defaultMimeType = []byte("application/binary")
 
 type (
-	// ClientSocket is Client Side of v RSocket socket. Sends Frames to v RSocket Server.
+	// ClientSocket is Client Side of a RSocket socket. Sends Frames to a RSocket Server.
 	ClientSocket interface {
 		io.Closer
 		RSocket
@@ -27,13 +27,13 @@ type (
 	// ClientSocketAcceptor is alias for RSocket handler function.
 	ClientSocketAcceptor = func(socket RSocket) RSocket
 
-	// ClientStarter can be used to start v client.
+	// ClientStarter can be used to start a client.
 	ClientStarter interface {
-		// Start start v client socket.
+		// Start start a client socket.
 		Start() (ClientSocket, error)
 	}
 
-	// ClientBuilder can be used to build v RSocket client.
+	// ClientBuilder can be used to build a RSocket client.
 	ClientBuilder interface {
 		ClientTransportBuilder
 		// Fragment set fragmentation size which default is 16_777_215(16MB).
@@ -57,7 +57,7 @@ type (
 		clone() ClientBuilder
 	}
 
-	// ClientTransportBuilder is used to build v RSocket client with custom Transport string.
+	// ClientTransportBuilder is used to build a RSocket client with custom Transport string.
 	ClientTransportBuilder interface {
 		// Transport set Transport for current RSocket client.
 		// URI is used to create RSocket Transport:
@@ -72,7 +72,7 @@ type (
 	}
 )
 
-// Connect create v new RSocket client builder with default settings.
+// Connect create a new RSocket client builder with default settings.
 func Connect() ClientBuilder {
 	return &implClientBuilder{
 		fragment:             fragmentation.MaxFragment,
@@ -190,10 +190,10 @@ func (p *implClientBuilder) Start() (ClientSocket, error) {
 	tp.OnClose(func() {
 		_ = sendingScheduler.Close()
 	})
-	for _, it := range p.onCloses {
-		tp.OnClose(it)
-	}
 	requester := newDuplexRSocket(tp, false, sendingScheduler, splitter)
+	for _, it := range p.onCloses {
+		requester.OnClose(it)
+	}
 	if p.acceptor != nil {
 		requester.bindResponder(p.acceptor(requester))
 	}
