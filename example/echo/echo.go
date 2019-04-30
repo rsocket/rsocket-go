@@ -126,7 +126,7 @@ func createEchoServer(host string, port int) error {
 	)
 	return rsocket.Receive().
 		//Fragment(128).
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.RSocket) rsocket.RSocket {
+		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.EnhancedRSocket) rsocket.RSocket {
 			//log.Println("SETUP BEGIN:----------------")
 			//log.Println("maxLifeTime:", setup.MaxLifetime())
 			//log.Println("keepaliveInterval:", setup.TimeBetweenKeepalive())
@@ -144,6 +144,10 @@ func createEchoServer(host string, port int) error {
 			//	}).
 			//	SubscribeOn(rx.ElasticScheduler()).
 			//	Subscribe(context.Background())
+
+			sendingSocket.OnClose(func() {
+				logger.Infof("***** socket disconnected *****\n")
+			})
 
 			return responder
 		}).

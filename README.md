@@ -29,13 +29,15 @@ import (
 func main() {
 	// Create and serve
 	err := rsocket.Receive().
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.RSocket) rsocket.RSocket {
+		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.EnhancedRSocket) rsocket.RSocket {
 			// bind responder
-			return rsocket.NewAbstractSocket(rsocket.RequestResponse(func(msg payload.Payload) rx.Mono {
-				return rx.JustMono(msg)
-			}))
+			return rsocket.NewAbstractSocket(
+				rsocket.RequestResponse(func(msg payload.Payload) rx.Mono {
+					return rx.JustMono(msg)
+				}),
+			)
 		}).
-		Transport("127.0.0.1:7878").
+		Transport("tcp://127.0.0.1:7878").
 		Serve()
 	panic(err)
 }
@@ -71,7 +73,6 @@ func main() {
 			log.Println("receive response:", elem)
 		}).
 		Subscribe(context.Background())
-
 }
 
 ```
@@ -82,11 +83,9 @@ func main() {
 
 ### Load Balance
 
-Basic load balance feature is in preview, please checkout current master branch.
+Basic load balance feature is in preview, please checkout current master branch. It's a client side load-balancer.
 
-It's a client side load-balancer.
-
-It is very easy to use:
+Here're some example codes:
 
 ```go
 package main
@@ -112,14 +111,14 @@ func main() {
 	clientLB, err := rsocket.Connect().
 		SetupPayload(setup).
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
-            return rsocket.NewAbstractSocket(
-            	rsocket.FireAndForget(func(msg payload.Payload) {
-                    // For example:
-                    // You can refresh brokers list using FNF payload from server.
-                    brokers <- strings.Split(msg.DataUTF8(), ",")
-                }),
+			return rsocket.NewAbstractSocket(
+				rsocket.FireAndForget(func(msg payload.Payload) {
+					// For example:
+					// You can refresh brokers list using FNF payload from server.
+					brokers <- strings.Split(msg.DataUTF8(), ",")
+				}),
             )
-        }).
+		}).
 		Transports(brokers, rsocket.WithInitTransports("tcp://127.0.0.1:8000", "tcp://127.0.0.1:7878")).
 		Start()
 	if err != nil {

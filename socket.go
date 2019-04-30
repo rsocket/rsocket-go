@@ -38,6 +38,10 @@ type duplexRSocket struct {
 	zombie bool
 }
 
+func (p *duplexRSocket) OnClose(fn func()) {
+	p.tp.OnClose(fn)
+}
+
 func (p *duplexRSocket) Close() error {
 	return p.tp.Close()
 }
