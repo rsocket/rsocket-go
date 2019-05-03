@@ -67,7 +67,7 @@ func (p *duplexRSocket) FireAndForget(sending payload.Payload) {
 				BaseFrame: framing.NewBaseFrame(h, body),
 			}
 		} else {
-			h := framing.NewFrameHeader(sid, framing.FrameTypeRequestResponse, fg|framing.FlagNext)
+			h := framing.NewFrameHeader(sid, framing.FrameTypePayload, fg|framing.FlagNext)
 			f = &framing.FramePayload{
 				BaseFrame: framing.NewBaseFrame(h, body),
 			}
