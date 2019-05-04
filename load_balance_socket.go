@@ -9,10 +9,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/rsocket/rsocket-go/common"
-	"github.com/rsocket/rsocket-go/common/logger"
+	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
+	"github.com/rsocket/rsocket-go/socket"
 )
 
 const (
@@ -29,7 +30,7 @@ var (
 // weightedSocket is a socket with weight.
 type weightedSocket struct {
 	mutex    *sync.Mutex
-	origin   ClientSocket
+	origin   Client
 	supplier *socketSupplier
 
 	lowerQuantile, higherQuantile, median common.Quantile
@@ -95,8 +96,8 @@ func (p *weightedSocket) Close() (err error) {
 }
 
 func (p *weightedSocket) lazyClose() {
-	if ds, ok := p.origin.(*duplexRSocket); ok {
-		ds.markZombie()
+	if ds, ok := p.origin.(*socket.DuplexRSocket); ok {
+		ds.MarkZombie()
 	}
 }
 
@@ -221,7 +222,7 @@ func (*mustFailedSocket) RequestChannel(msgs rx.Publisher) rx.Flux {
 		})
 }
 
-func newWeightedSocket(lowerQuantile, higherQuantile common.Quantile, origin ClientSocket, supplier *socketSupplier) *weightedSocket {
+func newWeightedSocket(lowerQuantile, higherQuantile common.Quantile, origin Client, supplier *socketSupplier) *weightedSocket {
 	now := common.NowInMicrosecond()
 	return &weightedSocket{
 		mutex:            &sync.Mutex{},

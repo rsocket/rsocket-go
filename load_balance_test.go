@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/stretchr/testify/assert"
@@ -34,7 +34,7 @@ func TestLoadBalanceClient(t *testing.T) {
 
 	cli, err := Connect().SetupPayload(setup).
 		Transports(discovery, WithInitTransports(seeds...)).
-		Start()
+		Start(context.Background())
 	if err != nil {
 		assert.NoError(t, err, "cannot create client with load balance")
 	}

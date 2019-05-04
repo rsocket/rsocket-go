@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
-	"github.com/stretchr/testify/assert"
+
+	. "github.com/stretchr/testify/require"
 )
 
 const metadataRegister = "register"
@@ -18,7 +19,7 @@ const metadataRegister = "register"
 func TestBroker(t *testing.T) {
 	bus := NewBus()
 	err := Receive().
-		Acceptor(func(setup payload.SetupPayload, sendingSocket EnhancedRSocket) RSocket {
+		Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) RSocket {
 			// register socket to bus.
 			metadata, _ := setup.MetadataUTF8()
 			if metadata == metadataRegister {
@@ -71,11 +72,11 @@ func TestService(t *testing.T) {
 			}))
 		}).
 		Transport("tcp://127.0.0.1:8888").
-		Start()
+		Start(context.Background())
 	defer func() {
 		_ = clientA1.Close()
 	}()
-	assert.NoError(t, err)
+	NoError(t, err)
 
 	// Service A2
 	clientA2, err := Connect().
@@ -86,11 +87,11 @@ func TestService(t *testing.T) {
 			}))
 		}).
 		Transport("tcp://127.0.0.1:8888").
-		Start()
+		Start(context.Background())
 	defer func() {
 		_ = clientA2.Close()
 	}()
-	assert.NoError(t, err)
+	NoError(t, err)
 
 	// Service B
 	clientB, err := Connect().
@@ -107,11 +108,11 @@ func TestService(t *testing.T) {
 			}))
 		}).
 		Transport("tcp://127.0.0.1:8888").
-		Start()
+		Start(context.Background())
 	defer func() {
 		_ = clientB.Close()
 	}()
-	assert.NoError(t, err)
+	NoError(t, err)
 
 	// 1. test RequestResponse
 	log.Println("-----RequestResponse-----")
@@ -138,7 +139,6 @@ func TestService(t *testing.T) {
 	// 2. test RequestStream
 	log.Println("-----RequestStream-----")
 	clientA1.RequestStream(payload.NewString("A1_TO_B_STREAM", "B")).
-		LimitRate(1).
 		DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
 			m, _ := elem.MetadataUTF8()
 			log.Printf("A1 -> B: data=%s, metadata=%s\n", elem.DataUTF8(), m)
@@ -152,7 +152,7 @@ func TestService(t *testing.T) {
 			log.Println("cancel success!")
 		}).
 		DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
-			assert.Fail(t, "it should be canceled.")
+			Fail(t, "it should be canceled.")
 		}).
 		Subscribe(context.Background(), rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			s.Cancel()
@@ -160,5 +160,5 @@ func TestService(t *testing.T) {
 
 	// check leak
 	time.Sleep(1 * time.Second)
-	assert.Equal(t, 0, common.CountByteBuffer(), "byte buffer leak")
+	Equal(t, 0, common.CountByteBuffer(), "byte buffer leak")
 }

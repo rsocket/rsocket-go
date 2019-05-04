@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rsocket/rsocket-go/common"
-	"github.com/rsocket/rsocket-go/common/logger"
+	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -163,7 +163,7 @@ func (p *balancer) rebalance(uris ...string) (err error) {
 	return
 }
 
-func (p *balancer) next() (choose ClientSocket) {
+func (p *balancer) next() (choose Client) {
 	p.locker.Lock()
 	defer p.locker.Unlock()
 	p.refresh()
@@ -310,18 +310,19 @@ func (p *balancer) acquire() bool {
 	p.actives = append(p.actives, sk)
 
 	// TODO: ugly code
-	merge := &struct {
-		sk *weightedSocket
-		ba *balancer
-	}{sk, p}
-	sk.origin.(*duplexRSocket).tp.OnClose(func() {
-		merge.ba.locker.Lock()
-		defer merge.ba.locker.Unlock()
-		logger.Debugf("rsocket: unload %s\n", merge.sk)
-		if ok := merge.ba.unload(merge.sk); ok {
-			_ = merge.ba.suppliers.returnSupplier(merge.sk.supplier)
-		}
-	})
+	//merge := &struct {
+	//	sk *weightedSocket
+	//	ba *balancer
+	//}{sk, p}
+	// TODO: no tp closer
+	//sk.origin.(*duplexRSocket).tp.OnClose(func() {
+	//	merge.ba.locker.Lock()
+	//	defer merge.ba.locker.Unlock()
+	//	logger.Debugf("rsocket: unload %s\n", merge.sk)
+	//	if ok := merge.ba.unload(merge.sk); ok {
+	//		_ = merge.ba.suppliers.returnSupplier(merge.sk.supplier)
+	//	}
+	//})
 	return true
 }
 
@@ -413,7 +414,7 @@ type balancerStarter struct {
 	discovery <-chan []string
 }
 
-func (p *balancerStarter) Start() (ClientSocket, error) {
+func (p *balancerStarter) Start(ctx context.Context) (Client, error) {
 	opts := defaultBalancerOpts
 	for _, fn := range p.opts {
 		fn(&opts)
@@ -423,7 +424,7 @@ func (p *balancerStarter) Start() (ClientSocket, error) {
 		if err := ba.watchDiscovery(ctx); err != nil {
 			logger.Warnf("reblance exit with error: %s\n", err.Error())
 		}
-	}(context.Background())
+	}(ctx)
 	return ba, nil
 }
 

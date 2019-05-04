@@ -34,10 +34,11 @@ func (p *defaultMonoProcessor) Dispose() {
 	p.Cancel()
 }
 
-func (p *defaultMonoProcessor) isDisposed() bool {
+func (p *defaultMonoProcessor) IsDisposed() (ok bool) {
 	p.lock.Lock()
-	defer p.lock.Unlock()
-	return p.sig == SignalCancel
+	ok = p.sig == SignalCancel
+	p.lock.Unlock()
+	return
 }
 
 func (p *defaultMonoProcessor) DoFinally(fn FnOnFinally) Mono {
@@ -67,12 +68,11 @@ func (p *defaultMonoProcessor) DoOnCancel(fn FnOnCancel) Mono {
 
 func (p *defaultMonoProcessor) Cancel() {
 	p.lock.Lock()
-	defer p.lock.Unlock()
 	if p.sig != signalDefault {
-		return
+		p.sig = SignalCancel
+		close(p.done)
 	}
-	p.sig = SignalCancel
-	close(p.done)
+	p.lock.Unlock()
 }
 
 func (p *defaultMonoProcessor) Request(n int) {
@@ -157,6 +157,8 @@ func (p *defaultMonoProcessor) Subscribe(ctx context.Context, others ...OptSubsc
 	p.subScheduler.Do(ctx, func(ctx context.Context) {
 		defer func() {
 			p.hooks.OnFinally(ctx, p.sig)
+			returnHooks(p.hooks)
+			p.hooks = nil
 		}()
 		p.OnSubscribe(ctx, p)
 		<-p.done
@@ -182,6 +184,6 @@ func NewMono(fn func(ctx context.Context, sink MonoProducer)) Mono {
 		done:         make(chan struct{}),
 		sig:          signalDefault,
 		subScheduler: ImmediateScheduler(),
-		hooks:        newHooks(),
+		hooks:        borrowHooks(),
 	}
 }

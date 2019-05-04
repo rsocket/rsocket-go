@@ -7,14 +7,14 @@ import (
 	"math"
 	"sync"
 
-	"github.com/rsocket/rsocket-go/common/logger"
+	"github.com/rsocket/rsocket-go/internal/logger"
 	"github.com/rsocket/rsocket-go/payload"
 )
 
 type fluxProcessor struct {
 	lock         *sync.Mutex
 	gen          func(context.Context, Producer)
-	q            rQueue
+	q            *queue
 	e            error
 	hooks        *hooks
 	sig          SignalType
@@ -35,10 +35,11 @@ func (p *fluxProcessor) Dispose() {
 	p.Cancel()
 }
 
-func (p *fluxProcessor) isDisposed() bool {
+func (p *fluxProcessor) IsDisposed() (ok bool) {
 	p.lock.Lock()
-	defer p.lock.Unlock()
-	return p.sig == SignalCancel
+	ok = p.sig == SignalCancel
+	p.lock.Unlock()
+	return
 }
 
 func (p *fluxProcessor) DoFinally(fn FnOnFinally) Flux {
@@ -47,17 +48,8 @@ func (p *fluxProcessor) DoFinally(fn FnOnFinally) Flux {
 }
 
 func (p *fluxProcessor) LimitRate(n int) Flux {
-	if n < 1 {
-		p.q.SetTickets(0)
-		p.q.SetRate(0)
-	} else if n >= requestInfinite {
-		p.q.SetTickets(requestInfinite)
-		p.q.SetRate(requestInfinite)
-	} else {
-		p.q.SetTickets(0)
-		p.q.SetRate(int32(n))
-	}
-	return p
+	// TODO: rate support
+	panic("todo")
 }
 
 func (p *fluxProcessor) DoOnRequest(fn FnOnRequest) Flux {
@@ -112,41 +104,42 @@ func (p *fluxProcessor) Request(n int) {
 
 func (p *fluxProcessor) Cancel() {
 	p.lock.Lock()
-	defer p.lock.Unlock()
 	if p.sig == signalDefault {
 		p.sig = SignalCancel
 		_ = p.q.Close()
 	}
-
+	p.lock.Unlock()
 }
 
-func (p *fluxProcessor) Next(elem payload.Payload) error {
+func (p *fluxProcessor) Next(elem payload.Payload) (err error) {
 	p.lock.Lock()
-	defer p.lock.Unlock()
 	if p.sig == signalDefault {
-		return p.q.Push(elem)
+		err = p.q.Push(elem)
+	} else {
+		logger.Errorf("emit next failed: %s\n", errWrongSignal.Error())
+		err = errWrongSignal
 	}
-	logger.Errorf("emit next failed: %s\n", errWrongSignal.Error())
-	return errWrongSignal
+	p.lock.Unlock()
+	return
 }
 
 func (p *fluxProcessor) Error(e error) {
 	p.lock.Lock()
-	defer p.lock.Unlock()
 	if p.sig == signalDefault {
 		p.e = e
 		p.sig = SignalError
 		_ = p.q.Close()
 	}
+	p.lock.Unlock()
 }
 
 func (p *fluxProcessor) Complete() {
 	p.lock.Lock()
-	defer p.lock.Unlock()
 	if p.sig == signalDefault {
 		p.sig = SignalComplete
 		_ = p.q.Close()
 	}
+	p.lock.Unlock()
 }
 
 func (p *fluxProcessor) Subscribe(ctx context.Context, ops ...OptSubscribe) Disposable {
@@ -180,6 +173,8 @@ func (p *fluxProcessor) Subscribe(ctx context.Context, ops ...OptSubscribe) Disp
 	p.subScheduler.Do(ctx, func(ctx context.Context) {
 		defer func() {
 			p.hooks.OnFinally(ctx, p.sig)
+			returnHooks(p.hooks)
+			p.hooks = nil
 		}()
 		p.OnSubscribe(ctx, p)
 		for {
@@ -223,9 +218,9 @@ func (p *fluxProcessor) OnError(ctx context.Context, err error) {
 func NewFlux(fn func(ctx context.Context, producer Producer)) Flux {
 	return &fluxProcessor{
 		lock:         &sync.Mutex{},
-		hooks:        newHooks(),
+		hooks:        borrowHooks(),
 		gen:          fn,
-		q:            newQueue(16, math.MaxInt32, 0),
+		q:            newQueue(defaultQueueSize, RequestInfinite),
 		pubScheduler: ElasticScheduler(),
 		subScheduler: ImmediateScheduler(),
 	}

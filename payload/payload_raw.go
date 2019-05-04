@@ -1,6 +1,10 @@
 package payload
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/rsocket/rsocket-go/internal/common"
+)
 
 type rawPayload struct {
 	data     []byte
@@ -19,7 +23,7 @@ func (p *rawPayload) Metadata() (metadata []byte, ok bool) {
 func (p *rawPayload) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := p.Metadata()
 	if ok {
-		metadata = string(raw)
+		metadata = common.Bytes2str(raw)
 	}
 	return
 }
@@ -28,11 +32,8 @@ func (p *rawPayload) Data() []byte {
 	return p.data
 }
 
-func (p *rawPayload) DataUTF8() (data string) {
-	if len(p.data) > 0 {
-		data = string(p.data)
-	}
-	return
+func (p *rawPayload) DataUTF8() string {
+	return common.Bytes2str(p.data)
 }
 
 func (*rawPayload) Release() {
