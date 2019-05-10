@@ -7,14 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
 	"io"
 	"io/ioutil"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
 
 	"github.com/2tvenom/cbor"
 	"github.com/mkideal/cli"
@@ -136,8 +137,7 @@ func (opts *opts) createResponder(ctx context.Context, logger *zap.Logger) (resp
 
 func (opts *opts) buildServer(ctxt context.Context, logger *zap.Logger, uri *url.URL) (server rsocket.Start) {
 	responder := opts.createResponder(ctxt, logger)
-
-	return rsocket.Receive().Acceptor(func(setup payload.SetupPayload, socket rsocket.RSocket) rsocket.RSocket {
+	return rsocket.Receive().Acceptor(func(setup payload.SetupPayload, socket rsocket.EnhancedRSocket) rsocket.RSocket {
 		logger.Debug("Accpet connection with setup payload", zap.Object("setup", setupMarshaler{setup}))
 
 		go opts.runAllOperations(ctxt, socket)

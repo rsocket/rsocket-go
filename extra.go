@@ -2,7 +2,15 @@ package rsocket
 
 import (
 	"container/list"
+	"context"
 	"sync"
+	"time"
+)
+
+const (
+	busInitSleepTime = 4 * time.Millisecond
+	busMaxSleepTime  = 100 * time.Millisecond
+	busTryGetTimeout = 5 * time.Second
 )
 
 type Bus interface {
@@ -13,56 +21,59 @@ type Bus interface {
 
 func NewBus() Bus {
 	return &implBus{
-		mutex: &sync.RWMutex{},
-		m:     make(map[string]*list.List, 0),
+		m: &sync.Map{},
 	}
 }
 
 type implBus struct {
-	mutex *sync.RWMutex
-	m     map[string]*list.List
+	m *sync.Map
 }
 
 func (p *implBus) Put(id string, first RSocket, others ...RSocket) {
-	p.mutex.Lock()
-	root, ok := p.m[id]
-	if !ok {
-		root = list.New()
-		p.m[id] = root
-	}
-	root.PushBack(first)
+	v, _ := p.m.LoadOrStore(id, list.New())
+	li := v.(*list.List)
+	li.PushBack(first)
 	for _, it := range others {
-		root.PushBack(it)
+		li.PushBack(it)
 	}
-	p.mutex.Unlock()
 }
 
 func (p *implBus) Get(id string) (socket RSocket, ok bool) {
-	p.mutex.RLock()
-	var root *list.List
-	root, ok = p.m[id]
-	if !ok {
+	socket, ok = p.tryGet(id)
+	if ok {
 		return
 	}
-	ok = root.Len() > 0
-	if !ok {
-		return
+	ctx, cancel := context.WithTimeout(context.Background(), busTryGetTimeout)
+	defer func() {
+		cancel()
+	}()
+	sleep := busInitSleepTime
+	for {
+		if ok {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			if sleep > busMaxSleepTime {
+				time.Sleep(busMaxSleepTime)
+			} else {
+				time.Sleep(sleep)
+				sleep += sleep >> 1
+			}
+			socket, ok = p.tryGet(id)
+		}
 	}
-	first := root.Front()
-	socket = first.Value.(RSocket)
-	root.MoveToBack(first)
-	p.mutex.RUnlock()
-	return
 }
 
 func (p *implBus) Remove(id string, socket RSocket) (ok bool) {
-	p.mutex.Lock()
-	var li *list.List
-	li, ok = p.m[id]
+	var v interface{}
+	v, ok = p.m.Load(id)
 	if !ok {
-		p.mutex.Unlock()
 		return
 	}
+	li := v.(*list.List)
 	var cur *list.Element
 	for cur = li.Front(); cur != nil; cur = cur.Next() {
 		if cur.Value == socket {
@@ -73,6 +84,26 @@ func (p *implBus) Remove(id string, socket RSocket) (ok bool) {
 	if ok {
 		li.Remove(cur)
 	}
-	p.mutex.Unlock()
+	return
+}
+
+func (p *implBus) tryGet(id string) (socket RSocket, ok bool) {
+	var v interface{}
+	v, ok = p.m.Load(id)
+	if !ok {
+		return
+	}
+	li := v.(*list.List)
+	ok = li.Len() > 0
+	if !ok {
+		return
+	}
+	if li.Len() == 1 {
+		socket = li.Front().Value.(RSocket)
+		return
+	}
+	first := li.Front()
+	socket = first.Value.(RSocket)
+	li.MoveToBack(first)
 	return
 }

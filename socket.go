@@ -93,14 +93,6 @@ func (p *duplexRSocket) RequestResponse(pl payload.Payload) rx.Mono {
 		receiving: resp,
 	})
 
-	resp.
-		DoFinally(func(ctx context.Context, sig rx.SignalType) {
-			if sig == rx.SignalCancel {
-				_ = p.tp.Send(framing.NewFrameCancel(sid))
-			}
-			p.removeMessage(sid)
-		})
-
 	data := pl.Data()
 	metadata, _ := pl.Metadata()
 
@@ -112,6 +104,15 @@ func (p *duplexRSocket) RequestResponse(pl payload.Payload) rx.Mono {
 		pl  payload.Payload
 	}{sid, data, metadata, resp.(rx.MonoProducer), pl}
 
+	resp.
+		DoFinally(func(ctx context.Context, sig rx.SignalType) {
+			if sig == rx.SignalCancel {
+				_ = p.tp.Send(framing.NewFrameCancel(sid))
+			}
+			p.removeMessage(sid)
+		})
+
+	// TODO: Frame of cancel maybe sent earlier than RequestResponse.
 	p.scheduler.Do(context.Background(), func(ctx context.Context) {
 		defer merge.pl.Release()
 		size := framing.CalcPayloadFrameSize(data, metadata)
@@ -174,6 +175,10 @@ func (p *duplexRSocket) RequestStream(sending payload.Payload) rx.Flux {
 		DoOnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			defer merge.l.Release()
 			initN := uint32(s.N())
+			// reset initN if payload is RequestStream frame already.
+			if rs, ok := merge.l.(*framing.FrameRequestStream); ok {
+				initN = rs.InitialRequestN()
+			}
 			size := framing.CalcPayloadFrameSize(merge.d, merge.m) + 4
 			if !p.splitter.ShouldSplit(size) {
 				if err := p.tp.Send(framing.NewFrameRequestStream(merge.sid, initN, data, metadata)); err != nil {
@@ -651,6 +656,7 @@ func (p *duplexRSocket) onFramePayload(frame framing.Frame) error {
 	sid := h.StreamID()
 	v, ok := p.messages.load(sid)
 	if !ok {
+		pl.Release()
 		return fmt.Errorf("non-exist stream id: %d", sid)
 	}
 	fg := h.Flag()

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync"
 	"testing"
 	"time"
 
@@ -14,64 +13,55 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestExtra(t *testing.T) {
+const metadataRegister = "register"
 
-	const metadataRegister = "register"
-
+func TestBroker(t *testing.T) {
 	bus := NewBus()
+	err := Receive().
+		Acceptor(func(setup payload.SetupPayload, sendingSocket EnhancedRSocket) RSocket {
+			// register socket to bus.
+			metadata, _ := setup.MetadataUTF8()
+			if metadata == metadataRegister {
+				merge := struct {
+					id string
+					sk RSocket
+				}{setup.DataUTF8(), sendingSocket}
+				sendingSocket.OnClose(func() {
+					bus.Remove(merge.id, merge.sk)
+				})
+				bus.Put(merge.id, merge.sk)
+			}
+			// bind responder: redirect to target socket.
+			return NewAbstractSocket(
+				RequestResponse(func(msg payload.Payload) rx.Mono {
+					id, _ := msg.MetadataUTF8()
+					sk, ok := bus.Get(id)
+					if !ok {
+						return rx.NewMono(func(ctx context.Context, sink rx.MonoProducer) {
+							sink.Error(fmt.Errorf("MISSING_SERVICE_SOCKET_%s", id))
+						})
+					}
+					return sk.RequestResponse(msg)
+				}),
+				RequestStream(func(msg payload.Payload) rx.Flux {
+					id, _ := msg.MetadataUTF8()
+					sk, ok := bus.Get(id)
+					if !ok {
+						return rx.NewFlux(func(ctx context.Context, producer rx.Producer) {
+							producer.Error(fmt.Errorf("MISSING_SERVICE_SOCKET_%s", id))
+						})
+					}
+					return sk.RequestStream(msg)
+				}),
+			)
+		}).
+		Transport("127.0.0.1:8888").
+		Serve()
+	panic(err)
 
-	wg := &sync.WaitGroup{}
+}
 
-	wg.Add(3)
-
-	go func(wg *sync.WaitGroup) {
-		err := Receive().
-			Acceptor(func(setup payload.SetupPayload, sendingSocket EnhancedRSocket) RSocket {
-				defer wg.Done()
-				// register socket to bus.
-				metadata, _ := setup.MetadataUTF8()
-				if metadata == metadataRegister {
-					merge := struct {
-						id string
-						sk RSocket
-					}{setup.DataUTF8(), sendingSocket}
-					sendingSocket.OnClose(func() {
-						bus.Remove(merge.id, merge.sk)
-					})
-					bus.Put(merge.id, merge.sk)
-				}
-				// bind responder: redirect to target socket.
-				return NewAbstractSocket(
-					RequestResponse(func(msg payload.Payload) rx.Mono {
-						id, _ := msg.MetadataUTF8()
-						sk, ok := bus.Get(id)
-						if !ok {
-							return rx.NewMono(func(ctx context.Context, sink rx.MonoProducer) {
-								sink.Error(fmt.Errorf("MISSING_SERVICE_SOCKET_%s", id))
-							})
-						}
-						return sk.RequestResponse(msg)
-					}),
-					RequestStream(func(msg payload.Payload) rx.Flux {
-						id, _ := msg.MetadataUTF8()
-						sk, ok := bus.Get(id)
-						if !ok {
-							return rx.NewFlux(func(ctx context.Context, producer rx.Producer) {
-								producer.Error(fmt.Errorf("MISSING_SERVICE_SOCKET_%s", id))
-							})
-						}
-						return sk.RequestStream(msg)
-					}),
-				)
-			}).
-			Transport("127.0.0.1:8888").
-			Serve()
-		panic(err)
-	}(wg)
-
-	// sleep
-	time.Sleep(500 * time.Millisecond)
-
+func TestService(t *testing.T) {
 	// Service A
 	clientA1, err := Connect().
 		SetupPayload(payload.NewString("A", metadataRegister)).
@@ -123,9 +113,6 @@ func TestExtra(t *testing.T) {
 	}()
 	assert.NoError(t, err)
 
-	// waiting until all connection established.
-	wg.Wait()
-
 	// 1. test RequestResponse
 	log.Println("-----RequestResponse-----")
 	clientA1.RequestResponse(payload.NewString("A1_TO_B", "B")).
@@ -151,12 +138,27 @@ func TestExtra(t *testing.T) {
 	// 2. test RequestStream
 	log.Println("-----RequestStream-----")
 	clientA1.RequestStream(payload.NewString("A1_TO_B_STREAM", "B")).
+		LimitRate(1).
 		DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
 			m, _ := elem.MetadataUTF8()
 			log.Printf("A1 -> B: data=%s, metadata=%s\n", elem.DataUTF8(), m)
 		}).
 		Subscribe(context.Background())
 
+	// 3. test RequestResponse with cancel
+	log.Println("-----RequestResponse_CANCEL-----")
+	clientA2.RequestResponse(payload.NewString("A2_TO_B_TEST_CANCEL", "B")).
+		DoOnCancel(func(ctx context.Context) {
+			log.Println("cancel success!")
+		}).
+		DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+			assert.Fail(t, "it should be canceled.")
+		}).
+		Subscribe(context.Background(), rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
+			s.Cancel()
+		}))
+
 	// check leak
+	time.Sleep(1 * time.Second)
 	assert.Equal(t, 0, common.CountByteBuffer(), "byte buffer leak")
 }
