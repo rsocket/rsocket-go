@@ -64,10 +64,9 @@ func (p *FrameRequestChannel) DataUTF8() string {
 func NewFrameRequestChannel(sid uint32, n uint32, data, metadata []byte, flags ...FrameFlag) *FrameRequestChannel {
 	fg := newFlags(flags...)
 	bf := common.BorrowByteBuffer()
-	for range [4]struct{}{} {
-		_ = bf.WriteByte(0)
-	}
-	binary.BigEndian.PutUint32(bf.Bytes(), n)
+	var b4 [4]byte
+	binary.BigEndian.PutUint32(b4[:], n)
+	_, _ = bf.Write(b4[:])
 	if len(metadata) > 0 {
 		fg |= FlagMetadata
 		_ = bf.WriteUint24(len(metadata))

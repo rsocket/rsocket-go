@@ -21,6 +21,7 @@ import (
 var client rsocket.ClientSocket
 
 func init() {
+	const connStr = "tcp://127.0.0.1:7878"
 	acceptor := rsocket.NewAbstractSocket(
 		rsocket.MetadataPush(func(payload payload.Payload) {
 			log.Println("rcv MetadataPush:", payload)
@@ -49,7 +50,7 @@ func init() {
 			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.EnhancedRSocket) rsocket.RSocket {
 				return acceptor
 			}).
-			Transport("127.0.0.1:7878").
+			Transport(connStr).
 			Serve()
 		panic(err)
 	}()
@@ -65,7 +66,7 @@ func init() {
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
 			return acceptor
 		}).
-		Transport("tcp://127.0.0.1:7878").
+		Transport(connStr).
 		Start()
 	if err != nil {
 		log.Fatal(err)

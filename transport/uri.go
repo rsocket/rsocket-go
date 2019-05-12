@@ -17,8 +17,8 @@ var (
 	regURI = regexp.MustCompile("^(tcp://|ws://)?([^/:]+):([1-9][0-9]+)$")
 
 	protoMap = map[protocol]string{
-		protoTCP:       "TCP",
-		protoWebsocket: "Websocket",
+		protoTCP:       "tcp",
+		protoWebsocket: "ws",
 	}
 )
 
@@ -37,11 +37,26 @@ func (p *URI) String() string {
 func (p *URI) MakeClientTransport(keepaliveInterval, keepaliveMaxLifetime time.Duration) (Transport, error) {
 	switch p.proto {
 	case protoTCP:
-		return NewClientTransportTCP(fmt.Sprintf("%s:%d", p.host, p.port), keepaliveInterval, keepaliveMaxLifetime)
+		return newTCPClientTransport(fmt.Sprintf("%s:%d", p.host, p.port), keepaliveInterval, keepaliveMaxLifetime)
 	case protoWebsocket:
-		return nil, fmt.Errorf("TODO: support websocket")
+		url := fmt.Sprintf("%s://%s:%d/", p.proto, p.host, p.port)
+		return newWebsocketClientTransport(url, keepaliveInterval, keepaliveMaxLifetime)
 	}
 	return nil, fmt.Errorf("rsocket: cannot create client transport")
+}
+
+func (p *URI) MakeServerTransport() (tp ServerTransport, err error) {
+	addr := fmt.Sprintf("%s:%d", p.host, p.port)
+	switch p.proto {
+	case protoTCP:
+		tp = newTCPServerTransport(addr)
+	case protoWebsocket:
+		// TODO: parse path
+		tp = newWebsocketServerTransport(addr, defaultWebsocketPath)
+	default:
+		err = fmt.Errorf("rsocket: unsupported proto %s", p.proto)
+	}
+	return
 }
 
 type protocol int8

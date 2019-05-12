@@ -5,7 +5,7 @@
 [![GoDoc](https://godoc.org/github.com/rsocket/rsocket-go?status.svg)](https://godoc.org/github.com/rsocket/rsocket-go)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rsocket/rsocket-go)](https://goreportcard.com/report/github.com/rsocket/rsocket-go)
 [![License](https://img.shields.io/github/license/rsocket/rsocket-go.svg)](https://github.com/rsocket/rsocket-go/blob/master/LICENSE)
-[![GitHub Release](https://img.shields.io/github/release/rsocket/rsocket-go.svg)](https://github.com/rsocket/rsocket-go/releases)
+[![GitHub Release](https://img.shields.io/github/release-pre/rsocket/rsocket-go.svg)](https://github.com/rsocket/rsocket-go/releases)
 
 rsocket-go is an implementation of the [RSocket](http://rsocket.io/) protocol in Go. It is still under development, APIs are unstable and maybe change at any time until release of v1.0.0. **Please do not use it in a production environment**.
 
@@ -51,17 +51,18 @@ package main
 
 import (
 	"context"
+	"log"
+	
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
-	"log"
 )
 
 func main() {
 	// Connect to server
 	client, err := rsocket.Connect().
 		SetupPayload(payload.NewString("Hello", "World")).
-		Transport("127.0.0.1:7878").
+		Transport("tcp://127.0.0.1:7878").
 		Start()
 	if err != nil {
 		panic(err)
@@ -156,6 +157,7 @@ package main
 
 import (
 	"context"
+	
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -190,14 +192,15 @@ func main() {
 `Flux` emits 0 to N elements, and then completes (successfully or with an error).
 Here is tiny example:
 
-``` go
+```go
 package main
 
 import (
 	"context"
+	"time"
+	
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
-	"time"
 )
 
 func main() {
@@ -208,8 +211,7 @@ func main() {
 		}
 		producer.Complete()
 	})
-	flux.
-		DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+	flux.DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
 			// Handle and consume elements
 			// Do something here...
 		}).
@@ -245,13 +247,15 @@ flux.Subscribe(
  - [ants](https://github.com/panjf2000/ants)
  - [bytebufferpool](https://github.com/valyala/bytebufferpool)
  - [testify](https://github.com/stretchr/testify)
+ - [websocket](https://github.com/gorilla/websocket)
 
 ### TODO
 
 #### Transport
  - [x] TCP
- - [ ] Websocket
- - [ ] HTTP/2
+ - [x] Websocket
+ - [ ] Aeron
+ - [ ] QUIC
 
 #### Duplex Socket
  - [x] MetadataPush

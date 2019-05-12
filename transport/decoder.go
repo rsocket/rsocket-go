@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	maxBuffSize = 16*1024*1024 + 3
+	lengthFieldSize = 3
+	maxBuffSize     = 16*1024*1024 + lengthFieldSize
 )
 
 var (
@@ -32,7 +33,7 @@ func (p *lengthBasedFrameDecoder) handle(fn handleBytes) error {
 		if atEOF {
 			return
 		}
-		if len(data) < 3 {
+		if len(data) < lengthFieldSize {
 			return
 		}
 		frameLength := common.NewUint24Bytes(data).AsInt()
@@ -40,7 +41,7 @@ func (p *lengthBasedFrameDecoder) handle(fn handleBytes) error {
 			err = common.ErrInvalidFrameLength
 			return
 		}
-		frameSize := frameLength + 3
+		frameSize := frameLength + lengthFieldSize
 		if frameSize <= len(data) {
 			return frameSize, data[:frameSize], nil
 		}
@@ -49,7 +50,7 @@ func (p *lengthBasedFrameDecoder) handle(fn handleBytes) error {
 	buf := make([]byte, 0, common.DefaultTCPReadBuffSize)
 	p.scanner.Buffer(buf, maxBuffSize)
 	for p.scanner.Scan() {
-		data := p.scanner.Bytes()[3:]
+		data := p.scanner.Bytes()[lengthFieldSize:]
 		if len(data) < framing.HeaderLen {
 			return errIncompleteHeader
 		}

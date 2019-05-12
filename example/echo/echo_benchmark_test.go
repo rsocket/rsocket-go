@@ -1,4 +1,4 @@
-package benchmark
+package main_test
 
 import (
 	"bytes"
@@ -18,42 +18,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func doOnce(host string, port int, totals int) {
-	wg := &sync.WaitGroup{}
-	wg.Add(totals)
-	data := []byte(strings.Repeat("A", 4096))
-	md := []byte("benchmark_test")
-	ctx := context.Background()
-	log.Printf("CONN: %s:%d\n", host, port)
-	clients := make([]rsocket.ClientSocket, totals)
-	now := time.Now()
-	for i := 0; i < totals; i++ {
-		clients[i] = createClient(host, port)
-	}
-	log.Println("SETUP:", time.Now().Sub(now))
-	now = time.Now()
-	for _, client := range clients {
-		client.RequestResponse(payload.New(data, md)).
-			DoFinally(func(ctx context.Context, sig rx.SignalType) {
-				wg.Done()
-			}).
-			SubscribeOn(rx.ElasticScheduler()).
-			Subscribe(ctx)
-	}
-	wg.Wait()
-	cost := time.Now().Sub(now)
-
-	log.Println("TOTALS:", totals)
-	log.Println("COST:", cost)
-	log.Printf("QPS: %.2f\n", float64(totals)/cost.Seconds())
-	time.Sleep(10 * time.Hour)
-	for _, client := range clients {
-		_ = client.Close()
-	}
-}
+const uri = "tcp://127.0.0.1:7878"
 
 func TestClient_RequestResponse(t *testing.T) {
-	client := createClient("127.0.0.1", 7878)
+	client := createClient(uri)
 	defer func() {
 		_ = client.Close()
 	}()
@@ -84,10 +52,10 @@ func TestClient_RequestResponse(t *testing.T) {
 
 func TestClients_RequestResponse(t *testing.T) {
 	log.Println("---------------")
-	doOnce("127.0.0.1", 7878, 10000)
+	doOnce(10000)
 }
 
-func createClient(host string, port int) rsocket.ClientSocket {
+func createClient(uri string) rsocket.ClientSocket {
 	client, err := rsocket.Connect().
 		SetupPayload(payload.NewString("你好", "世界")).
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
@@ -101,10 +69,43 @@ func createClient(host string, port int) rsocket.ClientSocket {
 				}),
 			)
 		}).
-		Transport(fmt.Sprintf("%s:%d", host, port)).
+		Transport(uri).
 		Start()
 	if err != nil {
 		panic(err)
 	}
 	return client
+}
+
+func doOnce(totals int) {
+	wg := &sync.WaitGroup{}
+	wg.Add(totals)
+	data := []byte(strings.Repeat("A", 4096))
+	md := []byte("benchmark_test")
+	ctx := context.Background()
+	clients := make([]rsocket.ClientSocket, totals)
+	now := time.Now()
+	for i := 0; i < totals; i++ {
+		clients[i] = createClient(uri)
+	}
+	log.Println("SETUP:", time.Now().Sub(now))
+	now = time.Now()
+	for _, client := range clients {
+		client.RequestResponse(payload.New(data, md)).
+			DoFinally(func(ctx context.Context, sig rx.SignalType) {
+				wg.Done()
+			}).
+			SubscribeOn(rx.ElasticScheduler()).
+			Subscribe(ctx)
+	}
+	wg.Wait()
+	cost := time.Now().Sub(now)
+
+	log.Println("TOTALS:", totals)
+	log.Println("COST:", cost)
+	log.Printf("QPS: %.2f\n", float64(totals)/cost.Seconds())
+	time.Sleep(10 * time.Hour)
+	for _, client := range clients {
+		_ = client.Close()
+	}
 }

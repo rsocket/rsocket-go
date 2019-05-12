@@ -8,6 +8,8 @@ import (
 	"github.com/rsocket/rsocket-go/payload"
 )
 
+const requestInfinite = math.MaxInt32
+
 type bQueue struct {
 	rate       int32
 	tickets    int32
@@ -31,15 +33,13 @@ func (p *bQueue) requestN(n int32) {
 	if n < 0 {
 		return
 	}
-	if p.onRequestN != nil {
-		defer p.onRequestN(n)
-	}
-	if atomic.CompareAndSwapInt32(&(p.tickets), 0, n) {
-		if p.polling {
-			p.breaker <- struct{}{}
-		}
-	} else {
+	if !atomic.CompareAndSwapInt32(&(p.tickets), 0, n) {
 		atomic.StoreInt32(&(p.tickets), n)
+	} else if p.polling {
+		p.breaker <- struct{}{}
+	}
+	if p.onRequestN != nil {
+		p.onRequestN(n)
 	}
 }
 
@@ -60,25 +60,26 @@ func (p *bQueue) poll(ctx context.Context) (elem payload.Payload, ok bool) {
 	}()
 	select {
 	case <-ctx.Done():
-		return nil, false
+		return
 	default:
-		// tickets exhausted
-		foo := atomic.LoadInt32(&(p.tickets))
-		if foo == math.MaxInt32 {
-			v, ok := <-p.data
-			return v, ok
+		tickets := atomic.LoadInt32(&(p.tickets))
+		if tickets == requestInfinite {
+			elem, ok = <-p.data
+			return
 		}
-		if foo == 0 {
+		// tickets exhausted
+		if tickets == 0 {
 			if n := atomic.LoadInt32(&(p.rate)); n > 0 {
 				p.requestN(n)
 			}
 			<-p.breaker
 		}
-		if atomic.LoadInt32(&(p.tickets)) != math.MaxInt32 {
+		// decrease a ticket
+		if atomic.LoadInt32(&(p.tickets)) != requestInfinite {
 			atomic.AddInt32(&(p.tickets), -1)
 		}
-		v, ok := <-p.data
-		return v, ok
+		elem, ok = <-p.data
+		return
 	}
 }
 

@@ -38,10 +38,11 @@ func (p *FrameRequestN) N() uint32 {
 func NewFrameRequestN(sid, n uint32, flags ...FrameFlag) *FrameRequestN {
 	fg := newFlags(flags...)
 	bf := common.BorrowByteBuffer()
-	for i := 0; i < 4; i++ {
-		_ = bf.WriteByte(0)
-	}
-	binary.BigEndian.PutUint32(bf.Bytes(), n)
+
+	var b4 [4]byte
+	binary.BigEndian.PutUint32(b4[:], n)
+	_, _ = bf.Write(b4[:])
+
 	return &FrameRequestN{
 		&BaseFrame{
 			header: NewFrameHeader(sid, FrameTypeRequestN, fg),

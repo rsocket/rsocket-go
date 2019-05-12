@@ -125,6 +125,8 @@ type Frame interface {
 	SetHeader(h FrameHeader)
 	// SetBody set frame body.
 	SetBody(body *common.ByteBuff)
+	// Bytes encodes and returns frame in bytes.
+	Bytes() []byte
 }
 
 // BaseFrame is basic frame implementation.
@@ -172,6 +174,11 @@ func (p *BaseFrame) WriteTo(w io.Writer) (n int64, err error) {
 	}
 	n += wrote
 	return
+}
+
+// Bytes returns frame in bytes.
+func (p *BaseFrame) Bytes() []byte {
+	return append(p.header[:], p.body.Bytes()...)
 }
 
 // Release release resources of frame.
