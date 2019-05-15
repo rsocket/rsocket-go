@@ -2,7 +2,6 @@ package transport
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"io"
 	"sync"
@@ -13,17 +12,6 @@ import (
 	"github.com/rsocket/rsocket-go/framing"
 )
 
-var bytesOfKeepalive []byte
-
-func init() {
-	k := framing.NewFrameKeepalive(0, nil, true)
-	defer k.Release()
-	bf := &bytes.Buffer{}
-	_, _ = common.NewUint24(k.Len()).WriteTo(bf)
-	_, _ = k.WriteTo(bf)
-	bytesOfKeepalive = bf.Bytes()
-}
-
 type tcpRConnection struct {
 	c         io.ReadWriteCloser
 	w         *bufio.Writer
@@ -33,11 +21,8 @@ type tcpRConnection struct {
 	done      chan struct{}
 	handler   func(ctx context.Context, frame framing.Frame) error
 
-	kaEnable      bool
-	kaTicker      *time.Ticker
-	kaInterval    time.Duration
-	kaMaxLifetime time.Duration
-	heartbeat     time.Time
+	kaEnable bool
+	ka       *keepaliver
 }
 
 func (p *tcpRConnection) Handle(handler func(ctx context.Context, frame framing.Frame) error) {
@@ -49,7 +34,7 @@ func (p *tcpRConnection) Start(ctx context.Context) error {
 		defer func() {
 			_ = p.Close()
 		}()
-		p.loopSnd(ctx)
+		p.loopWrite(ctx)
 	}(ctx)
 	defer func() {
 		_ = p.Close()
@@ -97,13 +82,13 @@ func (p *tcpRConnection) Close() (err error) {
 	p.onceClose.Do(func() {
 		close(p.snd)
 		<-p.done
-		p.kaTicker.Stop()
+		_ = p.ka.Close()
 		err = p.c.Close()
 	})
 	return
 }
 
-func (p *tcpRConnection) loopSnd(ctx context.Context) {
+func (p *tcpRConnection) loopWrite(ctx context.Context) {
 	defer func() {
 		logger.Debugf("send loop exit\n")
 		close(p.done)
@@ -120,15 +105,16 @@ func (p *tcpRConnection) loopSnd(ctx context.Context) {
 				logger.Errorf("send loop exit: %s\n", err)
 			}
 			return
-		case t := <-p.kaTicker.C:
-			if t.Sub(p.heartbeat) > p.kaMaxLifetime {
+		case t := <-p.ka.C():
+			if p.ka.IsDead(t) {
 				logger.Errorf("keepalive failed: remote connection is dead\n")
 				stop = true
+				continue
 			}
 			if !p.kaEnable {
 				continue
 			}
-			if _, err := p.w.Write(bytesOfKeepalive); err != nil {
+			if _, err := p.w.Write(getKeepaliveBytes(true)); err != nil {
 				logger.Errorf("send frame failed: %s\n", err)
 			} else if err := p.w.Flush(); err != nil {
 				logger.Errorf("send frame failed: %s\n", err)
@@ -146,38 +132,12 @@ func (p *tcpRConnection) loopSnd(ctx context.Context) {
 }
 
 func (p *tcpRConnection) onRcv(ctx context.Context, f *framing.BaseFrame) (err error) {
-	p.heartbeat = time.Now()
-	frameType := f.Header().Type()
+	p.ka.Heartbeat()
 	var frame framing.Frame
-	switch frameType {
-	case framing.FrameTypeSetup:
-		frame = &framing.FrameSetup{BaseFrame: f}
-	case framing.FrameTypeKeepalive:
-		frame = &framing.FrameKeepalive{BaseFrame: f}
-	case framing.FrameTypeRequestResponse:
-		frame = &framing.FrameRequestResponse{BaseFrame: f}
-	case framing.FrameTypeRequestFNF:
-		frame = &framing.FrameFNF{BaseFrame: f}
-	case framing.FrameTypeRequestStream:
-		frame = &framing.FrameRequestStream{BaseFrame: f}
-	case framing.FrameTypeRequestChannel:
-		frame = &framing.FrameRequestChannel{BaseFrame: f}
-	case framing.FrameTypeCancel:
-		frame = &framing.FrameCancel{BaseFrame: f}
-	case framing.FrameTypePayload:
-		frame = &framing.FramePayload{BaseFrame: f}
-	case framing.FrameTypeMetadataPush:
-		frame = &framing.FrameMetadataPush{BaseFrame: f}
-	case framing.FrameTypeError:
-		frame = &framing.FrameError{BaseFrame: f}
-	case framing.FrameTypeRequestN:
-		frame = &framing.FrameRequestN{BaseFrame: f}
-	case framing.FrameTypeLease:
-		frame = &framing.FrameLease{BaseFrame: f}
-	default:
-		return common.ErrInvalidFrame
+	frame, err = unwindFrame(f)
+	if err != nil {
+		return
 	}
-
 	err = frame.Validate()
 	if err != nil {
 		return
@@ -189,10 +149,7 @@ func (p *tcpRConnection) onRcv(ctx context.Context, f *framing.BaseFrame) (err e
 
 	if setupFrame, ok := frame.(*framing.FrameSetup); ok {
 		interval := setupFrame.TimeBetweenKeepalive()
-		if interval != p.kaInterval {
-			p.kaTicker.Stop()
-			p.kaTicker = time.NewTicker(interval)
-		}
+		p.ka.Reset(interval)
 	}
 	err = p.handler(ctx, frame)
 	if err != nil {
@@ -209,11 +166,7 @@ func newTCPRConnection(c io.ReadWriteCloser, keepaliveInterval, keepaliveMaxLife
 		snd:       make(chan framing.Frame, common.DefaultTCPSendChanSize),
 		done:      make(chan struct{}),
 		onceClose: &sync.Once{},
-
-		kaEnable:      reportKeepalive,
-		kaTicker:      time.NewTicker(keepaliveInterval),
-		kaInterval:    keepaliveInterval,
-		kaMaxLifetime: keepaliveMaxLifetime,
-		heartbeat:     time.Now(),
+		kaEnable:  reportKeepalive,
+		ka:        newKeepaliver(keepaliveInterval, keepaliveMaxLifetime),
 	}
 }

@@ -69,11 +69,15 @@ func (p *xServer) Serve() error {
 	defer func() {
 		_ = p.scheduler.Close()
 	}()
+	u, err := transport.ParseURI(p.addr)
+	if err != nil {
+		return err
+	}
 	splitter, err := fragmentation.NewSplitter(p.fragment)
 	if err != nil {
 		return err
 	}
-	t, err := transport.NewTCPServerTransport(p.addr)
+	t, err := u.MakeServerTransport()
 	if err != nil {
 		return err
 	}

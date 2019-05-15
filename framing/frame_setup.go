@@ -139,19 +139,15 @@ func NewFrameSetup(version common.Version, timeBetweenKeepalive, maxLifetime tim
 	var fg FrameFlag
 	bf := common.BorrowByteBuffer()
 	_, _ = bf.Write(version.Bytes())
-	b4 := common.BorrowByteBuffer()
-	defer common.ReturnByteBuffer(b4)
-	for i := 0; i < 4; i++ {
-		_ = b4.WriteByte(0)
-	}
-	binary.BigEndian.PutUint32(b4.Bytes(), uint32(timeBetweenKeepalive.Nanoseconds()/1e6))
-	_, _ = b4.WriteTo(bf)
-	binary.BigEndian.PutUint32(b4.Bytes(), uint32(maxLifetime.Nanoseconds()/1e6))
-	_, _ = b4.WriteTo(bf)
+	var b4 [4]byte
+	binary.BigEndian.PutUint32(b4[:], uint32(timeBetweenKeepalive.Nanoseconds()/1e6))
+	_, _ = bf.Write(b4[:])
+	binary.BigEndian.PutUint32(b4[:], uint32(maxLifetime.Nanoseconds()/1e6))
+	_, _ = bf.Write(b4[:])
 	if len(token) > 0 {
 		fg |= FlagResume
-		binary.BigEndian.PutUint16(b4.Bytes(), uint16(len(token)))
-		_, _ = bf.Write(b4.Bytes()[:2])
+		binary.BigEndian.PutUint16(b4[:2], uint16(len(token)))
+		_, _ = bf.Write(b4[:2])
 		_, _ = bf.Write(token)
 	}
 	_ = bf.WriteByte(byte(len(mimeMetadata)))

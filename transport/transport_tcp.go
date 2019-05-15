@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/rsocket/rsocket-go/common"
 	"github.com/rsocket/rsocket-go/common/logger"
@@ -81,10 +82,20 @@ func (p *tcpServerTransport) Listen(onReady ...func()) (err error) {
 	}
 }
 
-// NewTCPServerTransport returns a new server-side transport on protoTCP networking.
-func NewTCPServerTransport(addr string) (ServerTransport, error) {
+func newTCPServerTransport(addr string) *tcpServerTransport {
 	return &tcpServerTransport{
 		addr:      addr,
 		onceClose: &sync.Once{},
-	}, nil
+	}
+}
+
+func newTCPClientTransport(addr string, keepaliveInterval, keepaliveMaxLifetime time.Duration) (tp Transport, err error) {
+	var tcpConn net.Conn
+	tcpConn, err = net.Dial("tcp", addr)
+	if err != nil {
+		return
+	}
+	c := newTCPRConnection(tcpConn, keepaliveInterval, keepaliveMaxLifetime, true)
+	tp = newTransportClient(c)
+	return
 }

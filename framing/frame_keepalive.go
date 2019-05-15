@@ -46,9 +46,9 @@ func NewFrameKeepalive(position uint64, data []byte, respond bool) *FrameKeepali
 		fg |= FlagRespond
 	}
 	bf := common.BorrowByteBuffer()
-	var blank8 [8]byte
-	binary.BigEndian.PutUint64(blank8[:], position)
-	_, _ = bf.Write(blank8[:])
+	var b8 [8]byte
+	binary.BigEndian.PutUint64(b8[:], position)
+	_, _ = bf.Write(b8[:])
 	if len(data) > 0 {
 		_, _ = bf.Write(data)
 	}

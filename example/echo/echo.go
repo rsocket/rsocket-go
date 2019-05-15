@@ -15,20 +15,18 @@ import (
 	"github.com/rsocket/rsocket-go/rx"
 )
 
-func init() {
+func main() {
 	go func() {
 		log.Println(http.ListenAndServe(":4444", nil))
 	}()
-}
-
-func main() {
 	logger.SetLoggerLevel(logger.LogLevelInfo)
 	//logger.SetLoggerLevel(logger.LogLevelDebug)
-	err := createEchoServer("127.0.0.1", 7878)
+	//err := createEchoServer("ws://127.0.0.1:7878")
+	err := createEchoServer("tcp://127.0.0.1:7878")
 	panic(err)
 }
 
-func createEchoServer(host string, port int) error {
+func createEchoServer(uri string) error {
 	responder := rsocket.NewAbstractSocket(
 		rsocket.MetadataPush(func(item payload.Payload) {
 			log.Println("GOT METADATA_PUSH:", item)
@@ -146,11 +144,11 @@ func createEchoServer(host string, port int) error {
 			//	Subscribe(context.Background())
 
 			sendingSocket.OnClose(func() {
-				logger.Infof("***** socket disconnected *****\n")
+				log.Println("***** socket disconnected *****")
 			})
 
 			return responder
 		}).
-		Transport(fmt.Sprintf("%s:%d", host, port)).
+		Transport(uri).
 		Serve()
 }
