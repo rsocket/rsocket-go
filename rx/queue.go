@@ -2,92 +2,123 @@ package rx
 
 import (
 	"context"
+	"io"
 	"math"
+	"sync"
 	"sync/atomic"
 
-	"github.com/rsocket/rsocket-go/payload"
+	. "github.com/rsocket/rsocket-go/payload"
 )
 
 const requestInfinite = math.MaxInt32
 
-type bQueue struct {
+type rQueue interface {
+	io.Closer
+	Push(elem Payload) error
+	Request(n int32)
+	Poll(ctx context.Context) (elem Payload, ok bool)
+	HandleRequest(handler func(n int32))
+	SetRate(rate int32)
+	SetTickets(n int32)
+	Tickets() int32
+}
+
+type rQueueImpl struct {
+	elements   chan Payload
+	cond       *sync.Cond
 	rate       int32
 	tickets    int32
-	data       chan payload.Payload
-	breaker    chan struct{}
 	onRequestN func(int32)
-	polling    bool
 }
 
-func (p *bQueue) setRate(init, rate int32) {
+func (p *rQueueImpl) Close() (err error) {
+	close(p.elements)
+	return
+}
+
+func (p *rQueueImpl) HandleRequest(handler func(n int32)) {
+	p.onRequestN = handler
+}
+
+func (p *rQueueImpl) SetRate(rate int32) {
 	atomic.StoreInt32(&(p.rate), rate)
-	atomic.StoreInt32(&(p.tickets), init)
 }
 
-func (p *bQueue) Close() error {
-	close(p.data)
-	return nil
+func (p *rQueueImpl) SetTickets(n int32) {
+	atomic.StoreInt32(&(p.tickets), n)
 }
 
-func (p *bQueue) requestN(n int32) {
+func (p *rQueueImpl) Tickets() (n int32) {
+	n = atomic.LoadInt32(&(p.tickets))
 	if n < 0 {
+		n = 0
+	}
+	return
+}
+
+func (p *rQueueImpl) Push(in Payload) (err error) {
+	p.elements <- in
+	return
+}
+
+func (p *rQueueImpl) Request(n int32) {
+	p.doRequest(n, true)
+}
+
+func (p *rQueueImpl) doRequest(n int32, checkCond bool) {
+	if n < 1 {
 		return
 	}
-	if !atomic.CompareAndSwapInt32(&(p.tickets), 0, n) {
+	if checkCond {
+		p.cond.L.Lock()
+	}
+	if atomic.LoadInt32(&(p.tickets)) < 1 {
 		atomic.StoreInt32(&(p.tickets), n)
-	} else if p.polling {
-		p.breaker <- struct{}{}
+		if checkCond {
+			p.cond.Signal()
+		}
+	} else {
+		if v := atomic.AddInt32(&(p.tickets), n); v == requestInfinite || v < 1 {
+			atomic.StoreInt32(&(p.tickets), requestInfinite-1)
+		}
 	}
 	if p.onRequestN != nil {
 		p.onRequestN(n)
 	}
+	if checkCond {
+		p.cond.L.Unlock()
+	}
 }
 
-func (p *bQueue) add(elem payload.Payload) (err error) {
-	defer func() {
-		if e, ok := recover().(error); ok {
-			err = e
-		}
-	}()
-	p.data <- elem
-	return
-}
-
-func (p *bQueue) poll(ctx context.Context) (elem payload.Payload, ok bool) {
-	p.polling = true
-	defer func() {
-		p.polling = false
-	}()
+func (p *rQueueImpl) Poll(ctx context.Context) (pa Payload, ok bool) {
 	select {
 	case <-ctx.Done():
 		return
 	default:
-		tickets := atomic.LoadInt32(&(p.tickets))
-		if tickets == requestInfinite {
-			elem, ok = <-p.data
+		left := atomic.LoadInt32(&(p.tickets))
+		if left == math.MaxInt32 {
+			pa, ok = <-p.elements
 			return
 		}
-		// tickets exhausted
-		if tickets == 0 {
-			if n := atomic.LoadInt32(&(p.rate)); n > 0 {
-				p.requestN(n)
+		p.cond.L.Lock()
+		for atomic.AddInt32(&(p.tickets), -1) < 0 {
+			if r := p.rate; r > 0 {
+				p.doRequest(r, false)
+				continue
 			}
-			<-p.breaker
+			p.cond.Wait()
 		}
-		// decrease a ticket
-		if atomic.LoadInt32(&(p.tickets)) != requestInfinite {
-			atomic.AddInt32(&(p.tickets), -1)
-		}
-		elem, ok = <-p.data
-		return
+		pa, ok = <-p.elements
+		p.cond.L.Unlock()
 	}
+	return
 }
 
-func newQueue(cap int, tickets int32, rate int32) *bQueue {
-	return &bQueue{
-		rate:    rate,
-		tickets: tickets,
-		data:    make(chan payload.Payload, cap),
-		breaker: make(chan struct{}, 1),
+func newQueue(cap int, tickets int32, rate int32) rQueue {
+	return &rQueueImpl{
+		cond:     sync.NewCond(&sync.Mutex{}),
+		tickets:  tickets,
+		elements: make(chan Payload, cap),
+		rate:     rate,
 	}
 }

@@ -96,25 +96,38 @@ func (p *duplexRSocket) RequestResponse(pl payload.Payload) rx.Mono {
 	data := pl.Data()
 	metadata, _ := pl.Metadata()
 
+	var stats int32
+
 	merge := struct {
-		sid uint32
-		d   []byte
-		m   []byte
-		r   rx.MonoProducer
-		pl  payload.Payload
-	}{sid, data, metadata, resp.(rx.MonoProducer), pl}
+		sid   uint32
+		d     []byte
+		m     []byte
+		r     rx.MonoProducer
+		pl    payload.Payload
+		stats *int32
+	}{sid, data, metadata, resp.(rx.MonoProducer), pl, &stats}
 
 	resp.
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
 			if sig == rx.SignalCancel {
-				_ = p.tp.Send(framing.NewFrameCancel(sid))
+				if atomic.LoadInt32(merge.stats) == 1 {
+					_ = p.tp.Send(framing.NewFrameCancel(sid))
+				} else {
+					atomic.StoreInt32(merge.stats, -1)
+				}
 			}
 			p.removeMessage(sid)
+		}).
+		DoOnSubscribe(func(ctx context.Context, s rx.Subscription) {
+
 		})
 
-	// TODO: Frame of cancel maybe sent earlier than RequestResponse.
 	p.scheduler.Do(context.Background(), func(ctx context.Context) {
 		defer merge.pl.Release()
+		// Check is it canceled?
+		if atomic.LoadInt32(merge.stats) < 0 {
+			return
+		}
 		size := framing.CalcPayloadFrameSize(data, metadata)
 		if !p.splitter.ShouldSplit(size) {
 			if err := p.tp.Send(framing.NewFrameRequestResponse(merge.sid, merge.d, merge.m)); err != nil {
@@ -656,8 +669,9 @@ func (p *duplexRSocket) onFramePayload(frame framing.Frame) error {
 	sid := h.StreamID()
 	v, ok := p.messages.load(sid)
 	if !ok {
-		pl.Release()
-		return fmt.Errorf("non-exist stream id: %d", sid)
+		defer pl.Release()
+		logger.Warnf("unoccupied Payload(id=%d), maybe it has been canceled", sid)
+		return nil
 	}
 	fg := h.Flag()
 	switch v.mode {
@@ -701,21 +715,6 @@ func (p *duplexRSocket) toSender(sid uint32, fg framing.FrameFlag) rx.OptSubscri
 	}{p.tp, sid, fg}
 	return rx.OnNext(func(ctx context.Context, sub rx.Subscription, elem payload.Payload) {
 		p.sendPayload(sid, elem, true, merge.fg)
-		/*switch v := elem.(type) {
-		case *framing.FramePayload:
-			if v.Header().Flag().Check(framing.FlagMetadata) {
-				h := framing.NewFrameHeader(merge.sid, framing.FrameTypePayload, merge.fg|framing.FlagMetadata)
-				v.SetHeader(h)
-			} else {
-				h := framing.NewFrameHeader(merge.sid, framing.FrameTypePayload, merge.fg)
-				v.SetHeader(h)
-			}
-			_ = merge.tp.Send(v)
-		default:
-			defer elem.Release()
-			metadata, _ := elem.Metadata()
-			_ = merge.tp.Send(framing.NewFramePayload(merge.sid, elem.Data(), metadata, merge.fg))
-		}*/
 	})
 }
 

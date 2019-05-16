@@ -90,7 +90,6 @@ func (p *tcpRConnection) Close() (err error) {
 
 func (p *tcpRConnection) loopWrite(ctx context.Context) {
 	defer func() {
-		logger.Debugf("send loop exit\n")
 		close(p.done)
 	}()
 
