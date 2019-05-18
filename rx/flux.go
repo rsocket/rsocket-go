@@ -14,7 +14,7 @@ import (
 type fluxProcessor struct {
 	lock         *sync.Mutex
 	gen          func(context.Context, Producer)
-	q            *bQueue
+	q            rQueue
 	e            error
 	hooks        *hooks
 	sig          SignalType
@@ -23,7 +23,7 @@ type fluxProcessor struct {
 }
 
 func (p *fluxProcessor) N() int {
-	return int(p.q.tickets)
+	return int(p.q.Tickets())
 }
 
 func (p *fluxProcessor) DoAfterNext(fn FnConsumer) Flux {
@@ -48,11 +48,14 @@ func (p *fluxProcessor) DoFinally(fn FnOnFinally) Flux {
 
 func (p *fluxProcessor) LimitRate(n int) Flux {
 	if n < 1 {
-		p.q.setRate(0, 0)
-	} else if n >= math.MaxInt32 {
-		p.q.setRate(math.MaxInt32, math.MaxInt32)
+		p.q.SetRate(0)
+		p.q.SetTickets(0)
+	} else if n >= requestInfinite {
+		p.q.SetRate(requestInfinite)
+		p.q.SetTickets(requestInfinite)
 	} else {
-		p.q.setRate(int32(n), int32(n))
+		p.q.SetRate(int32(n))
+		p.q.SetTickets(int32(n))
 	}
 	return p
 }
@@ -99,11 +102,11 @@ func (p *fluxProcessor) PublishOn(s Scheduler) Flux {
 
 func (p *fluxProcessor) Request(n int) {
 	if n > math.MaxInt32 {
-		p.q.requestN(math.MaxInt32)
+		p.q.Request(math.MaxInt32)
 	} else if n < 0 {
-		p.q.requestN(0)
+		p.q.Request(0)
 	} else {
-		p.q.requestN(int32(n))
+		p.q.Request(int32(n))
 	}
 }
 
@@ -121,7 +124,7 @@ func (p *fluxProcessor) Next(elem payload.Payload) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if p.sig == signalDefault {
-		return p.q.add(elem)
+		return p.q.Push(elem)
 	}
 	logger.Errorf("emit next failed: %s\n", errWrongSignal.Error())
 	return errWrongSignal
@@ -171,16 +174,16 @@ func (p *fluxProcessor) Subscribe(ctx context.Context, ops ...OptSubscribe) Disp
 		})
 	}
 	// bind request N
-	p.q.onRequestN = func(n int32) {
+	p.q.HandleRequest(func(n int32) {
 		p.hooks.OnRequest(ctx, int(n))
-	}
+	})
 	p.subScheduler.Do(ctx, func(ctx context.Context) {
 		defer func() {
 			p.hooks.OnFinally(ctx, p.sig)
 		}()
 		p.OnSubscribe(ctx, p)
 		for {
-			v, ok := p.q.poll(ctx)
+			v, ok := p.q.Poll(ctx)
 			if !ok {
 				break
 			}
