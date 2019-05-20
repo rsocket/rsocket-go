@@ -4,23 +4,28 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync/atomic"
 	"testing"
 
 	"github.com/rsocket/rsocket-go/common"
 	"github.com/rsocket/rsocket-go/payload"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestBQueue_SetRate(t *testing.T) {
-	qu := newQueue(16, 0, 2)
+func TestQueue_Rate(t *testing.T) {
+	const totals = 3
+	const initTickets = 0
+	var requests int32
+	qu := newQueue(16, initTickets, 1)
 	qu.HandleRequest(func(i int32) {
+		atomic.AddInt32(&requests, 1)
 		log.Println("n:", i)
 	})
 	go func() {
 		defer func() {
 			_ = qu.Close()
 		}()
-		for i := 0; i < 100; i++ {
-			//time.Sleep(10 * time.Millisecond)
+		for i := 0; i < totals; i++ {
 			_ = qu.Push(payload.NewString(fmt.Sprintf("foo@%d", i), "aa"))
 		}
 	}()
@@ -31,6 +36,34 @@ func TestBQueue_SetRate(t *testing.T) {
 		}
 		log.Println("onNext:", v)
 	}
+	assert.Equal(t, totals, int(requests+initTickets))
+
+	v, ok := qu.Poll(context.Background())
+	log.Println("v:", v)
+	log.Println("ok:", ok)
+}
+
+func TestQueue_Hunger(t *testing.T) {
+	const totals = 3
+	const initTickets = 0
+	var produce int32
+	var consume int32
+	qu := newQueue(1, initTickets, 1)
+	qu.HandleRequest(func(i int32) {
+		_ = qu.Push(payload.NewString(fmt.Sprintf("elem_%04d", produce), "ccc"))
+		atomic.AddInt32(&produce, 1)
+		log.Println("n:", i)
+	})
+
+	for i := 0; i < totals; i++ {
+		v, ok := qu.Poll(context.Background())
+		if !ok {
+			break
+		}
+		log.Println("onNext:", v)
+		consume++
+	}
+	assert.Equal(t, produce, consume)
 }
 
 func TestQueue_Poll(t *testing.T) {

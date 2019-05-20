@@ -33,7 +33,7 @@ func (p *FrameSetup) Validate() (err error) {
 func (p *FrameSetup) String() string {
 	m, _ := p.MetadataUTF8()
 	return fmt.Sprintf(
-		"FrameSetup{%s,version=%s,keepaliveInterval=%s,keepaliveMaxLifetime=%s,token=%s,dataMimeType=%s,metadataMimeType=%s,data=%s,metadata=%s}",
+		"FrameSetup{%s,version=%s,keepaliveInterval=%s,keepaliveMaxLifetime=%s,token=%02x,dataMimeType=%s,metadataMimeType=%s,data=%s,metadata=%s}",
 		p.header, p.Version(), p.TimeBetweenKeepalive(), p.MaxLifetime(), p.Token(), p.DataMimeType(), p.MetadataMimeType(), p.DataUTF8(), m,
 	)
 }

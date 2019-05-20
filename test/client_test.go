@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/common"
 	"github.com/rsocket/rsocket-go/common/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
@@ -122,10 +123,10 @@ func TestClient_RequestStream(t *testing.T) {
 
 	var totals int
 
-	c := 7
+	c := common.RandIntn(10) + 1
 
 	client.RequestStream(payload.NewString("hello", fmt.Sprintf("%d", c))).
-		LimitRate(3).
+		LimitRate(1).
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
 			close(done)
 		}).

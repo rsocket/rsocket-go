@@ -2,6 +2,7 @@ package rx
 
 import (
 	"context"
+	"errors"
 	"io"
 	"math"
 	"sync"
@@ -11,6 +12,8 @@ import (
 )
 
 const requestInfinite = math.MaxInt32
+
+var errIllegalCap = errors.New("cap must greater than zero")
 
 type rQueue interface {
 	io.Closer
@@ -29,9 +32,15 @@ type rQueueImpl struct {
 	rate       int32
 	tickets    int32
 	onRequestN func(int32)
+	done       chan struct{}
+	closed     int32
 }
 
 func (p *rQueueImpl) Close() (err error) {
+	if atomic.AddInt32(&(p.closed), 1) > 1 {
+		return
+	}
+	p.cond.Broadcast()
 	close(p.elements)
 	return
 }
@@ -57,6 +66,9 @@ func (p *rQueueImpl) Tickets() (n int32) {
 }
 
 func (p *rQueueImpl) Push(in Payload) (err error) {
+	defer func() {
+		err, _ = recover().(error)
+	}()
 	p.elements <- in
 	return
 }
@@ -78,9 +90,7 @@ func (p *rQueueImpl) doRequest(n int32, checkCond bool) {
 			p.cond.Signal()
 		}
 	} else {
-		if v := atomic.AddInt32(&(p.tickets), n); v == requestInfinite || v < 1 {
-			atomic.StoreInt32(&(p.tickets), requestInfinite-1)
-		}
+		atomic.StoreInt32(&(p.tickets), n)
 	}
 	if p.onRequestN != nil {
 		p.onRequestN(n)
@@ -94,31 +104,48 @@ func (p *rQueueImpl) Poll(ctx context.Context) (pa Payload, ok bool) {
 	select {
 	case <-ctx.Done():
 		return
+	case <-p.done:
+		return
 	default:
-		left := atomic.LoadInt32(&(p.tickets))
-		if left == math.MaxInt32 {
+		p.cond.L.Lock()
+		if atomic.LoadInt32(&(p.tickets)) == requestInfinite {
 			pa, ok = <-p.elements
+			if !ok {
+				close(p.done)
+			}
+			p.cond.L.Unlock()
 			return
 		}
-		p.cond.L.Lock()
 		for atomic.AddInt32(&(p.tickets), -1) < 0 {
-			if r := p.rate; r > 0 {
-				p.doRequest(r, false)
+			// queue is closed and no elements left.
+			if atomic.LoadInt32(&(p.closed)) > 0 && len(p.elements) < 1 {
+				close(p.done)
+				return
+			}
+			if n := atomic.LoadInt32(&(p.rate)); n > 0 {
+				p.doRequest(n, false)
 				continue
 			}
 			p.cond.Wait()
 		}
 		pa, ok = <-p.elements
+		if !ok {
+			close(p.done)
+		}
 		p.cond.L.Unlock()
 	}
 	return
 }
 
 func newQueue(cap int, tickets int32, rate int32) rQueue {
+	if cap < 1 {
+		panic(errIllegalCap)
+	}
 	return &rQueueImpl{
 		cond:     sync.NewCond(&sync.Mutex{}),
 		tickets:  tickets,
 		elements: make(chan Payload, cap),
 		rate:     rate,
+		done:     make(chan struct{}),
 	}
 }

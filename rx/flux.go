@@ -48,14 +48,14 @@ func (p *fluxProcessor) DoFinally(fn FnOnFinally) Flux {
 
 func (p *fluxProcessor) LimitRate(n int) Flux {
 	if n < 1 {
-		p.q.SetRate(0)
 		p.q.SetTickets(0)
+		p.q.SetRate(0)
 	} else if n >= requestInfinite {
-		p.q.SetRate(requestInfinite)
 		p.q.SetTickets(requestInfinite)
+		p.q.SetRate(requestInfinite)
 	} else {
+		p.q.SetTickets(0)
 		p.q.SetRate(int32(n))
-		p.q.SetTickets(int32(n))
 	}
 	return p
 }

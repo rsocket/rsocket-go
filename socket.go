@@ -610,7 +610,8 @@ func (p *duplexRSocket) onFrameRequestN(input framing.Frame) (err error) {
 	sid := f.Header().StreamID()
 	v, ok := p.messages.load(sid)
 	if !ok {
-		return fmt.Errorf("non-exists stream id: %d", sid)
+		logger.Warnf("non-exists RequestN: id=%d", sid)
+		return
 	}
 	// RequestN is always for sending.
 	target := v.sending.(rx.Subscription)
@@ -736,7 +737,6 @@ func (p *duplexRSocket) releaseAll() {
 	})
 }
 
-// TODO: do some tuning...
 func (p *duplexRSocket) sendPayload(sid uint32, sending payload.Payload, autoRelease bool, frameFlag framing.FrameFlag) {
 	if autoRelease {
 		defer sending.Release()
