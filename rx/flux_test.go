@@ -28,6 +28,27 @@ func TestFluxProcessor_Request(t *testing.T) {
 		}))
 }
 
+func TestFlux_RequestN(t *testing.T) {
+	f := Range(0, 100).Map(func(n int) payload.Payload {
+		return payload.NewString(fmt.Sprintf("foo%d", n), fmt.Sprintf("bar%d", n))
+	})
+
+	f.
+		LimitRate(2).
+		DoOnRequest(func(ctx context.Context, n int) {
+			log.Println("request:", n)
+		}).
+		DoOnNext(func(ctx context.Context, s Subscription, elem payload.Payload) {
+			log.Println("next:", elem)
+			//s.Request(1)
+		}).
+		//DoOnSubscribe(func(ctx context.Context, s Subscription) {
+		//	s.Request(1)
+		//}).
+		Subscribe(context.Background())
+
+}
+
 func TestFlux_Simple(t *testing.T) {
 	f := NewFlux(func(ctx context.Context, producer Producer) {
 		for i := 0; i < 3; i++ {
