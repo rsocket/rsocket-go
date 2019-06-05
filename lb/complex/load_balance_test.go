@@ -1,4 +1,4 @@
-package rsocket
+package complex
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
@@ -32,9 +33,7 @@ func TestLoadBalanceClient(t *testing.T) {
 		"tcp://127.0.0.1:8009",
 	}
 
-	cli, err := Connect().SetupPayload(setup).
-		Transports(discovery, WithInitTransports(seeds...)).
-		Start(context.Background())
+	cli, err := rsocket.Start(context.Background())
 	if err != nil {
 		assert.NoError(t, err, "cannot create client with load balance")
 	}

@@ -3,6 +3,7 @@ package socket
 import (
 	"context"
 	"io"
+	"sync"
 
 	"github.com/rsocket/rsocket-go/internal/transport"
 	. "github.com/rsocket/rsocket-go/payload"
@@ -70,4 +71,53 @@ func (p AbstractRSocket) RequestStream(msg Payload) Flux {
 
 func (p AbstractRSocket) RequestChannel(msgs Publisher) Flux {
 	return p.RC(msgs)
+}
+
+type baseSocket struct {
+	socket  *DuplexRSocket
+	closers []func()
+	once    *sync.Once
+}
+
+func (p *baseSocket) FireAndForget(msg Payload) {
+	p.socket.FireAndForget(msg)
+}
+
+func (p *baseSocket) MetadataPush(msg Payload) {
+	p.socket.MetadataPush(msg)
+}
+
+func (p *baseSocket) RequestResponse(msg Payload) Mono {
+	return p.socket.RequestResponse(msg)
+}
+
+func (p *baseSocket) RequestStream(msg Payload) Flux {
+	return p.socket.RequestStream(msg)
+}
+
+func (p *baseSocket) RequestChannel(msgs Publisher) Flux {
+	return p.socket.RequestChannel(msgs)
+}
+
+func (p *baseSocket) OnClose(fn func()) {
+	if fn != nil {
+		p.closers = append(p.closers, fn)
+	}
+}
+
+func (p *baseSocket) Close() (err error) {
+	p.once.Do(func() {
+		err = p.socket.Close()
+		for i, l := 0, len(p.closers); i < l; i++ {
+			p.closers[l-i-1]()
+		}
+	})
+	return
+}
+
+func newBaseSocket(rawSocket *DuplexRSocket) *baseSocket {
+	return &baseSocket{
+		socket: rawSocket,
+		once:   &sync.Once{},
+	}
 }

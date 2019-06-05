@@ -1,4 +1,4 @@
-package common
+package complex
 
 import (
 	"log"
@@ -26,12 +26,12 @@ func TestMedianQuantile_Insert(t *testing.T) {
 				x = v
 			}
 			data[i] = x
-			median.Insert(float64(x))
+			Insert(float64(x))
 		}
 		sort.Sort(sort.IntSlice(data))
 		expected := data[len(data)/2]
 
-		estimation := median.Estimation()
+		estimation := Estimation()
 		nowErr := math.Abs(float64(expected)-float64(estimation)) / float64(expected)
 
 		sumErr += nowErr

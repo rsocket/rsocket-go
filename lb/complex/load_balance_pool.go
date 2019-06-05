@@ -1,4 +1,4 @@
-package rsocket
+package complex
 
 import (
 	"container/list"
@@ -22,7 +22,7 @@ func (p *socketSupplierPool) next() (supplier *socketSupplier, ok bool) {
 	var a, b *list.Element
 	for cur := p.idle.Front(); cur != nil; cur = cur.Next() {
 		// skip unhealth socket supplier
-		if cur.Value.(*socketSupplier).availability() <= 0 {
+		if availability() <= 0 {
 			continue
 		}
 		if a != nil {
@@ -38,7 +38,7 @@ func (p *socketSupplierPool) next() (supplier *socketSupplier, ok bool) {
 	var choose *list.Element
 	if b == nil {
 		choose = a
-	} else if a.Value.(*socketSupplier).availability() > b.Value.(*socketSupplier).availability() {
+	} else if availability() > availability() {
 		choose = a
 	} else {
 		choose = b
@@ -89,14 +89,14 @@ func (p *socketSupplierPool) reset(newest map[string]*socketSupplier) (remove in
 	mBusy := make(map[string]taged)
 	for cur := p.busy.Front(); cur != nil; cur = cur.Next() {
 		v := cur.Value.(*socketSupplier)
-		_, ok := newest[v.u]
-		mBusy[v.u] = taged{cur, !ok}
+		_, ok := newest[u]
+		mBusy[u] = taged{cur, !ok}
 	}
 	mIdle := make(map[string]taged)
 	for cur := p.idle.Front(); cur != nil; cur = cur.Next() {
 		v := cur.Value.(*socketSupplier)
-		_, ok := newest[v.u]
-		mIdle[v.u] = taged{cur, !ok}
+		_, ok := newest[u]
+		mIdle[u] = taged{cur, !ok}
 	}
 	for _, v := range mBusy {
 		if v.drop {

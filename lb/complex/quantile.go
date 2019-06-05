@@ -1,7 +1,9 @@
-package common
+package complex
 
 import (
 	"sync"
+
+	"github.com/rsocket/rsocket-go/internal/common"
 )
 
 // Quantile is used by load balance.
@@ -117,7 +119,7 @@ func (p *frugalQuantile) Insert(x float64) {
 		return
 	}
 
-	if x > p.estimate && RandFloat64() > (1-p.quantile) {
+	if x > p.estimate && common.RandFloat64() > (1-p.quantile) {
 		p.step += p.sign * int64(p.incr)
 
 		if p.step > 0 {
@@ -134,7 +136,7 @@ func (p *frugalQuantile) Insert(x float64) {
 		if p.sign < 0 {
 			p.step = 1
 		}
-	} else if x < p.estimate && RandFloat64() > p.quantile {
+	} else if x < p.estimate && common.RandFloat64() > p.quantile {
 		p.step -= p.sign * int64(p.incr)
 
 		if p.step > 0 {

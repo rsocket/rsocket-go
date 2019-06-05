@@ -1,4 +1,4 @@
-package rsocket
+package complex
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go"
 )
 
 const epsilon = 1e-4
@@ -16,21 +16,21 @@ type socketSupplier struct {
 	mutex *sync.Mutex
 
 	u string
-	b ClientBuilder
+	b rsocket.ClientBuilder
 
 	tau      int64
 	stamp    int64
-	accuracy common.Ewma
+	accuracy Ewma
 }
 
 func (p *socketSupplier) String() string {
 	return fmt.Sprintf("SocketSupplier{transport=%s, v=%.2f}", p.u, p.availability())
 }
 
-func (p *socketSupplier) create(lower, higher common.Quantile) (socket *weightedSocket, err error) {
+func (p *socketSupplier) create(lower, higher Quantile) (socket *weightedSocket, err error) {
 	var v float64
-	var origin Client
-	origin, err = p.b.clone().Transport(p.u).Start(context.Background())
+	var origin rsocket.Client
+	origin, err = rsocket.Start(context.Background())
 	if err == nil {
 		socket = newWeightedSocket(lower, higher, origin, p)
 		v = 1
@@ -40,11 +40,11 @@ func (p *socketSupplier) create(lower, higher common.Quantile) (socket *weighted
 }
 
 func (p *socketSupplier) availability() float64 {
-	e := p.accuracy.Value()
-	if common.NowInMicrosecond()-p.stamp > p.tau {
+	e := Value()
+	if NowInMicrosecond()-p.stamp > p.tau {
 		a := math.Min(1.0, e+0.5)
 		p.mutex.Lock()
-		p.accuracy.Reset(a)
+		Reset(a)
 		p.mutex.Unlock()
 	}
 	if e < epsilon {
@@ -57,18 +57,18 @@ func (p *socketSupplier) availability() float64 {
 
 func (p *socketSupplier) updateAccuracy(v float64) {
 	p.mutex.Lock()
-	p.accuracy.Insert(v)
-	p.stamp = common.NowInMicrosecond()
+	Insert(v)
+	p.stamp = NowInMicrosecond()
 	p.mutex.Unlock()
 }
 
-func newSocketSupplier(builder ClientBuilder, uri string) *socketSupplier {
+func newSocketSupplier(builder rsocket.ClientBuilder, uri string) *socketSupplier {
 	return &socketSupplier{
 		mutex:    &sync.Mutex{},
 		u:        uri,
 		b:        builder,
-		tau:      common.CalcTAU(5, time.Second),
-		stamp:    common.NowInMicrosecond(),
-		accuracy: common.NewEwma(5, time.Second, 1.0),
+		tau:      CalcTAU(5, time.Second),
+		stamp:    NowInMicrosecond(),
+		accuracy: NewEwma(5, time.Second, 1.0),
 	}
 }

@@ -1,4 +1,4 @@
-package rsocket
+package complex
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/logger"
 	"github.com/rsocket/rsocket-go/payload"
@@ -45,7 +46,7 @@ type balancer struct {
 	locker *sync.Mutex
 
 	discovery <-chan []string
-	builder   *implClientBuilder
+	builder   *rsocket.implClientBuilder
 	actives   []*weightedSocket
 	suppliers *socketSupplierPool
 
@@ -53,8 +54,8 @@ type balancer struct {
 	minActives, maxActives        int
 	minPendings, maxPendings      float64
 	expFactor                     float64
-	lowerQuantile, higherQuantile common.Quantile
-	pendings                      common.Ewma
+	lowerQuantile, higherQuantile Quantile
+	pendings                      Ewma
 	lastRefreshTime               time.Time
 
 	done chan struct{}
@@ -87,7 +88,7 @@ func (p *balancer) Close() (err error) {
 		defer p.locker.Unlock()
 		var failed int
 		for _, it := range p.actives {
-			if err := it.Close(); err != nil {
+			if err := Close(); err != nil {
 				failed++
 			}
 		}
@@ -149,7 +150,7 @@ func (p *balancer) rebalance(uris ...string) (err error) {
 		rm := p.actives[idx]
 		p.actives[idx] = nil
 		logger.Debugf("remove then close actived socket: %s\n", rm)
-		rm.lazyClose()
+		lazyClose()
 	}
 	survives := make([]*weightedSocket, 0)
 	for i, l := 0, len(p.actives); i < l; i++ {
@@ -159,11 +160,11 @@ func (p *balancer) rebalance(uris ...string) (err error) {
 		}
 	}
 	p.actives = survives
-	p.suppliers.reset(newest)
+	reset(newest)
 	return
 }
 
-func (p *balancer) next() (choose Client) {
+func (p *balancer) next() (choose rsocket.Client) {
 	p.locker.Lock()
 	defer p.locker.Unlock()
 	p.refresh()
@@ -186,10 +187,10 @@ func (p *balancer) next() (choose Client) {
 		}
 		rsc1 = p.actives[i1]
 		rsc2 = p.actives[i2]
-		if rsc1.availability > 0 && rsc2.availability > 0 {
+		if availability > 0 && availability > 0 {
 			break
 		}
-		if i+1 == effort && p.suppliers.size() > 0 {
+		if i+1 == effort && size() > 0 {
 			p.acquire()
 		}
 	}
@@ -221,14 +222,14 @@ func (p *balancer) refreshTargetActives() {
 	}
 	var sum float64
 	for _, it := range p.actives {
-		sum += float64(it.pending)
+		sum += float64(pending)
 	}
-	p.pendings.Insert(sum / float64(n))
+	Insert(sum / float64(n))
 	now := time.Now()
 	if now.Sub(p.lastRefreshTime) <= refreshDuration {
 		return
 	}
-	avg := p.pendings.Value()
+	avg := Value()
 	if avg < 1.0 {
 		p.targetActives--
 	} else if avg > 2.0 {
@@ -241,20 +242,20 @@ func (p *balancer) refreshTargetActives() {
 		p.targetActives = p.minActives
 	}
 	realMax := p.maxActives
-	if v := n + p.suppliers.size(); v < realMax {
+	if v := n + size(); v < realMax {
 		realMax = v
 	}
 	if p.targetActives > realMax {
 		p.targetActives = realMax
 	}
 	p.lastRefreshTime = now
-	p.pendings.Reset((p.minPendings + p.maxPendings) / 2)
+	Reset((p.minPendings + p.maxPendings) / 2)
 }
 
 func (p *balancer) refresh() {
 	p.refreshTargetActives()
 	// no more free supplier.
-	if p.suppliers.size() < 1 {
+	if size() < 1 {
 		return
 	}
 	n := len(p.actives)
@@ -291,20 +292,20 @@ func (p *balancer) release() {
 	p.actives = p.actives[:n-1]
 
 	// return supplier
-	p.suppliers.returnSupplier(dead.supplier)
-	dead.lazyClose()
+	returnSupplier(dead.supplier)
+	lazyClose()
 }
 
 func (p *balancer) acquire() bool {
-	supplier, ok := p.suppliers.next()
+	supplier, ok := next()
 	if !ok {
 		logger.Debugf("rsocket: no socket supplier available\n")
 		return false
 	}
 	logger.Debugf("choose supplier %s\n", supplier)
-	sk, err := supplier.create(p.lowerQuantile, p.higherQuantile)
+	sk, err := create(p.lowerQuantile, p.higherQuantile)
 	if err != nil {
-		_ = p.suppliers.returnSupplier(supplier)
+		_ = returnSupplier(supplier)
 		return false
 	}
 	p.actives = append(p.actives, sk)
@@ -344,14 +345,14 @@ func (p *balancer) unload(socket *weightedSocket) bool {
 }
 
 func (p *balancer) algorithmicWeight(socket *weightedSocket) float64 {
-	if socket == nil || socket.availability == 0 {
+	if socket == nil || availability == 0 {
 		return 0
 	}
-	pendings := float64(socket.pending)
-	latency := socket.getPredictedLatency()
+	pendings := float64(pending)
+	latency := getPredictedLatency()
 	//logger.Infof("%s: latency=%f\n", socket, latency)
-	low := p.lowerQuantile.Estimation()
-	high := math.Max(p.higherQuantile.Estimation(), low*1.001)
+	low := Estimation()
+	high := math.Max(Estimation(), low*1.001)
 	bandWidth := math.Max(high-low, 1)
 	if latency < low {
 		alpha := (low - latency) / bandWidth
@@ -362,7 +363,7 @@ func (p *balancer) algorithmicWeight(socket *weightedSocket) float64 {
 		penaltyFactor := math.Pow(1+alpha, p.expFactor)
 		latency *= penaltyFactor
 	}
-	w := socket.availability / (1 + latency*(pendings+1))
+	w := availability / (1 + latency*(pendings+1))
 	/*logger.Infof("%s: w=%f, high=%f, low=%f, availability=%f, pending=%f, latency=%f, \n",
 	socket, w,
 	high, low,
@@ -370,7 +371,7 @@ func (p *balancer) algorithmicWeight(socket *weightedSocket) float64 {
 	return w
 }
 
-func newBalancer(bu *implClientBuilder, discovery <-chan []string, o *balancerOpts) *balancer {
+func newBalancer(bu *rsocket.implClientBuilder, discovery <-chan []string, o *balancerOpts) *balancer {
 	var pool *socketSupplierPool
 	if len(o.initURIs) > 0 {
 		suppliers := make([]*socketSupplier, 0)
@@ -391,16 +392,16 @@ func newBalancer(bu *implClientBuilder, discovery <-chan []string, o *balancerOp
 		targetActives:   o.minActives,
 		minActives:      o.minActives,
 		maxActives:      o.maxActives,
-		lowerQuantile:   common.NewFrugalQuantile(o.lowerQuantile, 1),
-		higherQuantile:  common.NewFrugalQuantile(o.higherQuantile, 1),
+		lowerQuantile:   NewFrugalQuantile(o.lowerQuantile, 1),
+		higherQuantile:  NewFrugalQuantile(o.higherQuantile, 1),
 		expFactor:       o.expFactor,
 		once:            &sync.Once{},
 		lastRefreshTime: time.Now(),
-		pendings:        common.NewEwma(15, time.Second, (o.minPendings+o.maxPendings)/2.0),
+		pendings:        NewEwma(15, time.Second, (o.minPendings+o.maxPendings)/2.0),
 	}
 }
 
-func newBalancerStarter(bu *implClientBuilder, discovery <-chan []string, options ...OptBalancer) *balancerStarter {
+func newBalancerStarter(bu *rsocket.implClientBuilder, discovery <-chan []string, options ...OptBalancer) *balancerStarter {
 	return &balancerStarter{
 		bu:        bu,
 		opts:      options,
@@ -409,12 +410,12 @@ func newBalancerStarter(bu *implClientBuilder, discovery <-chan []string, option
 }
 
 type balancerStarter struct {
-	bu        *implClientBuilder
+	bu        *rsocket.implClientBuilder
 	opts      []OptBalancer
 	discovery <-chan []string
 }
 
-func (p *balancerStarter) Start(ctx context.Context) (Client, error) {
+func (p *balancerStarter) Start(ctx context.Context) (rsocket.Client, error) {
 	opts := defaultBalancerOpts
 	for _, fn := range p.opts {
 		fn(&opts)

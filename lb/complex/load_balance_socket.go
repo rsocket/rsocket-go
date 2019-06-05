@@ -1,15 +1,14 @@
-package rsocket
+package complex
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/internal/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
@@ -29,14 +28,13 @@ var (
 
 // weightedSocket is a socket with weight.
 type weightedSocket struct {
-	mutex    *sync.Mutex
-	origin   Client
-	supplier *socketSupplier
+	mutex  *sync.Mutex
+	origin rsocket.Client
 
-	lowerQuantile, higherQuantile, median common.Quantile
+	lowerQuantile, higherQuantile, median Quantile
 
 	stamp, stamp0    int64
-	interArrivalTime common.Ewma
+	interArrivalTime Ewma
 	duration         int64 // instantaneous cumulative duration
 
 	pendingStreams int32
@@ -84,10 +82,6 @@ func (p *weightedSocket) RequestChannel(msgs rx.Publisher) rx.Flux {
 	})
 }
 
-func (p *weightedSocket) String() string {
-	return fmt.Sprintf("Socket{%s}", p.supplier.u)
-}
-
 func (p *weightedSocket) Close() (err error) {
 	if p.origin != nil {
 		err = p.origin.Close()
@@ -102,10 +96,10 @@ func (p *weightedSocket) lazyClose() {
 }
 
 func (p *weightedSocket) traceLatencyBegin() int64 {
-	now := common.NowInMicrosecond()
+	now := NowInMicrosecond()
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	p.interArrivalTime.Insert(float64(now - p.stamp))
+	Insert(float64(now - p.stamp))
 	if v := now - p.stamp0; v > 0 {
 		p.duration += v * int64(p.pending)
 	}
@@ -116,7 +110,7 @@ func (p *weightedSocket) traceLatencyBegin() int64 {
 }
 
 func (p *weightedSocket) traceLatencyEnd(start int64) {
-	now := common.NowInMicrosecond()
+	now := NowInMicrosecond()
 
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
@@ -129,9 +123,9 @@ func (p *weightedSocket) traceLatencyEnd(start int64) {
 	p.stamp0 = now
 
 	rtt := float64(now - start)
-	p.median.Insert(rtt)
-	p.lowerQuantile.Insert(rtt)
-	p.higherQuantile.Insert(rtt)
+	Insert(rtt)
+	Insert(rtt)
+	Insert(rtt)
 
 	logger.Debugf("RTT: socket=%s, rtt=%f\n", p, rtt)
 }
@@ -139,19 +133,19 @@ func (p *weightedSocket) traceLatencyEnd(start int64) {
 func (p *weightedSocket) getPredictedLatency() float64 {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	now := common.NowInMicrosecond()
+	now := NowInMicrosecond()
 	var elapsed int64 = 1
 	if v := now - p.stamp; v > elapsed {
 		elapsed = v
 	}
-	var weight, prediction float64 = 0, p.median.Estimation()
+	var weight, prediction float64 = 0, Estimation()
 	if prediction == 0 {
 		if p.pending != 0 {
 			weight = startupPenalty + float64(p.pending)
 		}
-	} else if p.pending == 0 && elapsed > int64(inactivityFactor*p.interArrivalTime.Value()) {
-		p.median.Insert(0)
-		weight = p.median.Estimation()
+	} else if p.pending == 0 && elapsed > int64(inactivityFactor*Value()) {
+		Insert(0)
+		weight = Estimation()
 	} else {
 		predicted := prediction * float64(p.pending)
 		instant := p.instantaneous(now)
@@ -222,17 +216,16 @@ func (*mustFailedSocket) RequestChannel(msgs rx.Publisher) rx.Flux {
 		})
 }
 
-func newWeightedSocket(lowerQuantile, higherQuantile common.Quantile, origin Client, supplier *socketSupplier) *weightedSocket {
-	now := common.NowInMicrosecond()
+func newWeightedSocket(lowerQuantile, higherQuantile Quantile, origin rsocket.Client) *weightedSocket {
+	now := NowInMicrosecond()
 	return &weightedSocket{
 		mutex:            &sync.Mutex{},
 		origin:           origin,
-		supplier:         supplier,
 		availability:     1,
 		lowerQuantile:    lowerQuantile,
 		higherQuantile:   higherQuantile,
-		median:           common.NewMedianQuantile(),
-		interArrivalTime: common.NewEwma(1, time.Minute, defaultInitialInterArrivalTime),
+		median:           NewMedianQuantile(),
+		interArrivalTime: NewEwma(1, time.Minute, defaultInitialInterArrivalTime),
 		stamp:            now,
 		stamp0:           now,
 	}

@@ -3,7 +3,6 @@ package rsocket
 import (
 	"context"
 	"errors"
-	"io"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,14 +20,12 @@ var ErrClientClosed = errors.New("client has been closed")
 type (
 	// ClientSocket is Client Side of a RSocket socket. Sends Frames to a RSocket Server.
 	Client interface {
-		io.Closer
-		RSocket
+		CloseableRSocket
 	}
 
 	setupClientSocket interface {
 		Client
 		Setup(ctx context.Context, setup *socket.SetupInfo) error
-		OnClose(fn func())
 	}
 
 	// ClientSocketAcceptor is alias for RSocket handler function.
@@ -61,9 +58,6 @@ type (
 		OnClose(fn func()) ClientBuilder
 		// Acceptor set acceptor for RSocket client.
 		Acceptor(acceptor ClientSocketAcceptor) ClientTransportBuilder
-
-		// clone returns a copy of client builder.
-		clone() ClientBuilder
 	}
 
 	// ClientTransportBuilder is used to build a RSocket client with custom Transport string.
@@ -74,10 +68,6 @@ type (
 		// "tcp://127.0.0.1:7878" means a TCP RSocket transport.
 		// "ws://127.0.0.1:8080/a/b/c" means a Websocket RSocket transport. (NOTICE: Websocket will be supported in the future).
 		Transport(uri string) ClientStarter
-		// Transports set transports with load balancer.
-		// Client will watch discovery and change current transports.
-		// You can custom balancer options use functions: WithInitTransports, WithQuantile, WithPendings and WithActives.
-		Transports(discovery <-chan []string, options ...OptBalancer) ClientStarter
 	}
 )
 
@@ -115,26 +105,9 @@ func (p *implClientBuilder) Resume(opts ...ResumeOption) ClientBuilder {
 	return p
 }
 
-func (p *implClientBuilder) Transports(discovery <-chan []string, options ...OptBalancer) ClientStarter {
-	return newBalancerStarter(p, discovery, options...)
-}
-
 func (p *implClientBuilder) Fragment(mtu int) ClientBuilder {
 	p.fragment = mtu
 	return p
-}
-
-func (p *implClientBuilder) clone() ClientBuilder {
-	clone := &implClientBuilder{
-		fragment: p.fragment,
-		setup:    p.setup,
-		acceptor: p.acceptor,
-	}
-	if len(p.onCloses) > 0 {
-		clone.onCloses = make([]func(), len(p.onCloses))
-		copy(clone.onCloses, p.onCloses)
-	}
-	return clone
 }
 
 func (p *implClientBuilder) OnClose(fn func()) ClientBuilder {
