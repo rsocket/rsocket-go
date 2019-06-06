@@ -49,7 +49,7 @@ func (p *fluxProcessor) DoFinally(fn FnOnFinally) Flux {
 
 func (p *fluxProcessor) LimitRate(n int) Flux {
 	// TODO: rate support
-	panic("todo")
+	panic("TODO: support limit rate")
 }
 
 func (p *fluxProcessor) DoOnRequest(fn FnOnRequest) Flux {

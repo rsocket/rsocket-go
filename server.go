@@ -9,9 +9,10 @@ import (
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
 	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/internal/logger"
+	"github.com/rsocket/rsocket-go/internal/session"
+	"github.com/rsocket/rsocket-go/internal/socket"
 	"github.com/rsocket/rsocket-go/internal/transport"
 	"github.com/rsocket/rsocket-go/rx"
-	"github.com/rsocket/rsocket-go/socket"
 )
 
 const (
@@ -23,12 +24,13 @@ const (
 var resumeNotSupportBytes = []byte("resume not supported")
 
 type (
+	OpServerResume func(o *serverResumeOptions)
 	// ServerBuilder can be used to build a RSocket server.
 	ServerBuilder interface {
 		// Fragment set fragmentation size which default is 16_777_215(16MB).
 		Fragment(mtu int) ServerBuilder
 		// Resume enable resume for current server.
-		Resume() ServerBuilder
+		Resume(opts ...OpServerResume) ServerBuilder
 		// Acceptor register server acceptor which is used to handle incoming RSockets.
 		Acceptor(acceptor ServerAcceptor) ServerTransportBuilder
 	}
@@ -49,28 +51,36 @@ type (
 // Receive receives server connections from client RSockets.
 func Receive() ServerBuilder {
 	return &server{
-		fragment:              fragmentation.MaxFragment,
-		scheduler:             rx.NewElasticScheduler(serverWorkerPoolSize),
-		sm:                    NewSessionManager(),
-		done:                  make(chan struct{}),
-		resumeSessionDuration: serverSessionDuration,
+		fragment:  fragmentation.MaxFragment,
+		scheduler: rx.NewElasticScheduler(serverWorkerPoolSize),
+		sm:        session.NewManager(),
+		done:      make(chan struct{}),
+		resumeOpts: &serverResumeOptions{
+			sessionDuration: serverSessionDuration,
+		},
 	}
 }
 
-type server struct {
-	resumeEnable          bool
-	resumeSessionDuration time.Duration
-
-	fragment  int
-	addr      string
-	acc       ServerAcceptor
-	scheduler rx.Scheduler
-	sm        *SessionManager
-	done      chan struct{}
+type serverResumeOptions struct {
+	enable          bool
+	sessionDuration time.Duration
 }
 
-func (p *server) Resume() ServerBuilder {
-	p.resumeEnable = true
+type server struct {
+	resumeOpts *serverResumeOptions
+	fragment   int
+	addr       string
+	acc        ServerAcceptor
+	scheduler  rx.Scheduler
+	sm         *session.Manager
+	done       chan struct{}
+}
+
+func (p *server) Resume(opts ...OpServerResume) ServerBuilder {
+	p.resumeOpts.enable = true
+	for _, it := range opts {
+		it(p.resumeOpts)
+	}
 	return p
 }
 
@@ -114,21 +124,21 @@ func (p *server) Serve() error {
 		socketChan := make(chan socket.ServerSocket, 1)
 		defer func() {
 			select {
-			case s, ok := <-socketChan:
+			case ssk, ok := <-socketChan:
 				if !ok {
 					break
 				}
-				_, ok = s.Token()
+				_, ok = ssk.Token()
 				if !ok {
-					_ = s.Close()
+					_ = ssk.Close()
 					break
 				}
-				s.Pause()
-				deadline := time.Now().Add(p.resumeSessionDuration)
-				session := NewSession(deadline, s)
-				p.sm.Push(session)
+				ssk.Pause()
+				deadline := time.Now().Add(p.resumeOpts.sessionDuration)
+				s := session.NewSession(deadline, ssk)
+				p.sm.Push(s)
 				if logger.IsDebugEnabled() {
-					logger.Debugf("store session: %s\n", session)
+					logger.Debugf("store session: %s\n", s)
 				}
 			default:
 			}
@@ -138,14 +148,14 @@ func (p *server) Serve() error {
 		tp.HandleResume(func(frame framing.Frame) (err error) {
 			defer frame.Release()
 			var sending framing.Frame
-			if !p.resumeEnable {
+			if !p.resumeOpts.enable {
 				sending = framing.NewFrameError(0, common.ErrorCodeRejectedResume, resumeNotSupportBytes)
-			} else if session, ok := p.sm.Load(frame.(*framing.FrameResume).Token()); ok {
+			} else if s, ok := p.sm.Load(frame.(*framing.FrameResume).Token()); ok {
 				sending = framing.NewResumeOK(0)
-				session.socket.SetTransport(tp)
-				socketChan <- session.socket
+				s.Socket().SetTransport(tp)
+				socketChan <- s.Socket()
 				if logger.IsDebugEnabled() {
-					logger.Debugf("recover session: %s\n", session)
+					logger.Debugf("recover session: %s\n", s)
 				}
 			} else {
 				sending = framing.NewFrameError(
@@ -168,7 +178,7 @@ func (p *server) Serve() error {
 			isResume := frame.Header().Flag().Check(framing.FlagResume)
 
 			// 1. receive a token but server doesn't support resume.
-			if isResume && !p.resumeEnable {
+			if isResume && !p.resumeOpts.enable {
 				e := framing.NewFrameError(0, common.ErrorCodeUnsupportedSetup, resumeNotSupportBytes)
 				err = tp.Send(e)
 				e.Release()
@@ -212,7 +222,10 @@ func (p *server) Serve() error {
 
 func (p *server) loopCleanSession(ctx context.Context) (err error) {
 	tk := time.NewTicker(serverSessionCleanInterval)
-	defer tk.Stop()
+	defer func() {
+		tk.Stop()
+		p.destroySessions()
+	}()
 L:
 	for {
 		select {
@@ -222,25 +235,38 @@ L:
 		case <-p.done:
 			break L
 		case <-tk.C:
-			p.bingoCleanSession()
+			p.doCleanSession()
 		}
 	}
 	return
 }
 
-func (p *server) bingoCleanSession() {
-	deads := make(chan *Session)
-	go func(deads chan *Session) {
+func (p *server) destroySessions() {
+	for p.sm.Len() > 0 {
+		session := p.sm.Pop()
+		if err := session.Close(); err != nil {
+			logger.Warnf("kill session failed: %s\n", err)
+		} else if logger.IsDebugEnabled() {
+			logger.Debugf("kill session success: %s\n", session)
+		}
+	}
+}
+
+func (p *server) doCleanSession() {
+	deads := make(chan *session.Session)
+	go func(deads chan *session.Session) {
 		for it := range deads {
-			_ = it.Close()
-			if logger.IsDebugEnabled() {
-				logger.Debugf("close dead session: %s\n", it)
+			if err := it.Close(); err != nil {
+				logger.Warnf("close dead session failed: %s\n", err)
+			} else if logger.IsDebugEnabled() {
+				logger.Debugf("close dead session success: %s\n", it)
 			}
 		}
 	}(deads)
-	var cur *Session
+	var cur *session.Session
 	for p.sm.Len() > 0 {
 		cur = p.sm.Pop()
+		// Push back if session is still alive.
 		if !cur.IsDead() {
 			p.sm.Push(cur)
 			break
@@ -248,4 +274,10 @@ func (p *server) bingoCleanSession() {
 		deads <- cur
 	}
 	close(deads)
+}
+
+func WithServerResumeSessionDuration(duration time.Duration) OpServerResume {
+	return func(o *serverResumeOptions) {
+		o.sessionDuration = duration
+	}
 }

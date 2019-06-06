@@ -8,10 +8,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
+	"github.com/rsocket/rsocket-go/internal/socket"
 	"github.com/rsocket/rsocket-go/internal/transport"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
-	"github.com/rsocket/rsocket-go/socket"
 )
 
 var defaultMimeType = []byte("application/binary")
@@ -45,7 +45,7 @@ type (
 		// KeepAlive defines current client keepalive settings.
 		KeepAlive(tickPeriod, ackTimeout time.Duration, missedAcks int) ClientBuilder
 		// Resume enable resume for current RSocket.
-		Resume(opts ...ResumeOption) ClientBuilder
+		Resume(opts ...ClientResumeOptions) ClientBuilder
 		// DataMimeType is used to set payload data MIME type.
 		// Default MIME type is `application/binary`.
 		DataMimeType(mime string) ClientBuilder
@@ -94,7 +94,7 @@ type implClientBuilder struct {
 	onCloses []func()
 }
 
-func (p *implClientBuilder) Resume(opts ...ResumeOption) ClientBuilder {
+func (p *implClientBuilder) Resume(opts ...ClientResumeOptions) ClientBuilder {
 	if p.resume == nil {
 		p.resume = newResumeOpts()
 	}
@@ -218,9 +218,9 @@ func getPresetResumeTokenGen() (token []byte) {
 	return
 }
 
-type ResumeOption func(opts *resumeOpts)
+type ClientResumeOptions func(opts *resumeOpts)
 
-func ResumeToken(gen func() []byte) ResumeOption {
+func WithClientResumeToken(gen func() []byte) ClientResumeOptions {
 	return func(opts *resumeOpts) {
 		opts.tokenGen = gen
 	}

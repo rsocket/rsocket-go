@@ -1,9 +1,9 @@
 package rsocket
 
 import (
+	"github.com/rsocket/rsocket-go/internal/socket"
 	. "github.com/rsocket/rsocket-go/payload"
 	. "github.com/rsocket/rsocket-go/rx"
-	"github.com/rsocket/rsocket-go/socket"
 )
 
 type (
