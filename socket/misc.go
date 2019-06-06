@@ -130,9 +130,8 @@ type serverStreamIDs struct {
 }
 
 func (p *serverStreamIDs) next() uint32 {
-	var v uint32
 	// 2,4,6,8...
-	v = 2 * atomic.AddUint32(&p.cur, 1)
+	v := 2 * atomic.AddUint32(&p.cur, 1)
 	if v != 0 {
 		return v
 	}
@@ -144,9 +143,8 @@ type clientStreamIDs struct {
 }
 
 func (p *clientStreamIDs) next() uint32 {
-	var v uint32
 	// 1,3,5,7
-	v = 2*(atomic.AddUint32(&p.cur, 1)-1) + 1
+	v := 2*(atomic.AddUint32(&p.cur, 1)-1) + 1
 	if v != 0 {
 		return v
 	}

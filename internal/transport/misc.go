@@ -4,7 +4,7 @@ import (
 	"strings"
 )
 
-func isClosedErr(err error) bool {
+func IsClosedErr(err error) bool {
 	if err == nil {
 		return false
 	}

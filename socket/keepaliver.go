@@ -17,7 +17,6 @@ func (p *keepaliver) Stop() {
 	if p.ticker != nil {
 		p.ticker.Stop()
 	}
-	return
 }
 
 func (p *keepaliver) Reset(interval time.Duration) {
@@ -25,7 +24,6 @@ func (p *keepaliver) Reset(interval time.Duration) {
 		p.ticker.Stop()
 		p.ticker = time.NewTicker(interval)
 	}
-	return
 }
 
 func newKeepaliver(interval time.Duration) *keepaliver {

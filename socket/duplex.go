@@ -794,7 +794,6 @@ func (p *DuplexRSocket) sendFrame(f framing.Frame) {
 		}
 	}()
 	p.outs <- f
-	return
 }
 
 func (p *DuplexRSocket) sendPayload(
@@ -927,20 +926,18 @@ func (p *DuplexRSocket) loopWrite(ctx context.Context) error {
 				}
 			}
 		} else {
-			select {
-			case out, ok := <-p.outs:
-				if !ok {
-					finish++
-					continue
-				}
-				if p.tp == nil {
-					p.outsPriority <- out
-				} else if err := p.tp.Send(out); err != nil {
-					p.outsPriority <- out
-					logger.Errorf("send frame failed: %s\n", err.Error())
-				} else {
-					out.Release()
-				}
+			out, ok := <-p.outs
+			if !ok {
+				finish++
+				continue
+			}
+			if p.tp == nil {
+				p.outsPriority <- out
+			} else if err := p.tp.Send(out); err != nil {
+				p.outsPriority <- out
+				logger.Errorf("send frame failed: %s\n", err.Error())
+			} else {
+				out.Release()
 			}
 		}
 	}

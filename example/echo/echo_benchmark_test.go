@@ -44,7 +44,7 @@ func TestClient_RequestResponse(t *testing.T) {
 			Subscribe(ctx)
 	}
 	wg.Wait()
-	cost := time.Now().Sub(now)
+	cost := time.Since(now)
 	log.Println(n, "COST:", cost)
 	log.Println(n, "QPS:", float64(n)/cost.Seconds())
 
@@ -89,7 +89,7 @@ func doOnce(totals int) {
 	for i := 0; i < totals; i++ {
 		clients[i] = createClient(uri)
 	}
-	log.Println("SETUP:", time.Now().Sub(now))
+	log.Println("SETUP:", time.Since(now))
 	now = time.Now()
 	for _, client := range clients {
 		client.RequestResponse(payload.New(data, md)).
@@ -100,7 +100,7 @@ func doOnce(totals int) {
 			Subscribe(ctx)
 	}
 	wg.Wait()
-	cost := time.Now().Sub(now)
+	cost := time.Since(now)
 
 	log.Println("TOTALS:", totals)
 	log.Println("COST:", cost)

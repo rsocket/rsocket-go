@@ -87,7 +87,6 @@ func Connect() ClientBuilder {
 
 type implClientBuilder struct {
 	resume   *resumeOpts
-	token    []byte
 	fragment int
 	addr     string
 	setup    *socket.SetupInfo
