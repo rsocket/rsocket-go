@@ -52,7 +52,7 @@ package main
 import (
 	"context"
 	"log"
-	
+
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
@@ -103,8 +103,8 @@ import (
 )
 
 func main() {
-	// Use a chan as discovery for brokers. 
-	// Writing a string slice will refresh the brokers of load balancer.  
+	// Use a chan as discovery for brokers.
+	// Writing a string slice will refresh the brokers of load balancer.
 	brokers := make(chan []string, 0)
 	// Load Balance Example
 	// It's EASY!!! Just set more than one transport URI.
@@ -157,7 +157,7 @@ package main
 
 import (
 	"context"
-	
+
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -198,7 +198,7 @@ package main
 import (
 	"context"
 	"time"
-	
+
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -253,9 +253,8 @@ flux.Subscribe(
 
 #### Transport
  - [x] TCP
- - [x] Websocket
+ - [ ] Websocket
  - [ ] Aeron
- - [ ] QUIC
 
 #### Duplex Socket
  - [x] MetadataPush
@@ -265,7 +264,7 @@ flux.Subscribe(
  - [x] RequestChannel
 
 ##### Others
- - [ ] Resume
+ - [x] Resume
  - [x] Keepalive
  - [x] Fragmentation
  - [x] Thin Reactor
@@ -274,4 +273,3 @@ flux.Subscribe(
  - [x] Flow Control: RequestN
  - [ ] Flow Control: Lease
  - [x] Load Balance
- - [ ] Reconnect
