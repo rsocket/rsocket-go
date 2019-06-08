@@ -8,74 +8,51 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/rsocket/rsocket-go/framing"
-	"github.com/rsocket/rsocket-go/common"
+
+	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/framing"
+	"github.com/rsocket/rsocket-go/internal/transport"
 )
 
 func Fuzz(data []byte) int {
 	buf := bytes.NewBuffer(data)
-	decoder := newLengthBasedFrameDecoder(buf)
+	decoder := transport.NewLengthBasedFrameDecoder(buf)
 
-	err := decoder.handle(func(raw []byte) error {
-		h := framing.ParseFrameHeader(data)
-		bf := common.BorrowByteBuffer()
-		f := framing.NewBaseFrame(h, bf)
+	err := decoder.Handle(handleRaw)
 
-		var frame framing.Frame
-
-		switch f.Header().Type() {
-		case framing.FrameTypeSetup:
-			frame = &framing.FrameSetup{BaseFrame: f}
-		case framing.FrameTypeKeepalive:
-			frame = &framing.FrameKeepalive{BaseFrame: f}
-		case framing.FrameTypeRequestResponse:
-			frame = &framing.FrameRequestResponse{BaseFrame: f}
-		case framing.FrameTypeRequestFNF:
-			frame = &framing.FrameFNF{BaseFrame: f}
-		case framing.FrameTypeRequestStream:
-			frame = &framing.FrameRequestStream{BaseFrame: f}
-		case framing.FrameTypeRequestChannel:
-			frame = &framing.FrameRequestChannel{BaseFrame: f}
-		case framing.FrameTypeCancel:
-			frame = &framing.FrameCancel{BaseFrame: f}
-		case framing.FrameTypePayload:
-			frame = &framing.FramePayload{BaseFrame: f}
-		case framing.FrameTypeMetadataPush:
-			frame = &framing.FrameMetadataPush{BaseFrame: f}
-		case framing.FrameTypeError:
-			frame = &framing.FrameError{BaseFrame: f}
-		case framing.FrameTypeRequestN:
-			frame = &framing.FrameRequestN{BaseFrame: f}
-		default:
-			return ErrInvalidFrame
-		}
-
-		// release resource borrowed
-		defer f.Release()
-
-		switch f := frame.(type) {
-		case fmt.Stringer:
-			s := f.String()
-
-			if len(s) > 0 {
-				return nil
-			}
-		case error:
-			e := f.Error()
-
-			if len(e) > 0 {
-				return nil
-			}
-		default:
-			panic("unreachable")
-		}
-
-		return errors.New("???")
-	})
-
-	if err == nil || err == ErrInvalidFrame {
+	if err == nil || err == common.ErrInvalidFrame || err == transport.ErrIncompleteHeader {
 		return 0
 	}
 
 	return 1
+}
+
+func handleRaw(raw []byte) (err error) {
+	h := framing.ParseFrameHeader(raw)
+	bf := common.BorrowByteBuffer()
+	var frame framing.Frame
+	frame, err = framing.NewFromBase(framing.NewBaseFrame(h, bf))
+	if err != nil {
+		return
+	}
+
+	// release resource borrowed
+	defer frame.Release()
+
+	switch f := frame.(type) {
+	case fmt.Stringer:
+		s := f.String()
+		if len(s) > 0 {
+			return
+		}
+	case error:
+		e := f.Error()
+		if len(e) > 0 {
+			return
+		}
+	default:
+		panic("unreachable")
+	}
+
+	return errors.New("???")
 }

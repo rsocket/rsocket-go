@@ -7,48 +7,17 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/stretchr/testify/assert"
 )
-
-func TestQueue_Rate(t *testing.T) {
-	const totals = 3
-	const initTickets = 0
-	var requests int32
-	qu := newQueue(16, initTickets, 1)
-	qu.HandleRequest(func(i int32) {
-		atomic.AddInt32(&requests, 1)
-		log.Println("n:", i)
-	})
-	go func() {
-		defer func() {
-			_ = qu.Close()
-		}()
-		for i := 0; i < totals; i++ {
-			_ = qu.Push(payload.NewString(fmt.Sprintf("foo@%d", i), "aa"))
-		}
-	}()
-	for {
-		v, ok := qu.Poll(context.Background())
-		if !ok {
-			break
-		}
-		log.Println("onNext:", v)
-	}
-	assert.Equal(t, totals, int(requests+initTickets))
-
-	v, ok := qu.Poll(context.Background())
-	log.Println("v:", v)
-	log.Println("ok:", ok)
-}
 
 func TestQueue_Hunger(t *testing.T) {
 	const totals = 3
 	const initTickets = 0
 	var produce int32
 	var consume int32
-	qu := newQueue(1, initTickets, 1)
+	qu := newQueue(1, initTickets)
 	qu.HandleRequest(func(i int32) {
 		_ = qu.Push(payload.NewString(fmt.Sprintf("elem_%04d", produce), "ccc"))
 		atomic.AddInt32(&produce, 1)
@@ -68,12 +37,10 @@ func TestQueue_Hunger(t *testing.T) {
 
 func TestQueue_Poll(t *testing.T) {
 	done := make(chan struct{})
-	//qu := newQueue(16, 2, 0)
-	qu := newQueue(16, 2, 0)
+	qu := newQueue(16, 2)
 	qu.HandleRequest(func(i int32) {
 		log.Println("onRequestN:", i)
 	})
-
 	go func(ctx context.Context) {
 		defer close(done)
 		qu.Request(2)
@@ -91,7 +58,7 @@ func TestQueue_Poll(t *testing.T) {
 		}
 	}(context.Background())
 	go func() {
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 11; i++ {
 			if err := qu.Push(payload.NewString(fmt.Sprintf("foo@%d", i), "aa")); err != nil {
 				log.Println("add err:", err)
 			}
@@ -103,7 +70,7 @@ func TestQueue_Poll(t *testing.T) {
 
 func BenchmarkQueue(b *testing.B) {
 	//qu := newQueue(16, 1, 0)
-	qu := newQueue(16, 1, 0)
+	qu := newQueue(16, 1)
 
 	pl := payload.NewString(common.RandAlphanumeric(1024), common.RandAlphanumeric(1024))
 
@@ -133,10 +100,10 @@ func BenchmarkQueue(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		qu.Request(1)
 		_, ok := qu.Poll(ctx)
 		if !ok {
 			break
 		}
+		qu.Request(1)
 	}
 }

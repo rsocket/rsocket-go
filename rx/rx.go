@@ -7,23 +7,18 @@ import (
 	"github.com/rsocket/rsocket-go/payload"
 )
 
-var errWrongSignal = errors.New("rsocket.rx: wrong current signal")
+var (
+	errWrongSignal = errors.New("wrong current signal")
+)
 
 const (
 	signalDefault SignalType = iota
-
 	// SignalComplete indicated that subscriber was completed.
 	SignalComplete
 	// SignalCancel indicates that subscriber was cancelled.
 	SignalCancel
 	// SignalError indicates that subscriber has some faults.
 	SignalError
-
-	signalRequest
-	signalSubscribe
-	signalNext
-	signalFinally
-	signalNextAfter
 )
 
 type (
@@ -53,8 +48,8 @@ type (
 	Disposable interface {
 		// Dispose dispose current resource.
 		Dispose()
-
-		isDisposed() bool
+		// IsDisposed returns true if it has been disposed.
+		IsDisposed() bool
 	}
 
 	// Publisher is a provider of a potentially unbounded number of sequenced elements, \
@@ -195,131 +190,5 @@ func OnSubscribe(fn FnOnSubscribe) OptSubscribe {
 func OnError(fn FnOnError) OptSubscribe {
 	return func(hooks *hooks) {
 		hooks.DoOnError(fn)
-	}
-}
-
-// hooks is used to handle rx lifecycle events.
-type hooks struct {
-	m map[SignalType][]interface{}
-}
-
-func (p *hooks) OnCancel(ctx context.Context) {
-	found, ok := p.m[SignalCancel]
-	if !ok {
-		return
-	}
-	for _, fn := range found {
-		fn.(FnOnCancel)(ctx)
-	}
-}
-
-func (p *hooks) OnRequest(ctx context.Context, n int) {
-	found, ok := p.m[signalRequest]
-	if !ok {
-		return
-	}
-	for _, fn := range found {
-		fn.(FnOnRequest)(ctx, n)
-	}
-}
-
-func (p *hooks) OnSubscribe(ctx context.Context, s Subscription) {
-	found, ok := p.m[signalSubscribe]
-	if !ok {
-		return
-	}
-	for _, fn := range found {
-		fn.(FnOnSubscribe)(ctx, s)
-	}
-}
-
-func (p *hooks) OnNext(ctx context.Context, s Subscription, elem payload.Payload) {
-	found, ok := p.m[signalNext]
-	if !ok {
-		return
-	}
-	for _, fn := range found {
-		fn.(FnOnNext)(ctx, s, elem)
-	}
-}
-
-func (p *hooks) OnComplete(ctx context.Context) {
-	found, ok := p.m[SignalComplete]
-	if !ok {
-		return
-	}
-	for _, fn := range found {
-		fn.(FnOnComplete)(ctx)
-	}
-}
-
-func (p *hooks) OnError(ctx context.Context, err error) {
-	found, ok := p.m[SignalError]
-	if !ok {
-		return
-	}
-	for _, fn := range found {
-		fn.(FnOnError)(ctx, err)
-	}
-}
-
-func (p *hooks) OnFinally(ctx context.Context, sig SignalType) {
-	found, ok := p.m[signalFinally]
-	if !ok {
-		return
-	}
-	for i, l := 0, len(found); i < l; i++ {
-		found[l-i-1].(FnOnFinally)(ctx, sig)
-	}
-}
-
-func (p *hooks) DoOnAfterNext(fn FnConsumer) {
-	p.register(signalNextAfter, fn)
-}
-
-func (p *hooks) OnAfterNext(ctx context.Context, elem payload.Payload) {
-	found, ok := p.m[signalNextAfter]
-	if !ok {
-		return
-	}
-	for _, fn := range found {
-		fn.(FnConsumer)(ctx, elem)
-	}
-}
-
-func (p *hooks) DoOnError(fn FnOnError) {
-	p.register(SignalError, fn)
-}
-
-func (p *hooks) DoOnNext(fn FnOnNext) {
-	p.register(signalNext, fn)
-}
-
-func (p *hooks) DoOnRequest(fn FnOnRequest) {
-	p.register(signalRequest, fn)
-}
-
-func (p *hooks) DoOnComplete(fn FnOnComplete) {
-	p.register(SignalComplete, fn)
-}
-
-func (p *hooks) DoOnCancel(fn FnOnCancel) {
-	p.register(SignalCancel, fn)
-}
-
-func (p *hooks) DoOnSubscribe(fn FnOnSubscribe) {
-	p.register(signalSubscribe, fn)
-}
-func (p *hooks) DoOnFinally(fn FnOnFinally) {
-	p.register(signalFinally, fn)
-}
-
-func (p *hooks) register(sig SignalType, fn interface{}) {
-	p.m[sig] = append(p.m[sig], fn)
-}
-
-func newHooks() *hooks {
-	return &hooks{
-		m: make(map[SignalType][]interface{}),
 	}
 }

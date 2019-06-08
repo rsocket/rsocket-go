@@ -12,16 +12,17 @@ import (
 	"time"
 
 	"github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/common"
-	"github.com/rsocket/rsocket-go/common/logger"
+	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/stretchr/testify/assert"
 )
 
-var client rsocket.ClientSocket
+var client rsocket.Client
 
 func init() {
+	logger.SetLevel(logger.LevelDebug)
 	const connStr = "tcp://127.0.0.1:7878"
 	acceptor := rsocket.NewAbstractSocket(
 		rsocket.MetadataPush(func(payload payload.Payload) {
@@ -48,7 +49,7 @@ func init() {
 
 	go func() {
 		err := rsocket.Receive().
-			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.EnhancedRSocket) rsocket.RSocket {
+			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) rsocket.RSocket {
 				return acceptor
 			}).
 			Transport(connStr).
@@ -68,7 +69,7 @@ func init() {
 			return acceptor
 		}).
 		Transport(connStr).
-		Start()
+		Start(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -126,7 +127,6 @@ func TestClient_RequestStream(t *testing.T) {
 	c := common.RandIntn(10) + 1
 
 	client.RequestStream(payload.NewString("hello", fmt.Sprintf("%d", c))).
-		LimitRate(1).
 		DoFinally(func(ctx context.Context, sig rx.SignalType) {
 			close(done)
 		}).
@@ -141,6 +141,10 @@ func TestClient_RequestStream(t *testing.T) {
 			metadata, _ := elem.MetadataUTF8()
 			assert.Equal(t, fmt.Sprintf("%d", c), metadata, "bad metadata")
 			totals++
+			s.Request(1)
+		}).
+		DoOnSubscribe(func(ctx context.Context, s rx.Subscription) {
+			s.Request(1)
 		}).
 		Subscribe(context.Background())
 	<-done
@@ -148,8 +152,8 @@ func TestClient_RequestStream(t *testing.T) {
 
 func TestClient_RequestChannel(t *testing.T) {
 	done := make(chan struct{})
-	sending := rx.Range(0, 10).Map(func(n int) payload.Payload {
-		return payload.NewString("h", "b")
+	sending := rx.Range(0, 3).Map(func(n int) payload.Payload {
+		return payload.NewString(fmt.Sprintf("D_%d", n), "C")
 	})
 	client.
 		RequestChannel(sending).
@@ -157,7 +161,7 @@ func TestClient_RequestChannel(t *testing.T) {
 			close(done)
 		}).
 		DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
-			log.Println("next:", elem)
+			//log.Println("next:", elem)
 		}).
 		Subscribe(context.Background())
 	<-done

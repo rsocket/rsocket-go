@@ -10,11 +10,8 @@ import (
 )
 
 func TestFluxProcessor_Request(t *testing.T) {
-	f := NewFlux(func(ctx context.Context, producer Producer) {
-		for i := 0; i < 1000; i++ {
-			producer.Next(payload.NewString(fmt.Sprintf("foo%d", i), fmt.Sprintf("bar%d", i)))
-		}
-		producer.Complete()
+	f := Range(0, 7).Map(func(n int) payload.Payload {
+		return payload.NewString(fmt.Sprintf("foo%d", n), fmt.Sprintf("bar%d", n))
 	})
 	f.
 		DoOnRequest(func(ctx context.Context, n int) {
@@ -52,7 +49,7 @@ func TestFlux_RequestN(t *testing.T) {
 func TestFlux_Simple(t *testing.T) {
 	f := NewFlux(func(ctx context.Context, producer Producer) {
 		for i := 0; i < 3; i++ {
-			producer.Next(payload.NewString(fmt.Sprintf("foo%d", i), fmt.Sprintf("bar%d", i)))
+			_ = producer.Next(payload.NewString(fmt.Sprintf("foo%d", i), fmt.Sprintf("bar%d", i)))
 		}
 		producer.Complete()
 	})

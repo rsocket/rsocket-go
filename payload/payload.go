@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/rsocket/rsocket-go/common"
-	"github.com/rsocket/rsocket-go/framing"
+	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/framing"
 )
 
 var (

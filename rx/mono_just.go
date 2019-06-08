@@ -12,7 +12,7 @@ type justMonoProcessor struct {
 	subScheduler Scheduler
 }
 
-func (p *justMonoProcessor) isDisposed() bool {
+func (p *justMonoProcessor) IsDisposed() bool {
 	return false
 }
 
@@ -89,7 +89,11 @@ func (p *justMonoProcessor) Subscribe(ctx context.Context, ops ...OptSubscribe) 
 		it(p.hooks)
 	}
 	p.subScheduler.Do(ctx, func(ctx context.Context) {
-		defer p.hooks.OnFinally(ctx, SignalComplete)
+		defer func() {
+			p.hooks.OnFinally(ctx, SignalComplete)
+			returnHooks(p.hooks)
+			p.hooks = nil
+		}()
 		p.OnSubscribe(ctx, p)
 		p.OnNext(ctx, p, p.item)
 		p.hooks.OnAfterNext(ctx, p.item)
@@ -101,7 +105,7 @@ func (p *justMonoProcessor) Subscribe(ctx context.Context, ops ...OptSubscribe) 
 func JustMono(element payload.Payload) Mono {
 	return &justMonoProcessor{
 		subScheduler: ImmediateScheduler(),
-		hooks:        newHooks(),
+		hooks:        borrowHooks(),
 		item:         element,
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"io"
 	"math"
 
-	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/internal/common"
 )
 
 // CompositeMetadata provides multi Metadata payloads with different MIME types.

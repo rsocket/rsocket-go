@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/rsocket/rsocket-go/common/logger"
+	"github.com/rsocket/rsocket-go/internal/logger"
 	"github.com/rsocket/rsocket-go/payload"
 )
 
@@ -44,7 +44,7 @@ func ToMono(publisher Publisher) Mono {
 		return NewMono(func(ctx context.Context, sink MonoProducer) {
 			v.
 				DoOnNext(func(ctx context.Context, s Subscription, elem payload.Payload) {
-					if !v.(Disposable).isDisposed() {
+					if !v.(Disposable).IsDisposed() {
 						_ = sink.Success(elem)
 						s.Cancel()
 					}

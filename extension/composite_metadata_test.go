@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rsocket/rsocket-go/common"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/stretchr/testify/assert"
 )
 

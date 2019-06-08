@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/common/logger"
+	"github.com/rsocket/rsocket-go/internal/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -19,8 +19,9 @@ func main() {
 	go func() {
 		log.Println(http.ListenAndServe(":4444", nil))
 	}()
-	logger.SetLoggerLevel(logger.LogLevelInfo)
-	//logger.SetLoggerLevel(logger.LogLevelDebug)
+	logger.SetLevel(logger.LevelInfo)
+	//logger.SetLevel(logger.LevelDebug)
+	//go common.TraceByteBuffLeak(context.Background(), 10*time.Second)
 	//err := createEchoServer("ws://127.0.0.1:7878")
 	err := createEchoServer("tcp://127.0.0.1:7878")
 	panic(err)
@@ -124,7 +125,8 @@ func createEchoServer(uri string) error {
 	)
 	return rsocket.Receive().
 		//Fragment(128).
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.EnhancedRSocket) rsocket.RSocket {
+		Resume().
+		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) rsocket.RSocket {
 			//log.Println("SETUP BEGIN:----------------")
 			//log.Println("maxLifeTime:", setup.MaxLifetime())
 			//log.Println("keepaliveInterval:", setup.TimeBetweenKeepalive())
