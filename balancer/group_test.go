@@ -57,7 +57,7 @@ func ExampleServicePublish() {
 		SetupPayload(NewString("This is a Service Publisher!", "md5")).
 		Acceptor(func(socket RSocket) RSocket {
 			return NewAbstractSocket(RequestResponse(func(msg Payload) Mono {
-				result := NewString(fmt.Sprintf("%02X", md5.Sum(msg.Data())), "MD5 RESULT")
+				result := NewString(fmt.Sprintf("%02x", md5.Sum(msg.Data())), "MD5 RESULT")
 				log.Println("[publisher] accept MD5 request:", msg.DataUTF8())
 				return JustMono(result)
 			}))
@@ -92,6 +92,7 @@ func TestServiceSubscribe(t *testing.T) {
 	cli.RequestResponse(NewString("Hello World!", "md5")).
 		DoOnSuccess(func(ctx context.Context, s Subscription, elem Payload) {
 			log.Println("[subscriber] receive MD5 response:", elem.DataUTF8())
+			require.Equal(t, "ed076287532e86365e841e92bfc50d8c", elem.DataUTF8(), "bad md5")
 		}).
 		Subscribe(context.Background())
 }

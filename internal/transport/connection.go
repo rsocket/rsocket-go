@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"context"
 	"io"
 	"time"
 
@@ -16,11 +15,8 @@ type Conn interface {
 	SetDeadline(deadline time.Time) error
 	// SetCounter bind a counter which can count r/w bytes.
 	SetCounter(c *Counter)
-	// Handle bind a handler for incoming frames.
-	Handle(handler func(ctx context.Context, frame Frame) error)
-	// Write write a frame.
+	// Read reads next frame from Conn.
+	Read() (Frame, error)
+	// Write writes a frame to Conn.
 	Write(frame Frame) error
-	// Start fire current connection.
-	// Invoke this method will block current goroutine until connection disconnected.
-	Start(ctx context.Context) (err error)
 }

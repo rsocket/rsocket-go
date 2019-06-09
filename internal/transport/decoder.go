@@ -14,33 +14,27 @@ const (
 	maxBuffSize     = 16*1024*1024 + lengthFieldSize
 )
 
-var ErrIncompleteHeader = errors.New("incomplete header")
+var ErrIncompleteHeader = errors.New("incomplete frame header")
 
-type FrameDecoder interface {
-	Handle(fn func(raw []byte) error) error
-}
+type LengthBasedFrameDecoder bufio.Scanner
 
-type lengthBasedFrameDecoder struct {
-	scanner *bufio.Scanner
-}
-
-func (p *lengthBasedFrameDecoder) Handle(fn func([]byte) error) error {
-	p.scanner.Split(split)
-	buf := make([]byte, 0, common.DefaultTCPReadBuffSize)
-	p.scanner.Buffer(buf, maxBuffSize)
-	for p.scanner.Scan() {
-		data := p.scanner.Bytes()[lengthFieldSize:]
-		if len(data) < framing.HeaderLen {
-			return ErrIncompleteHeader
+func (p *LengthBasedFrameDecoder) Read() (raw []byte, err error) {
+	scanner := (*bufio.Scanner)(p)
+	if !scanner.Scan() {
+		err = scanner.Err()
+		if err == nil {
+			err = io.EOF
 		}
-		if err := fn(data); err != nil {
-			return err
-		}
+		return
 	}
-	return p.scanner.Err()
+	raw = scanner.Bytes()[lengthFieldSize:]
+	if len(raw) < framing.HeaderLen {
+		err = ErrIncompleteHeader
+	}
+	return
 }
 
-func split(data []byte, atEOF bool) (advance int, token []byte, err error) {
+func doSplit(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	if atEOF {
 		return
 	}
@@ -59,8 +53,10 @@ func split(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	return
 }
 
-func NewLengthBasedFrameDecoder(r io.Reader) FrameDecoder {
-	return &lengthBasedFrameDecoder{
-		scanner: bufio.NewScanner(r),
-	}
+func NewLengthBasedFrameDecoder(r io.Reader) *LengthBasedFrameDecoder {
+	scanner := bufio.NewScanner(r)
+	scanner.Split(doSplit)
+	buf := make([]byte, 0, tcpReadBuffSize)
+	scanner.Buffer(buf, maxBuffSize)
+	return (*LengthBasedFrameDecoder)(scanner)
 }

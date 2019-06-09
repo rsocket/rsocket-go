@@ -29,7 +29,9 @@ import (
 func main() {
 	// Create and serve
 	err := rsocket.Receive().
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.EnhancedRSocket) rsocket.RSocket {
+		Resume().
+		Fragment(1024).
+		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) rsocket.RSocket {
 			// bind responder
 			return rsocket.NewAbstractSocket(
 				rsocket.RequestResponse(func(msg payload.Payload) rx.Mono {
@@ -60,16 +62,18 @@ import (
 
 func main() {
 	// Connect to server
-	client, err := rsocket.Connect().
+	cli, err := rsocket.Connect().
+		Resume().
+		Fragment(1024).
 		SetupPayload(payload.NewString("Hello", "World")).
 		Transport("tcp://127.0.0.1:7878").
-		Start()
+		Start(context.Background())
 	if err != nil {
 		panic(err)
 	}
-	defer client.Close()
+	defer cli.Close()
 	// Send request
-	client.RequestResponse(payload.NewString("你好", "世界")).
+	cli.RequestResponse(payload.NewString("你好", "世界")).
 		DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
 			log.Println("receive response:", elem)
 		}).
@@ -84,64 +88,9 @@ func main() {
 
 ### Load Balance
 
-Basic load balance feature is in preview, please checkout current master branch. It's a client side load-balancer.
+Basic load balance feature, please checkout current master branch. It's a client side load-balancer.
 
-Here're some example codes:
-
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-	"strings"
-
-	"github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
-)
-
-func main() {
-	// Use a chan as discovery for brokers.
-	// Writing a string slice will refresh the brokers of load balancer.
-	brokers := make(chan []string, 0)
-	// Load Balance Example
-	// It's EASY!!! Just set more than one transport URI.
-	setup := payload.NewString("こんにちは、世界!", "Go")
-	clientLB, err := rsocket.Connect().
-		SetupPayload(setup).
-		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
-			return rsocket.NewAbstractSocket(
-				rsocket.FireAndForget(func(msg payload.Payload) {
-					// For example:
-					// You can refresh brokers list using FNF payload from server.
-					brokers <- strings.Split(msg.DataUTF8(), ",")
-				}),
-            )
-		}).
-		Transports(brokers, rsocket.WithInitTransports("tcp://127.0.0.1:8000", "tcp://127.0.0.1:7878")).
-		Start()
-	if err != nil {
-		panic(err)
-	}
-	defer func() {
-		_ = clientLB.Close()
-	}()
-	for i := 0; i < 100; i++ {
-		clientLB.RequestResponse(payload.NewString("Hello World!", fmt.Sprintf("%d", i))).
-			DoOnError(func(ctx context.Context, err error) {
-				log.Println("oops:", err)
-			}).
-			DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
-				log.Println("okey:", elem)
-			}).
-			Subscribe(context.Background())
-	}
-}
-```
-
-> NOTICE: example codes are [here](./load_balance_test.go)
+> NOTICE: Balancer APIs are [here](./balancer)
 
 ### Reactor API
 
@@ -253,7 +202,7 @@ flux.Subscribe(
 
 #### Transport
  - [x] TCP
- - [ ] Websocket
+ - [x] Websocket
  - [ ] Aeron
 
 #### Duplex Socket

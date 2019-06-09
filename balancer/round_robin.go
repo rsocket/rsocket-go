@@ -117,6 +117,7 @@ func (p *balancerRoundRobin) remove(client rsocket.Client) (label string, ok boo
 	return
 }
 
+// NewRoundRobinBalancer returns a new Round-Robin Balancer.
 func NewRoundRobinBalancer() Balancer {
 	return &balancerRoundRobin{
 		cond: sync.NewCond(&sync.Mutex{}),

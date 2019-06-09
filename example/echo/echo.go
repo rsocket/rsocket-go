@@ -22,8 +22,8 @@ func main() {
 	logger.SetLevel(logger.LevelInfo)
 	//logger.SetLevel(logger.LevelDebug)
 	//go common.TraceByteBuffLeak(context.Background(), 10*time.Second)
-	//err := createEchoServer("ws://127.0.0.1:7878")
 	err := createEchoServer("tcp://127.0.0.1:7878")
+	//err := createEchoServer("tcp://127.0.0.1:7878")
 	panic(err)
 }
 

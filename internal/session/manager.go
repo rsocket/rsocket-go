@@ -5,12 +5,14 @@ import (
 	"sync"
 )
 
+// Manager is used to manage RSocket session when resume is enabled.
 type Manager struct {
 	locker *sync.RWMutex
 	h      *sHeap
 	m      map[string]*Session
 }
 
+// Len returns size of session in current manager.
 func (p *Manager) Len() (n int) {
 	p.locker.RLock()
 	n = len(*p.h)
@@ -18,6 +20,7 @@ func (p *Manager) Len() (n int) {
 	return
 }
 
+// Push push a new session.
 func (p *Manager) Push(session *Session) {
 	p.locker.Lock()
 	heap.Push(p.h, session)
@@ -25,6 +28,7 @@ func (p *Manager) Push(session *Session) {
 	p.locker.Unlock()
 }
 
+// Load returns session with custom token.
 func (p *Manager) Load(token []byte) (session *Session, ok bool) {
 	p.locker.RLock()
 	session, ok = p.m[(string)(token)]
@@ -32,6 +36,7 @@ func (p *Manager) Load(token []byte) (session *Session, ok bool) {
 	return
 }
 
+// Remove remove a session with custom token.
 func (p *Manager) Remove(token []byte) (session *Session, ok bool) {
 	p.locker.Lock()
 	session, ok = p.m[(string)(token)]
@@ -44,6 +49,7 @@ func (p *Manager) Remove(token []byte) (session *Session, ok bool) {
 	return
 }
 
+// Pop pop earliest session.
 func (p *Manager) Pop() (session *Session) {
 	p.locker.Lock()
 	session = heap.Pop(p.h).(*Session)
@@ -54,6 +60,7 @@ func (p *Manager) Pop() (session *Session) {
 	return
 }
 
+// NewManager returns a new blank session manager.
 func NewManager() *Manager {
 	return &Manager{
 		locker: &sync.RWMutex{},

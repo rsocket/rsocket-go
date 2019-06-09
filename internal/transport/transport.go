@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/rsocket/rsocket-go/internal/common"
@@ -32,6 +33,7 @@ type Transport struct {
 	conn        Conn
 	maxLifetime time.Duration
 	lastRcvPos  uint64
+	once        *sync.Once
 
 	hSetup           FrameHandler
 	hResume          FrameHandler
@@ -72,14 +74,38 @@ func (p *Transport) Send(frame Frame) (err error) {
 	return
 }
 
-func (p *Transport) Close() error {
-	return p.conn.Close()
+func (p *Transport) Close() (err error) {
+	p.once.Do(func() {
+		err = p.conn.Close()
+	})
+	return
 }
 
 // Start start transport.
-func (p *Transport) Start(ctx context.Context) error {
-	p.conn.Handle(p.onFrame)
-	return p.conn.Start(ctx)
+func (p *Transport) Start(ctx context.Context) (err error) {
+	defer func() {
+		if err := p.Close(); err != nil {
+			logger.Warnf("close transport failed: %s\n", err)
+		}
+	}()
+L:
+	for {
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+			break L
+		default:
+			f, err := p.conn.Read()
+			if err != nil {
+				break L
+			}
+			err = p.onFrame(ctx, f)
+			if err != nil {
+				break L
+			}
+		}
+	}
+	return
 }
 
 func (p *Transport) HandleSetup(handler FrameHandler) {
@@ -212,5 +238,6 @@ func newTransportClient(c Conn) *Transport {
 	return &Transport{
 		conn:        c,
 		maxLifetime: common.DefaultKeepaliveMaxLifetime,
+		once:        &sync.Once{},
 	}
 }

@@ -1,7 +1,6 @@
 // +build gofuzz
 
 //go:generate GO111MODULE=off go-fuzz-build github.com/rsocket/rsocket-go/
-
 package rsocket
 
 import (
@@ -17,13 +16,13 @@ import (
 func Fuzz(data []byte) int {
 	buf := bytes.NewBuffer(data)
 	decoder := transport.NewLengthBasedFrameDecoder(buf)
-
-	err := decoder.Handle(handleRaw)
-
+	raw, err := decoder.Read()
+	if err == nil {
+		err = handleRaw(raw)
+	}
 	if err == nil || err == common.ErrInvalidFrame || err == transport.ErrIncompleteHeader {
 		return 0
 	}
-
 	return 1
 }
 
@@ -33,6 +32,7 @@ func handleRaw(raw []byte) (err error) {
 	var frame framing.Frame
 	frame, err = framing.NewFromBase(framing.NewBaseFrame(h, bf))
 	if err != nil {
+		common.ReturnByteBuffer(bf)
 		return
 	}
 

@@ -9,6 +9,8 @@ import (
 
 var errGroupClosed = errors.New("balancer group has been closed")
 
+// Group manage a group of Balancer.
+// Group can be used to create a simple RSocket Broker.
 type Group struct {
 	g func() Balancer
 	m *sync.Map
@@ -40,6 +42,7 @@ func (p *Group) Close() (err error) {
 	return
 }
 
+// Get returns a Balancer with custom id.
 func (p *Group) Get(id string) Balancer {
 	if p.m == nil {
 		panic(errGroupClosed)
@@ -55,6 +58,7 @@ func (p *Group) Get(id string) Balancer {
 	return actual.(Balancer)
 }
 
+// NewGroup returns a new Group.
 func NewGroup(gen func() Balancer) *Group {
 	return &Group{
 		g: gen,

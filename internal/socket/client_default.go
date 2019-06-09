@@ -7,12 +7,12 @@ import (
 	"github.com/rsocket/rsocket-go/internal/transport"
 )
 
-type DefaultClientSocket struct {
+type defaultClientSocket struct {
 	*baseSocket
 	uri *transport.URI
 }
 
-func (p *DefaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err error) {
+func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err error) {
 	tp, err := p.uri.MakeClientTransport()
 	if err != nil {
 		return
@@ -38,8 +38,8 @@ func (p *DefaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 	return
 }
 
-func NewClient(uri *transport.URI, socket *DuplexRSocket) *DefaultClientSocket {
-	return &DefaultClientSocket{
+func NewClient(uri *transport.URI, socket *DuplexRSocket) *defaultClientSocket {
+	return &defaultClientSocket{
 		baseSocket: newBaseSocket(socket),
 		uri:        uri,
 	}

@@ -17,11 +17,14 @@ import (
 
 const (
 	serverWorkerPoolSize       = 10000
-	serverSessionCleanInterval = 1 * time.Second
+	serverSessionCleanInterval = 500 * time.Millisecond
 	serverSessionDuration      = 30 * time.Second
 )
 
-var resumeNotSupportBytes = []byte("resume not supported")
+var (
+	errUnavailableResume    = []byte("resume not supported")
+	errDuplicatedSetupToken = []byte("duplicated setup token")
+)
 
 type (
 	OpServerResume func(o *serverResumeOptions)
@@ -149,7 +152,7 @@ func (p *server) Serve() error {
 			defer frame.Release()
 			var sending framing.Frame
 			if !p.resumeOpts.enable {
-				sending = framing.NewFrameError(0, common.ErrorCodeRejectedResume, resumeNotSupportBytes)
+				sending = framing.NewFrameError(0, common.ErrorCodeRejectedResume, errUnavailableResume)
 			} else if s, ok := p.sm.Load(frame.(*framing.FrameResume).Token()); ok {
 				sending = framing.NewResumeOK(0)
 				s.Socket().SetTransport(tp)
@@ -179,7 +182,7 @@ func (p *server) Serve() error {
 
 			// 1. receive a token but server doesn't support resume.
 			if isResume && !p.resumeOpts.enable {
-				e := framing.NewFrameError(0, common.ErrorCodeUnsupportedSetup, resumeNotSupportBytes)
+				e := framing.NewFrameError(0, common.ErrorCodeUnsupportedSetup, errUnavailableResume)
 				err = tp.Send(e)
 				e.Release()
 				_ = tp.Close()
@@ -199,6 +202,15 @@ func (p *server) Serve() error {
 			} else {
 				// 3. resume
 				token := make([]byte, len(setup.Token()))
+				_, ok := p.sm.Load(token)
+				if ok {
+					e := framing.NewFrameError(0, common.ErrorCodeRejectedSetup, errDuplicatedSetupToken)
+					err = tp.Send(e)
+					e.Release()
+					_ = tp.Close()
+					return
+				}
+
 				copy(token, setup.Token())
 				// TODO: process resume
 				sendingSocket := socket.NewServerResume(rawSocket, token)
