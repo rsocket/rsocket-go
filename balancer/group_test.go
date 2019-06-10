@@ -18,7 +18,7 @@ import (
 
 const uri = "tcp://127.0.0.1:7878"
 
-func ExampleBroker() {
+func ExampleNewGroup() {
 	group := NewGroup(func() Balancer {
 		return NewRoundRobinBalancer()
 	})
@@ -48,38 +48,39 @@ func ExampleBroker() {
 	panic(err)
 }
 
-func ExampleServicePublish() {
-	done := make(chan struct{})
-	cli, err := Connect().
-		OnClose(func() {
-			close(done)
-		}).
-		SetupPayload(NewString("This is a Service Publisher!", "md5")).
-		Acceptor(func(socket RSocket) RSocket {
-			return NewAbstractSocket(RequestResponse(func(msg Payload) Mono {
-				result := NewString(fmt.Sprintf("%02x", md5.Sum(msg.Data())), "MD5 RESULT")
-				log.Println("[publisher] accept MD5 request:", msg.DataUTF8())
-				return JustMono(result)
-			}))
-		}).
-		Transport(uri).
-		Start(context.Background())
-	if err != nil {
-		panic(err)
-	}
-	defer func() {
-		_ = cli.Close()
-	}()
-	<-done
-}
-
 func TestServiceSubscribe(t *testing.T) {
 	// Init broker and service.
-	go ExampleBroker()
+	go ExampleNewGroup()
+
 	// Waiting broker up by sleeping 200 ms.
 	time.Sleep(200 * time.Millisecond)
-	// Publish MD5 service.
-	go ExampleServicePublish()
+
+	// Deploy MD5 service.
+	go func() {
+		done := make(chan struct{})
+		cli, err := Connect().
+			OnClose(func() {
+				close(done)
+			}).
+			SetupPayload(NewString("This is a Service Publisher!", "md5")).
+			Acceptor(func(socket RSocket) RSocket {
+				return NewAbstractSocket(RequestResponse(func(msg Payload) Mono {
+					result := NewString(fmt.Sprintf("%02x", md5.Sum(msg.Data())), "MD5 RESULT")
+					log.Println("[publisher] accept MD5 request:", msg.DataUTF8())
+					return JustMono(result)
+				}))
+			}).
+			Transport(uri).
+			Start(context.Background())
+		if err != nil {
+			panic(err)
+		}
+		defer func() {
+			_ = cli.Close()
+		}()
+		<-done
+	}()
+
 	// Create a client and request md5 service.
 	cli, err := Connect().
 		SetupPayload(NewString("This is a Subscriber", "")).

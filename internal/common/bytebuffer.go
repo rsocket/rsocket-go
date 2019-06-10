@@ -83,6 +83,7 @@ func CountByteBuffer() int {
 	return int(atomic.LoadInt32(&borrowed))
 }
 
+// TraceByteBuffLeak trace leak for ByteBuff in testing.
 func TraceByteBuffLeak(ctx context.Context, duration time.Duration) error {
 	tk := time.NewTicker(duration)
 	for {

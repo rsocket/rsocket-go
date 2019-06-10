@@ -4,12 +4,7 @@ import (
 	"strings"
 )
 
-const (
-	tcpWriteBuffSize = 16 * 1024
-	tcpReadBuffSize  = 16 * 1024
-)
-
-func IsClosedErr(err error) bool {
+func isClosedErr(err error) bool {
 	if err == nil {
 		return false
 	}

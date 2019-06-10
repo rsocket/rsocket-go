@@ -11,6 +11,7 @@ import (
 
 var errResumeTokenTooLarge = errors.New("max length of resume token is 65535")
 
+// FrameResume represents a frame of Resume.
 type FrameResume struct {
 	*BaseFrame
 }
@@ -22,6 +23,7 @@ func (p *FrameResume) String() string {
 	)
 }
 
+// Validate validate current frame.
 func (p *FrameResume) Validate() (err error) {
 	return
 }
@@ -34,24 +36,28 @@ func (p *FrameResume) Version() common.Version {
 	return [2]uint16{major, minor}
 }
 
+// Token returns resume token in bytes.
 func (p *FrameResume) Token() []byte {
 	raw := p.body.Bytes()
 	tokenLen := binary.BigEndian.Uint16(raw[4:6])
 	return raw[6 : 6+tokenLen]
 }
 
+// LastReceivedServerPosition returns last received server position.
 func (p *FrameResume) LastReceivedServerPosition() uint64 {
 	raw := p.body.Bytes()
 	offset := 6 + binary.BigEndian.Uint16(raw[4:6])
 	return binary.BigEndian.Uint64(raw[offset:])
 }
 
+// FirstAvailableClientPosition returns first available client position.
 func (p *FrameResume) FirstAvailableClientPosition() uint64 {
 	raw := p.body.Bytes()
 	offset := 6 + binary.BigEndian.Uint16(raw[4:6]) + 8
 	return binary.BigEndian.Uint64(raw[offset:])
 }
 
+// NewFrameResume creates a new frame of Resume.
 func NewFrameResume(version common.Version, token []byte, firstAvailableClientPosition, lastReceivedServerPosition uint64) *FrameResume {
 	n := len(token)
 	if n > math.MaxUint16 {

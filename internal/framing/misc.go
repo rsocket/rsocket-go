@@ -13,6 +13,7 @@ func CalcPayloadFrameSize(data, metadata []byte) int {
 	return size
 }
 
+// NewFromBase creates a frame from a BaseFrame.
 func NewFromBase(f *BaseFrame) (frame Frame, err error) {
 	switch f.header.Type() {
 	case FrameTypeSetup:

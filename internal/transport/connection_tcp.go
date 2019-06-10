@@ -2,13 +2,17 @@ package transport
 
 import (
 	"bufio"
+	"io"
 	"net"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/internal/logger"
 )
+
+const tcpConnWriteBuffSize = 16 * 1024
 
 type tcpConn struct {
 	rawConn net.Conn
@@ -27,7 +31,11 @@ func (p *tcpConn) SetDeadline(deadline time.Time) error {
 
 func (p *tcpConn) Read() (f framing.Frame, err error) {
 	raw, err := p.decoder.Read()
+	if err == io.EOF {
+		return
+	}
 	if err != nil {
+		err = errors.Wrap(err, "read frame failed")
 		return
 	}
 	h := framing.ParseFrameHeader(raw)
@@ -35,6 +43,7 @@ func (p *tcpConn) Read() (f framing.Frame, err error) {
 	_, err = bf.Write(raw[framing.HeaderLen:])
 	if err != nil {
 		common.ReturnByteBuffer(bf)
+		err = errors.Wrap(err, "read frame failed")
 		return
 	}
 	base := framing.NewBaseFrame(h, bf)
@@ -44,11 +53,13 @@ func (p *tcpConn) Read() (f framing.Frame, err error) {
 	f, err = framing.NewFromBase(base)
 	if err != nil {
 		common.ReturnByteBuffer(bf)
+		err = errors.Wrap(err, "read frame failed")
 		return
 	}
 	err = f.Validate()
 	if err != nil {
 		common.ReturnByteBuffer(bf)
+		err = errors.Wrap(err, "read frame failed")
 		return
 	}
 	if logger.IsDebugEnabled() {
@@ -57,21 +68,29 @@ func (p *tcpConn) Read() (f framing.Frame, err error) {
 	return
 }
 
-func (p *tcpConn) Write(frame framing.Frame) error {
+func (p *tcpConn) Write(frame framing.Frame) (err error) {
 	size := frame.Len()
 	if p.counter != nil && frame.IsResumable() {
 		p.counter.incrWriteBytes(size)
 	}
-	if _, err := common.NewUint24(size).WriteTo(p.writer); err != nil {
-		return err
+	_, err = common.NewUint24(size).WriteTo(p.writer)
+	if err != nil {
+		err = errors.Wrap(err, "write frame failed")
+		return
 	}
-	if _, err := frame.WriteTo(p.writer); err != nil {
-		return err
+	_, err = frame.WriteTo(p.writer)
+	if err != nil {
+		err = errors.Wrap(err, "write frame failed")
+		return
 	}
 	if logger.IsDebugEnabled() {
 		logger.Debugf("---> snd: %s\n", frame)
 	}
-	return p.writer.Flush()
+	err = p.writer.Flush()
+	if err != nil {
+		err = errors.Wrap(err, "write frame failed")
+	}
+	return
 }
 
 func (p *tcpConn) Close() error {
@@ -81,7 +100,7 @@ func (p *tcpConn) Close() error {
 func newTCPRConnection(rawConn net.Conn) *tcpConn {
 	return &tcpConn{
 		rawConn: rawConn,
-		writer:  bufio.NewWriterSize(rawConn, tcpWriteBuffSize),
+		writer:  bufio.NewWriterSize(rawConn, tcpConnWriteBuffSize),
 		decoder: NewLengthBasedFrameDecoder(rawConn),
 	}
 }

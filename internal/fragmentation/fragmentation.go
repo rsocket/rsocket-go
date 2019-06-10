@@ -43,6 +43,7 @@ func NewJoiner(first HeaderAndPayload) Joiner {
 	}
 }
 
+// IsValidFragment validate fragment size.
 func IsValidFragment(fragment int) (err error) {
 	if fragment < MinFragment || fragment > MaxFragment {
 		err = errInvalidFragmentLen

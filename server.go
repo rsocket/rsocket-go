@@ -27,6 +27,7 @@ var (
 )
 
 type (
+	// OpServerResume represents resume options for RSocket server.
 	OpServerResume func(o *serverResumeOptions)
 	// ServerBuilder can be used to build a RSocket server.
 	ServerBuilder interface {
@@ -148,88 +149,117 @@ func (p *server) Serve() error {
 			close(socketChan)
 		}()
 
-		tp.HandleResume(func(frame framing.Frame) (err error) {
-			defer frame.Release()
-			var sending framing.Frame
-			if !p.resumeOpts.enable {
-				sending = framing.NewFrameError(0, common.ErrorCodeRejectedResume, errUnavailableResume)
-			} else if s, ok := p.sm.Load(frame.(*framing.FrameResume).Token()); ok {
-				sending = framing.NewResumeOK(0)
-				s.Socket().SetTransport(tp)
-				socketChan <- s.Socket()
-				if logger.IsDebugEnabled() {
-					logger.Debugf("recover session: %s\n", s)
-				}
-			} else {
-				sending = framing.NewFrameError(
-					0,
-					common.ErrorCodeRejectedResume,
-					common.Str2bytes(fmt.Sprintf("no such session")),
-				)
-			}
-			if err := tp.Send(sending); err != nil {
-				logger.Errorf("send resume response failed: %s\n", err)
-				_ = tp.Close()
-			}
-			sending.Release()
+		begin := time.Now()
+		first, err := tp.ReadFirst(ctx)
+		if err != nil {
+			logger.Errorf("read first frame failed: %s\n", err)
+			_ = tp.Close()
 			return
-		})
-		tp.HandleSetup(func(frame framing.Frame) (err error) {
-			defer frame.Release()
-			setup := frame.(*framing.FrameSetup)
+		}
 
-			isResume := frame.Header().Flag().Check(framing.FlagResume)
+		logger.Infof("read first frame cost: %dns\n", time.Since(begin).Nanoseconds())
 
-			// 1. receive a token but server doesn't support resume.
-			if isResume && !p.resumeOpts.enable {
-				e := framing.NewFrameError(0, common.ErrorCodeUnsupportedSetup, errUnavailableResume)
-				err = tp.Send(e)
-				e.Release()
+		begin = time.Now()
+
+		switch frame := first.(type) {
+		case *framing.FrameResume:
+			p.doResume(frame, tp, socketChan)
+		case *framing.FrameSetup:
+			sendingSocket, err := p.doSetup(frame, tp, socketChan)
+			if err != nil {
+				_ = tp.Send(err)
+				err.Release()
 				_ = tp.Close()
 				return
 			}
-
-			rawSocket := socket.NewServerDuplexRSocket(p.fragment, p.scheduler)
-			if !isResume {
-				// 2. no resume
-				sendingSocket := socket.NewServer(rawSocket)
-				sendingSocket.SetResponder(p.acc(setup, sendingSocket))
-				sendingSocket.SetTransport(tp)
-				go func(ctx context.Context) {
-					_ = sendingSocket.Start(ctx)
-				}(ctx)
-				socketChan <- sendingSocket
-			} else {
-				// 3. resume
-				token := make([]byte, len(setup.Token()))
-				_, ok := p.sm.Load(token)
-				if ok {
-					e := framing.NewFrameError(0, common.ErrorCodeRejectedSetup, errDuplicatedSetupToken)
-					err = tp.Send(e)
-					e.Release()
-					_ = tp.Close()
-					return
-				}
-
-				copy(token, setup.Token())
-				// TODO: process resume
-				sendingSocket := socket.NewServerResume(rawSocket, token)
-				responder := p.acc(setup, sendingSocket)
-				sendingSocket.SetResponder(responder)
-				sendingSocket.SetTransport(tp)
-				go func(ctx context.Context) {
-					_ = sendingSocket.Start(ctx)
-				}(ctx)
-				socketChan <- sendingSocket
-			}
+			go func(ctx context.Context, sendingSocket socket.ServerSocket) {
+				_ = sendingSocket.Start(ctx)
+			}(ctx, sendingSocket)
+		default:
+			err := framing.NewFrameError(0, common.ErrorCodeConnectionError, []byte("first frame must be setup or resume"))
+			_ = tp.Send(err)
+			err.Release()
+			_ = tp.Close()
 			return
-		})
-
+		}
+		logger.Infof("setup cost: %d\n", time.Since(begin).Nanoseconds())
 		if err := tp.Start(ctx); err != nil {
-			logger.Debugf("transport exit: %s\n", err.Error())
+			logger.Warnf("transport exit: %s\n", err.Error())
 		}
 	})
 	return t.Listen()
+}
+
+func (p *server) doSetup(
+	frame *framing.FrameSetup,
+	tp *transport.Transport,
+	socketChan chan<- socket.ServerSocket,
+) (sendingSocket socket.ServerSocket, err *framing.FrameError) {
+	defer frame.Release()
+	isResume := frame.Header().Flag().Check(framing.FlagResume)
+
+	// 1. receive a token but server doesn't support resume.
+	if isResume && !p.resumeOpts.enable {
+		//e := framing.NewFrameError(0, common.ErrorCodeUnsupportedSetup, errUnavailableResume)
+		//err = tp.Send(e)
+		//e.Release()
+		//_ = tp.Close()
+		err = framing.NewFrameError(0, common.ErrorCodeUnsupportedSetup, errUnavailableResume)
+		return
+	}
+
+	rawSocket := socket.NewServerDuplexRSocket(p.fragment, p.scheduler)
+
+	// 2. no resume
+	if !isResume {
+		sendingSocket = socket.NewServer(rawSocket)
+		sendingSocket.SetResponder(p.acc(frame, sendingSocket))
+		sendingSocket.SetTransport(tp)
+		socketChan <- sendingSocket
+		return
+	}
+
+	token := make([]byte, len(frame.Token()))
+
+	// 3. resume reject because of duplicated token.
+	if _, ok := p.sm.Load(token); ok {
+		err = framing.NewFrameError(0, common.ErrorCodeRejectedSetup, errDuplicatedSetupToken)
+		return
+	}
+
+	// 4. resume success
+	copy(token, frame.Token())
+	sendingSocket = socket.NewServerResume(rawSocket, token)
+	sendingSocket.SetResponder(p.acc(frame, sendingSocket))
+	sendingSocket.SetTransport(tp)
+	socketChan <- sendingSocket
+	return
+}
+
+func (p *server) doResume(frame *framing.FrameResume, tp *transport.Transport, socketChan chan<- socket.ServerSocket) {
+	defer frame.Release()
+	var sending framing.Frame
+	if !p.resumeOpts.enable {
+		sending = framing.NewFrameError(0, common.ErrorCodeRejectedResume, errUnavailableResume)
+	} else if s, ok := p.sm.Load(frame.Token()); ok {
+		sending = framing.NewResumeOK(0)
+		s.Socket().SetTransport(tp)
+		socketChan <- s.Socket()
+		if logger.IsDebugEnabled() {
+			logger.Debugf("recover session: %s\n", s)
+		}
+	} else {
+		sending = framing.NewFrameError(
+			0,
+			common.ErrorCodeRejectedResume,
+			common.Str2bytes(fmt.Sprintf("no such session")),
+		)
+	}
+	if err := tp.Send(sending); err != nil {
+		logger.Errorf("send resume response failed: %s\n", err)
+		_ = tp.Close()
+	}
+	sending.Release()
 }
 
 func (p *server) loopCleanSession(ctx context.Context) (err error) {
@@ -288,6 +318,7 @@ func (p *server) doCleanSession() {
 	close(deads)
 }
 
+// WithServerResumeSessionDuration sets resume session duration for RSocket server.
 func WithServerResumeSessionDuration(duration time.Duration) OpServerResume {
 	return func(o *serverResumeOptions) {
 		o.sessionDuration = duration

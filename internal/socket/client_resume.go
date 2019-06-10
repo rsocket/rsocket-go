@@ -149,7 +149,8 @@ func (p *resumeClientSocket) isClosed() bool {
 	return atomic.LoadInt32(&(p.connects)) < 0
 }
 
-func NewClientResume(uri *transport.URI, socket *DuplexRSocket) *resumeClientSocket {
+// NewClientResume creates a client-side socket with resume support.
+func NewClientResume(uri *transport.URI, socket *DuplexRSocket) ClientSocket {
 	return &resumeClientSocket{
 		baseSocket: newBaseSocket(socket),
 		uri:        uri,

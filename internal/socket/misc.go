@@ -12,20 +12,21 @@ import (
 	"github.com/rsocket/rsocket-go/rx"
 )
 
-type msgStoreMode int8
+type mailboxMode int8
 
 const (
-	msgStoreModeRequestResponse msgStoreMode = iota
-	msgStoreModeRequestStream
-	msgStoreModeRequestChannel
+	mailRequestResponse mailboxMode = iota
+	mailRequestStream
+	mailRequestChannel
 )
 
-var publishersPool = sync.Pool{
+var mailboxPool = sync.Pool{
 	New: func() interface{} {
-		return &publishers{}
+		return new(mailbox)
 	},
 }
 
+// SetupInfo represents basic info of setup.
 type SetupInfo struct {
 	Version           common.Version
 	KeepaliveInterval time.Duration
@@ -37,6 +38,7 @@ type SetupInfo struct {
 	Metadata          []byte
 }
 
+// ToFrame converts current SetupInfo to a frame of Setup.
 func (p *SetupInfo) ToFrame() *framing.FrameSetup {
 	return framing.NewFrameSetup(
 		p.Version,
@@ -50,74 +52,67 @@ func (p *SetupInfo) ToFrame() *framing.FrameSetup {
 	)
 }
 
-func borrowPublishers(mode msgStoreMode, sending, receiving rx.Publisher) (b *publishers) {
-	b = publishersPool.Get().(*publishers)
+func borrowPublishers(mode mailboxMode, sending, receiving rx.Publisher) (b *mailbox) {
+	b = mailboxPool.Get().(*mailbox)
 	b.mode = mode
 	b.sending = sending
 	b.receiving = receiving
 	return
 }
 
-func returnPublishers(b *publishers) {
+func returnPublishers(b *mailbox) {
 	b.receiving = nil
 	b.sending = nil
-	publishersPool.Put(b)
+	mailboxPool.Put(b)
 }
 
-type publishers struct {
-	mode               msgStoreMode
+type mailbox struct {
+	mode               mailboxMode
 	sending, receiving rx.Publisher
 }
 
-type publishersMap struct {
-	mutex *sync.RWMutex
-	m     map[uint32]*publishers
+type mailboxes struct {
+	locker *sync.RWMutex
+	m      map[uint32]*mailbox
 }
 
-func (p *publishersMap) each(fn func(id uint32, elem *publishers)) {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
+func (p *mailboxes) each(fn func(id uint32, elem *mailbox)) {
+	p.locker.RLock()
+	defer p.locker.RUnlock()
 	for k, v := range p.m {
 		fn(k, v)
 	}
 }
 
-func (p *publishersMap) size() (n int) {
-	p.mutex.RLock()
-	n = len(p.m)
-	p.mutex.RUnlock()
-	return
-}
-
-func (p *publishersMap) put(id uint32, mode msgStoreMode, sending, receiving rx.Publisher) {
-	p.mutex.Lock()
+func (p *mailboxes) put(id uint32, mode mailboxMode, sending, receiving rx.Publisher) {
+	p.locker.Lock()
 	p.m[id] = borrowPublishers(mode, sending, receiving)
-	p.mutex.Unlock()
+	p.locker.Unlock()
 }
 
-func (p *publishersMap) load(id uint32) (v *publishers, ok bool) {
-	p.mutex.RLock()
+func (p *mailboxes) load(id uint32) (v *mailbox, ok bool) {
+	p.locker.RLock()
 	v, ok = p.m[id]
-	p.mutex.RUnlock()
+	p.locker.RUnlock()
 	return
 }
 
-func (p *publishersMap) remove(id uint32) {
-	p.mutex.Lock()
+func (p *mailboxes) remove(id uint32) {
+	p.locker.Lock()
 	found, ok := p.m[id]
 	if ok {
 		delete(p.m, id)
-		p.mutex.Unlock()
+		p.locker.Unlock()
 		returnPublishers(found)
 	} else {
-		p.mutex.Unlock()
+		p.locker.Unlock()
 	}
 }
 
-func newMessageStore() *publishersMap {
-	return &publishersMap{
-		mutex: &sync.RWMutex{},
-		m:     make(map[uint32]*publishers),
+func newMailboxes() *mailboxes {
+	return &mailboxes{
+		locker: &sync.RWMutex{},
+		m:      make(map[uint32]*mailbox),
 	}
 }
 
@@ -149,10 +144,6 @@ func (p *clientStreamIDs) next() uint32 {
 		return v
 	}
 	return p.next()
-}
-
-type errorProducer interface {
-	Error(err error)
 }
 
 // toError try convert something to error

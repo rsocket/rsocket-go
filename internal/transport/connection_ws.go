@@ -1,9 +1,11 @@
 package transport
 
 import (
+	"io"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/internal/logger"
@@ -25,6 +27,7 @@ func (p *wsConnection) SetDeadline(deadline time.Time) error {
 func (p *wsConnection) Read() (f framing.Frame, err error) {
 	t, raw, err := p.c.ReadMessage()
 	if err != nil {
+		err = errors.Wrap(err, "read frame failed")
 		return
 	}
 	if t != websocket.BinaryMessage {
@@ -33,7 +36,7 @@ func (p *wsConnection) Read() (f framing.Frame, err error) {
 	}
 	// validate min length
 	if len(raw) < framing.HeaderLen {
-		err = ErrIncompleteHeader
+		err = errors.Wrap(ErrIncompleteHeader, "read frame failed")
 		return
 	}
 	header := framing.ParseFrameHeader(raw)
@@ -41,16 +44,19 @@ func (p *wsConnection) Read() (f framing.Frame, err error) {
 	_, err = bf.Write(raw[framing.HeaderLen:])
 	if err != nil {
 		common.ReturnByteBuffer(bf)
+		err = errors.Wrap(err, "read frame failed")
 		return
 	}
 	base := framing.NewBaseFrame(header, bf)
 	f, err = framing.NewFromBase(base)
 	if err != nil {
 		common.ReturnByteBuffer(bf)
+		err = errors.Wrap(err, "read frame failed")
 		return
 	}
 	err = f.Validate()
 	if err != nil {
+		err = errors.Wrap(err, "read frame failed")
 		return
 	}
 	if logger.IsDebugEnabled() {
@@ -61,7 +67,11 @@ func (p *wsConnection) Read() (f framing.Frame, err error) {
 
 func (p *wsConnection) Write(frame framing.Frame) (err error) {
 	err = p.c.WriteMessage(websocket.BinaryMessage, frame.Bytes())
+	if err == io.EOF {
+		return
+	}
 	if err != nil {
+		err = errors.Wrap(err, "write frame failed")
 		return
 	}
 	if logger.IsDebugEnabled() {

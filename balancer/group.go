@@ -16,6 +16,7 @@ type Group struct {
 	m *sync.Map
 }
 
+// Close close current RSocket group.
 func (p *Group) Close() (err error) {
 	if p.m == nil {
 		return

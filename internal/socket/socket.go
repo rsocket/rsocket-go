@@ -6,70 +6,86 @@ import (
 	"sync"
 
 	"github.com/rsocket/rsocket-go/internal/transport"
-	. "github.com/rsocket/rsocket-go/payload"
-	. "github.com/rsocket/rsocket-go/rx"
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
 )
 
+// Closeable represents a closeable target.
 type Closeable interface {
 	io.Closer
+	// OnClose bind a handler when closing.
 	OnClose(closer func())
 }
 
 // Responder is a contract providing different interaction models for RSocket protocol.
 type Responder interface {
 	// FireAndForget is a single one-way message.
-	FireAndForget(msg Payload)
+	FireAndForget(msg payload.Payload)
 	// MetadataPush sends asynchronous Metadata frame.
-	MetadataPush(msg Payload)
+	MetadataPush(msg payload.Payload)
 	// RequestResponse request single response.
-	RequestResponse(msg Payload) Mono
+	RequestResponse(msg payload.Payload) rx.Mono
 	// RequestStream request a completable stream.
-	RequestStream(msg Payload) Flux
+	RequestStream(msg payload.Payload) rx.Flux
 	// RequestChannel request a completable stream in both directions.
-	RequestChannel(msgs Publisher) Flux
+	RequestChannel(msgs rx.Publisher) rx.Flux
 }
 
+// ClientSocket represents a client-side socket.
 type ClientSocket interface {
 	Closeable
 	Responder
+	// Setup setups current socket.
 	Setup(ctx context.Context, setup *SetupInfo) (err error)
 }
 
+// ServerSocket represents a server-side socket.
 type ServerSocket interface {
 	Closeable
 	Responder
+	// SetResponder sets a responder for current socket.
 	SetResponder(responder Responder)
+	// SetTransport sets a transport for current socket.
 	SetTransport(tp *transport.Transport)
+	// Pause pause current socket.
 	Pause() bool
+	// Start starts current socket.
 	Start(ctx context.Context) error
+	// Token returns token of socket.
 	Token() (token []byte, ok bool)
 }
 
+// AbstractRSocket represents an abstract RSocket.
 type AbstractRSocket struct {
-	FF func(Payload)
-	MP func(Payload)
-	RR func(Payload) Mono
-	RS func(Payload) Flux
-	RC func(Publisher) Flux
+	FF func(payload.Payload)
+	MP func(payload.Payload)
+	RR func(payload.Payload) rx.Mono
+	RS func(payload.Payload) rx.Flux
+	RC func(rx.Publisher) rx.Flux
 }
 
-func (p AbstractRSocket) MetadataPush(msg Payload) {
+// MetadataPush starts a request of MetadataPush.
+func (p AbstractRSocket) MetadataPush(msg payload.Payload) {
 	p.MP(msg)
 }
 
-func (p AbstractRSocket) FireAndForget(msg Payload) {
+// FireAndForget starts a request of FireAndForget.
+func (p AbstractRSocket) FireAndForget(msg payload.Payload) {
 	p.FF(msg)
 }
 
-func (p AbstractRSocket) RequestResponse(msg Payload) Mono {
+// RequestResponse starts a request of RequestResponse.
+func (p AbstractRSocket) RequestResponse(msg payload.Payload) rx.Mono {
 	return p.RR(msg)
 }
 
-func (p AbstractRSocket) RequestStream(msg Payload) Flux {
+// RequestStream starts a request of RequestStream.
+func (p AbstractRSocket) RequestStream(msg payload.Payload) rx.Flux {
 	return p.RS(msg)
 }
 
-func (p AbstractRSocket) RequestChannel(msgs Publisher) Flux {
+// RequestChannel starts a request of RequestChannel.
+func (p AbstractRSocket) RequestChannel(msgs rx.Publisher) rx.Flux {
 	return p.RC(msgs)
 }
 
@@ -79,23 +95,23 @@ type baseSocket struct {
 	once    *sync.Once
 }
 
-func (p *baseSocket) FireAndForget(msg Payload) {
+func (p *baseSocket) FireAndForget(msg payload.Payload) {
 	p.socket.FireAndForget(msg)
 }
 
-func (p *baseSocket) MetadataPush(msg Payload) {
+func (p *baseSocket) MetadataPush(msg payload.Payload) {
 	p.socket.MetadataPush(msg)
 }
 
-func (p *baseSocket) RequestResponse(msg Payload) Mono {
+func (p *baseSocket) RequestResponse(msg payload.Payload) rx.Mono {
 	return p.socket.RequestResponse(msg)
 }
 
-func (p *baseSocket) RequestStream(msg Payload) Flux {
+func (p *baseSocket) RequestStream(msg payload.Payload) rx.Flux {
 	return p.socket.RequestStream(msg)
 }
 
-func (p *baseSocket) RequestChannel(msgs Publisher) Flux {
+func (p *baseSocket) RequestChannel(msgs rx.Publisher) rx.Flux {
 	return p.socket.RequestChannel(msgs)
 }
 

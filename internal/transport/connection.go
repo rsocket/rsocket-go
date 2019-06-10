@@ -4,7 +4,7 @@ import (
 	"io"
 	"time"
 
-	. "github.com/rsocket/rsocket-go/internal/framing"
+	"github.com/rsocket/rsocket-go/internal/framing"
 )
 
 // Conn is connection for RSocket.
@@ -16,7 +16,7 @@ type Conn interface {
 	// SetCounter bind a counter which can count r/w bytes.
 	SetCounter(c *Counter)
 	// Read reads next frame from Conn.
-	Read() (Frame, error)
+	Read() (framing.Frame, error)
 	// Write writes a frame to Conn.
-	Write(frame Frame) error
+	Write(frame framing.Frame) error
 }

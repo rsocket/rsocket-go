@@ -10,10 +10,12 @@ type splitResult struct {
 	b *common.ByteBuff
 }
 
+// Split split data and metadata in frame.
 func Split(mtu int, data []byte, metadata []byte, onFrame func(idx int, fg framing.FrameFlag, body *common.ByteBuff)) {
 	SplitSkip(mtu, 0, data, metadata, onFrame)
 }
 
+// SplitSkip skip some bytes and split data and metadata in frame.
 func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame func(idx int, fg framing.FrameFlag, body *common.ByteBuff)) {
 	ch := make(chan splitResult, 3)
 	go func(mtu int, skip int, data []byte, metadata []byte, ch chan splitResult) {

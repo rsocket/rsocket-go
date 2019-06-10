@@ -64,14 +64,8 @@ func (p *wsServerTransport) Listen(onReady ...func()) (err error) {
 		}
 		go func(c *websocket.Conn, ctx context.Context) {
 			conn := newWebsocketConnection(c)
-			conn.SetCounter(NewCounter())
 			tp := newTransportClient(conn)
 			p.acceptor(ctx, tp)
-			if err := tp.Start(ctx); err != nil {
-				if logger.IsDebugEnabled() {
-					logger.Debugf("transport exit: %s\n", err.Error())
-				}
-			}
 		}(c, ctx)
 	})
 	p.server = &http.Server{

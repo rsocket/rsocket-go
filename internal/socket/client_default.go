@@ -24,7 +24,7 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 
 	go func(ctx context.Context, tp *transport.Transport) {
 		if err := tp.Start(ctx); err != nil {
-			logger.Debugf("client exit: %s\n", err)
+			logger.Warnf("client exit failed: %+v\n", err)
 		}
 		_ = p.Close()
 	}(ctx, tp)
@@ -38,7 +38,8 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 	return
 }
 
-func NewClient(uri *transport.URI, socket *DuplexRSocket) *defaultClientSocket {
+// NewClient create a simple client-side socket.
+func NewClient(uri *transport.URI, socket *DuplexRSocket) ClientSocket {
 	return &defaultClientSocket{
 		baseSocket: newBaseSocket(socket),
 		uri:        uri,

@@ -33,6 +33,7 @@ func (p *serverSocket) Start(ctx context.Context) error {
 	return p.socket.loopWrite(ctx)
 }
 
+// NewServer creates a new server-side socket.
 func NewServer(socket *DuplexRSocket) ServerSocket {
 	return &serverSocket{
 		baseSocket: newBaseSocket(socket),

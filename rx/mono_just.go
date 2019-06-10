@@ -17,7 +17,6 @@ func (p *justMonoProcessor) Success(elem payload.Payload) (err error) {
 }
 
 func (p *justMonoProcessor) Error(err error) {
-	return
 }
 
 func (p *justMonoProcessor) IsDisposed() bool {

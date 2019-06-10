@@ -32,7 +32,7 @@ func (p *URI) String() string {
 	return fmt.Sprintf("URI{protocol=%s, host=%s, port=%d}", p.proto, p.host, p.port)
 }
 
-// MakeClientTransport returns a new RSocket transport.
+// MakeClientTransport creates a new client-side transport.
 func (p *URI) MakeClientTransport() (*Transport, error) {
 	switch p.proto {
 	case protoTCP:
@@ -44,6 +44,7 @@ func (p *URI) MakeClientTransport() (*Transport, error) {
 	return nil, fmt.Errorf("rsocket: cannot create client transport")
 }
 
+// MakeServerTransport creates a new server-side transport.
 func (p *URI) MakeServerTransport() (tp ServerTransport, err error) {
 	addr := fmt.Sprintf("%s:%d", p.host, p.port)
 	switch p.proto {

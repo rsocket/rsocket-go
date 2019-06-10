@@ -19,6 +19,7 @@ func (p *Session) Socket() socket.ServerSocket {
 	return p.socket
 }
 
+// Close close current session.
 func (p *Session) Close() error {
 	return p.socket.Close()
 }

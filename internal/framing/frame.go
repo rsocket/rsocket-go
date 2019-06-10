@@ -149,6 +149,7 @@ type BaseFrame struct {
 	body   *common.ByteBuff
 }
 
+// IsResumable returns true if frame supports resume.
 func (p *BaseFrame) IsResumable() bool {
 	switch p.header.Type() {
 	case FrameTypeRequestChannel, FrameTypeRequestStream, FrameTypeRequestResponse, FrameTypeRequestFNF, FrameTypeRequestN, FrameTypeCancel, FrameTypeError, FrameTypePayload:

@@ -2,20 +2,22 @@ package transport
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/internal/common"
-	. "github.com/rsocket/rsocket-go/internal/framing"
+	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/internal/logger"
 )
 
-// FrameHandler is alias of frame handler.
-type FrameHandler = func(frame Frame) (err error)
-type ServerTransportAcceptor = func(ctx context.Context, tp *Transport)
+type (
+	// FrameHandler is an alias of frame handler.
+	FrameHandler = func(frame framing.Frame) (err error)
+	// ServerTransportAcceptor is an alias of server transport handler.
+	ServerTransportAcceptor = func(ctx context.Context, tp *Transport)
+)
 
 // ServerTransport is server-side RSocket transport.
 type ServerTransport interface {
@@ -51,6 +53,7 @@ type Transport struct {
 	hKeepalive       FrameHandler
 }
 
+// HandleError0 registers handler when receiving frame of Error with zero StreamID.
 func (p *Transport) HandleError0(handler FrameHandler) {
 	p.hError0 = handler
 }
@@ -69,11 +72,14 @@ func (p *Transport) SetLifetime(lifetime time.Duration) {
 }
 
 // Send send a frame.
-func (p *Transport) Send(frame Frame) (err error) {
-	err = p.conn.Write(frame)
-	return
+func (p *Transport) Send(frame framing.Frame) error {
+	if err := p.conn.Write(frame); err != nil {
+		return errors.Wrap(err, "send frame failed")
+	}
+	return nil
 }
 
+// Close close current transport.
 func (p *Transport) Close() (err error) {
 	p.once.Do(func() {
 		err = p.conn.Close()
@@ -81,86 +87,122 @@ func (p *Transport) Close() (err error) {
 	return
 }
 
+// ReadFirst reads first frame.
+func (p *Transport) ReadFirst(ctx context.Context) (frame framing.Frame, err error) {
+	select {
+	case <-ctx.Done():
+		err = ctx.Err()
+	default:
+		frame, err = p.conn.Read()
+		if err != nil {
+			err = errors.Wrap(err, "read first frame failed")
+		}
+	}
+	if err != nil {
+		_ = p.Close()
+	}
+	return
+}
+
 // Start start transport.
 func (p *Transport) Start(ctx context.Context) (err error) {
 	defer func() {
-		if err := p.Close(); err != nil {
-			logger.Warnf("close transport failed: %s\n", err)
-		}
+		_ = p.Close()
 	}()
 L:
 	for {
 		select {
 		case <-ctx.Done():
 			err = ctx.Err()
-			break L
+			return
 		default:
 			f, err := p.conn.Read()
 			if err != nil {
 				break L
 			}
-			err = p.onFrame(ctx, f)
+			err = p.DeliveryFrame(ctx, f)
 			if err != nil {
 				break L
 			}
 		}
 	}
+	if err == io.EOF {
+		err = nil
+		return
+	}
+	if err != nil {
+		err = errors.Wrap(err, "read and delivery frame failed")
+	}
 	return
 }
 
+// HandleSetup registers handler when receiving a frame of Setup.
 func (p *Transport) HandleSetup(handler FrameHandler) {
 	p.hSetup = handler
 }
 
+// HandleResume registers handler when receiving a frame of Resume.
 func (p *Transport) HandleResume(handler FrameHandler) {
 	p.hResume = handler
 }
 
+// HandleResumeOK registers handler when receiving a frame of ResumeOK.
 func (p *Transport) HandleResumeOK(handler FrameHandler) {
 	p.hResumeOK = handler
 }
 
+// HandleFNF registers handler when receiving a frame of FireAndForget.
 func (p *Transport) HandleFNF(handler FrameHandler) {
 	p.hFireAndForget = handler
 }
 
+// HandleMetadataPush registers handler when receiving a frame of MetadataPush.
 func (p *Transport) HandleMetadataPush(handler FrameHandler) {
 	p.hMetadataPush = handler
 }
 
+// HandleRequestResponse registers handler when receiving a frame of RequestResponse.
 func (p *Transport) HandleRequestResponse(handler FrameHandler) {
 	p.hRequestResponse = handler
 }
 
+// HandleRequestStream registers handler when receiving a frame of RequestStream.
 func (p *Transport) HandleRequestStream(handler FrameHandler) {
 	p.hRequestStream = handler
 }
 
+// HandleRequestChannel registers handler when receiving a frame of RequestChannel.
 func (p *Transport) HandleRequestChannel(handler FrameHandler) {
 	p.hRequestChannel = handler
 }
 
+// HandlePayload registers handler when receiving a frame of Payload.
 func (p *Transport) HandlePayload(handler FrameHandler) {
 	p.hPayload = handler
 }
 
+// HandleRequestN registers handler when receiving a frame of RequestN.
 func (p *Transport) HandleRequestN(handler FrameHandler) {
 	p.hRequestN = handler
 }
 
+// HandleError registers handler when receiving a frame of Error.
 func (p *Transport) HandleError(handler FrameHandler) {
 	p.hError = handler
 }
 
+// HandleCancel registers handler when receiving a frame of Cancel.
 func (p *Transport) HandleCancel(handler FrameHandler) {
 	p.hCancel = handler
 }
 
+// HandleKeepalive registers handler when receiving a frame of Keepalive.
 func (p *Transport) HandleKeepalive(handler FrameHandler) {
 	p.hKeepalive = handler
 }
 
-func (p *Transport) onFrame(ctx context.Context, frame Frame) (err error) {
+// DeliveryFrame delivery incoming frames.
+func (p *Transport) DeliveryFrame(ctx context.Context, frame framing.Frame) (err error) {
 	header := frame.Header()
 	t := header.Type()
 	sid := header.StreamID()
@@ -168,17 +210,17 @@ func (p *Transport) onFrame(ctx context.Context, frame Frame) (err error) {
 	var handler FrameHandler
 
 	switch t {
-	case FrameTypeSetup:
-		p.maxLifetime = frame.(*FrameSetup).MaxLifetime()
+	case framing.FrameTypeSetup:
+		p.maxLifetime = frame.(*framing.FrameSetup).MaxLifetime()
 		handler = p.hSetup
-	case FrameTypeResume:
+	case framing.FrameTypeResume:
 		handler = p.hResume
-	case FrameTypeResumeOK:
-		p.lastRcvPos = frame.(*FrameResumeOK).LastReceivedClientPosition()
+	case framing.FrameTypeResumeOK:
+		p.lastRcvPos = frame.(*framing.FrameResumeOK).LastReceivedClientPosition()
 		handler = p.hResumeOK
-	case FrameTypeRequestFNF:
+	case framing.FrameTypeRequestFNF:
 		handler = p.hFireAndForget
-	case FrameTypeMetadataPush:
+	case framing.FrameTypeMetadataPush:
 		if sid != 0 {
 			// skip invalid metadata push
 			frame.Release()
@@ -186,19 +228,19 @@ func (p *Transport) onFrame(ctx context.Context, frame Frame) (err error) {
 			return
 		}
 		handler = p.hMetadataPush
-	case FrameTypeRequestResponse:
+	case framing.FrameTypeRequestResponse:
 		handler = p.hRequestResponse
-	case FrameTypeRequestStream:
+	case framing.FrameTypeRequestStream:
 		handler = p.hRequestStream
-	case FrameTypeRequestChannel:
+	case framing.FrameTypeRequestChannel:
 		handler = p.hRequestChannel
-	case FrameTypePayload:
+	case framing.FrameTypePayload:
 		handler = p.hPayload
-	case FrameTypeRequestN:
+	case framing.FrameTypeRequestN:
 		handler = p.hRequestN
-	case FrameTypeError:
+	case framing.FrameTypeError:
 		if sid == 0 {
-			err = errors.New(frame.(*FrameError).Error())
+			err = errors.New(frame.(*framing.FrameError).Error())
 			if p.hError0 != nil {
 				_ = p.hError0(frame)
 			} else {
@@ -207,10 +249,10 @@ func (p *Transport) onFrame(ctx context.Context, frame Frame) (err error) {
 			return
 		}
 		handler = p.hError
-	case FrameTypeCancel:
+	case framing.FrameTypeCancel:
 		handler = p.hCancel
-	case FrameTypeKeepalive:
-		ka := frame.(*FrameKeepalive)
+	case framing.FrameTypeKeepalive:
+		ka := frame.(*framing.FrameKeepalive)
 		p.lastRcvPos = ka.LastReceivedPosition()
 		handler = p.hKeepalive
 	}
@@ -224,13 +266,16 @@ func (p *Transport) onFrame(ctx context.Context, frame Frame) (err error) {
 
 	// missing handler
 	if handler == nil {
-		err = fmt.Errorf("missing frame handler: type=%s", t)
+		err = errors.Errorf("missing frame handler: type=%s", t)
 		frame.Release()
 		return
 	}
 
 	// trigger handler
 	err = handler(frame)
+	if err != nil {
+		err = errors.Wrap(err, "exec frame handler failed")
+	}
 	return
 }
 

@@ -7,10 +7,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	. "github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/payload"
 )
 
 const (
+	// RequestInfinite represents infinite tickets when polling.
 	RequestInfinite = math.MaxInt32
 
 	defaultQueueSize = 16
@@ -19,7 +20,7 @@ const (
 var errIllegalCap = errors.New("cap must greater than zero")
 
 type queue struct {
-	elements   chan Payload
+	elements   chan payload.Payload
 	cond       *sync.Cond
 	tickets    int32
 	onRequestN func(int32)
@@ -48,7 +49,7 @@ func (p *queue) Tickets() (n int32) {
 	return
 }
 
-func (p *queue) Push(in Payload) (err error) {
+func (p *queue) Push(in payload.Payload) (err error) {
 	defer func() {
 		err, _ = recover().(error)
 	}()
@@ -73,7 +74,7 @@ func (p *queue) Request(n int32) {
 	p.cond.L.Unlock()
 }
 
-func (p *queue) Poll(ctx context.Context) (pa Payload, ok bool) {
+func (p *queue) Poll(ctx context.Context) (pa payload.Payload, ok bool) {
 	select {
 	case <-ctx.Done():
 		return
@@ -108,7 +109,7 @@ func newQueue(cap int, tickets int32) *queue {
 	return &queue{
 		cond:     sync.NewCond(&sync.Mutex{}),
 		tickets:  tickets,
-		elements: make(chan Payload, cap),
+		elements: make(chan payload.Payload, cap),
 		done:     make(chan struct{}),
 	}
 }

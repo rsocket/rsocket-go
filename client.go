@@ -2,7 +2,6 @@ package rsocket
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,10 +14,12 @@ import (
 )
 
 var defaultMimeType = []byte("application/binary")
-var ErrClientClosed = errors.New("client has been closed")
 
 type (
-	// ClientSocket is Client Side of a RSocket socket. Sends Frames to a RSocket Server.
+	// ClientResumeOptions represents resume options for client.
+	ClientResumeOptions func(opts *resumeOpts)
+
+	// Client is Client Side of a RSocket socket. Sends Frames to a RSocket Server.
 	Client interface {
 		CloseableRSocket
 	}
@@ -218,8 +219,7 @@ func getPresetResumeTokenGen() (token []byte) {
 	return
 }
 
-type ClientResumeOptions func(opts *resumeOpts)
-
+// WithClientResumeToken creates a resume token generator.
 func WithClientResumeToken(gen func() []byte) ClientResumeOptions {
 	return func(opts *resumeOpts) {
 		opts.tokenGen = gen

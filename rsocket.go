@@ -2,26 +2,26 @@ package rsocket
 
 import (
 	"github.com/rsocket/rsocket-go/internal/socket"
-	. "github.com/rsocket/rsocket-go/payload"
-	. "github.com/rsocket/rsocket-go/rx"
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
 )
 
 type (
 	// ServerAcceptor is alias for server accepter.
-	ServerAcceptor = func(setup SetupPayload, sendingSocket CloseableRSocket) RSocket
+	ServerAcceptor = func(setup payload.SetupPayload, sendingSocket CloseableRSocket) RSocket
 
 	// RSocket is a contract providing different interaction models for RSocket protocol.
 	RSocket interface {
 		// FireAndForget is a single one-way message.
-		FireAndForget(msg Payload)
+		FireAndForget(msg payload.Payload)
 		// MetadataPush sends asynchronous Metadata frame.
-		MetadataPush(msg Payload)
+		MetadataPush(msg payload.Payload)
 		// RequestResponse request single response.
-		RequestResponse(msg Payload) Mono
+		RequestResponse(msg payload.Payload) rx.Mono
 		// RequestStream request a completable stream.
-		RequestStream(msg Payload) Flux
+		RequestStream(msg payload.Payload) rx.Flux
 		// RequestChannel request a completable stream in both directions.
-		RequestChannel(msgs Publisher) Flux
+		RequestChannel(msgs rx.Publisher) rx.Flux
 	}
 
 	// CloseableRSocket is a RSocket which support more events.
@@ -45,35 +45,35 @@ func NewAbstractSocket(opts ...OptAbstractSocket) RSocket {
 }
 
 // MetadataPush register request handler for MetadataPush.
-func MetadataPush(fn func(msg Payload)) OptAbstractSocket {
+func MetadataPush(fn func(msg payload.Payload)) OptAbstractSocket {
 	return func(socket *socket.AbstractRSocket) {
 		socket.MP = fn
 	}
 }
 
 // FireAndForget register request handler for FireAndForget.
-func FireAndForget(fn func(msg Payload)) OptAbstractSocket {
+func FireAndForget(fn func(msg payload.Payload)) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.FF = fn
 	}
 }
 
 // RequestResponse register request handler for RequestResponse.
-func RequestResponse(fn func(msg Payload) Mono) OptAbstractSocket {
+func RequestResponse(fn func(msg payload.Payload) rx.Mono) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.RR = fn
 	}
 }
 
 // RequestStream register request handler for RequestStream.
-func RequestStream(fn func(msg Payload) Flux) OptAbstractSocket {
+func RequestStream(fn func(msg payload.Payload) rx.Flux) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.RS = fn
 	}
 }
 
 // RequestChannel register request handler for RequestChannel.
-func RequestChannel(fn func(msgs Publisher) Flux) OptAbstractSocket {
+func RequestChannel(fn func(msgs rx.Publisher) rx.Flux) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.RC = fn
 	}
