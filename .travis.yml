@@ -3,5 +3,11 @@ language: go
 go:
   - '1.12'
 
+before_install:
+  - go get -u golang.org/x/lint/golint
+  - go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
+
 script:
-  - go test ./test -v
+  # - go test ./test -v
+  - golint ./...
+  - golangci-lint run ./...
