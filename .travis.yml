@@ -3,6 +3,9 @@ language: go
 go:
   - '1.12'
 
+env:
+  - GO111MODULE=on
+
 before_install:
   - go get -u golang.org/x/lint/golint
   - go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
