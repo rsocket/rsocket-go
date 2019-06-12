@@ -2,11 +2,13 @@ package transport
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"sync"
 
 	"github.com/gorilla/websocket"
-	"github.com/rsocket/rsocket-go/internal/logger"
+	"github.com/pkg/errors"
+	"github.com/rsocket/rsocket-go/logger"
 )
 
 const defaultWebsocketPath = "/"
@@ -37,24 +39,7 @@ func (p *wsServerTransport) Accept(acceptor ServerTransportAcceptor) {
 	p.acceptor = acceptor
 }
 
-func (p *wsServerTransport) Listen(onReady ...func()) (err error) {
-	defer func() {
-		if err == nil {
-			err = p.Close()
-		}
-	}()
-
-	go func() {
-		for _, v := range onReady {
-			v()
-		}
-	}()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer func() {
-		cancel()
-	}()
-
+func (p *wsServerTransport) Listen(ctx context.Context) (err error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc(p.path, func(w http.ResponseWriter, r *http.Request) {
 		c, err := upgrader.Upgrade(w, r, nil)
@@ -72,11 +57,32 @@ func (p *wsServerTransport) Listen(onReady ...func()) (err error) {
 		Addr:    p.addr,
 		Handler: mux,
 	}
+	stop := make(chan struct{})
+	ctx, cancel := context.WithCancel(ctx)
+
+	go func(ctx context.Context, stop chan struct{}) {
+		defer func() {
+			_ = p.Close()
+			close(stop)
+		}()
+		<-ctx.Done()
+	}(ctx, stop)
+
 	err = p.server.ListenAndServe()
+	if err == io.EOF || isClosedErr(err) {
+		err = nil
+	} else {
+		err = errors.Wrap(err, "listen websocket server failed")
+	}
+	cancel()
+	<-stop
 	return
 }
 
 func newWebsocketServerTransport(addr string, path string) *wsServerTransport {
+	if path == "" {
+		path = defaultWebsocketPath
+	}
 	return &wsServerTransport{
 		addr:      addr,
 		path:      path,

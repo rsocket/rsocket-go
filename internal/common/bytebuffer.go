@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/rsocket/rsocket-go/internal/logger"
+	"github.com/rsocket/rsocket-go/logger"
 	"github.com/valyala/bytebufferpool"
 )
 

@@ -44,8 +44,10 @@ func ExampleNewGroup() {
 			}))
 		}).
 		Transport(uri).
-		Serve()
-	panic(err)
+		Serve(context.Background())
+	if err != nil {
+		panic(err)
+	}
 }
 
 func TestServiceSubscribe(t *testing.T) {

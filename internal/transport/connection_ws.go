@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/framing"
-	"github.com/rsocket/rsocket-go/internal/logger"
+	"github.com/rsocket/rsocket-go/logger"
 )
 
 type wsConnection struct {

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/rsocket/rsocket-go/internal/logger"
+	"github.com/rsocket/rsocket-go/logger"
 )
 
 var errGroupClosed = errors.New("balancer group has been closed")
