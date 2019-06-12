@@ -22,6 +22,8 @@ rsocket-go is an implementation of the [RSocket](http://rsocket.io/) protocol in
 package main
 
 import (
+	"context"
+	
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
@@ -41,7 +43,7 @@ func main() {
 			)
 		}).
 		Transport("tcp://127.0.0.1:7878").
-		Serve()
+		Serve(context.Background())
 	panic(err)
 }
 
