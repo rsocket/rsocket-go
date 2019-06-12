@@ -11,6 +11,6 @@ before_install:
   - go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
 
 script:
-  # - go test ./test -v
   - golint ./...
   - golangci-lint run ./...
+  - go test . -v

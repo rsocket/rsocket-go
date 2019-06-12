@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/framing"
-	"github.com/rsocket/rsocket-go/internal/logger"
+	"github.com/rsocket/rsocket-go/logger"
 )
 
 type (
@@ -27,7 +27,7 @@ type ServerTransport interface {
 	// Listen listens on the network address addr and handles requests on incoming connections.
 	// You can specify onReady handler, it'll be invoked when server begin listening.
 	// It always returns a non-nil error.
-	Listen(onReady ...func()) error
+	Listen(ctx context.Context) error
 }
 
 // Transport is RSocket transport which is used to carry RSocket frames.

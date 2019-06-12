@@ -4,31 +4,63 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	_ "net/http/pprof"
 	"strconv"
 	"strings"
 
 	"github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/internal/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
 
+//const addr = "tcp://127.0.0.1:7878"
+const addr = "unix:///tmp/rsocket.echo.sock"
+
+//const addr = "ws://127.0.0.1:7878/echo"
+
 func main() {
-	go func() {
-		log.Println(http.ListenAndServe(":4444", nil))
-	}()
-	logger.SetLevel(logger.LevelInfo)
+	//go func() {
+	//	log.Println(http.ListenAndServe(":4444", nil))
+	//}()
 	//logger.SetLevel(logger.LevelDebug)
 	//go common.TraceByteBuffLeak(context.Background(), 10*time.Second)
-	err := createEchoServer("tcp://127.0.0.1:7878")
-	//err := createEchoServer("tcp://127.0.0.1:7878")
-	panic(err)
+	err := rsocket.Receive().
+		//Fragment(65535).
+		//Resume().
+		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) rsocket.RSocket {
+			//log.Println("SETUP BEGIN:----------------")
+			//log.Println("maxLifeTime:", setup.MaxLifetime())
+			//log.Println("keepaliveInterval:", setup.TimeBetweenKeepalive())
+			//log.Println("dataMimeType:", setup.DataMimeType())
+			//log.Println("metadataMimeType:", setup.MetadataMimeType())
+			//log.Println("data:", string(setup.Data()))
+			//log.Println("metadata:", string(setup.Metadata()))
+			//log.Println("SETUP END:----------------")
+
+			// NOTICE: request client for something.
+			//sendingSocket.
+			//	RequestResponse(payload.NewString("ping", "From server")).
+			//	DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+			//		log.Println("rcv response from client:", elem)
+			//	}).
+			//	SubscribeOn(rx.ElasticScheduler()).
+			//	Subscribe(context.Background())
+
+			sendingSocket.OnClose(func() {
+				log.Println("***** socket disconnected *****")
+			})
+
+			return responder()
+		}).
+		Transport(addr).
+		Serve(context.Background())
+	if err != nil {
+		panic(err)
+	}
 }
 
-func createEchoServer(uri string) error {
-	responder := rsocket.NewAbstractSocket(
+func responder() rsocket.RSocket {
+	return rsocket.NewAbstractSocket(
 		rsocket.MetadataPush(func(item payload.Payload) {
 			log.Println("GOT METADATA_PUSH:", item)
 		}),
@@ -123,34 +155,4 @@ func createEchoServer(uri string) error {
 			//})
 		}),
 	)
-	return rsocket.Receive().
-		//Fragment(128).
-		Resume().
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) rsocket.RSocket {
-			//log.Println("SETUP BEGIN:----------------")
-			//log.Println("maxLifeTime:", setup.MaxLifetime())
-			//log.Println("keepaliveInterval:", setup.TimeBetweenKeepalive())
-			//log.Println("dataMimeType:", setup.DataMimeType())
-			//log.Println("metadataMimeType:", setup.MetadataMimeType())
-			//log.Println("data:", string(setup.Data()))
-			//log.Println("metadata:", string(setup.Metadata()))
-			//log.Println("SETUP END:----------------")
-
-			// NOTICE: request client for something.
-			//sendingSocket.
-			//	RequestResponse(payload.NewString("ping", "From server")).
-			//	DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
-			//		log.Println("rcv response from client:", elem)
-			//	}).
-			//	SubscribeOn(rx.ElasticScheduler()).
-			//	Subscribe(context.Background())
-
-			sendingSocket.OnClose(func() {
-				log.Println("***** socket disconnected *****")
-			})
-
-			return responder
-		}).
-		Transport(uri).
-		Serve()
 }

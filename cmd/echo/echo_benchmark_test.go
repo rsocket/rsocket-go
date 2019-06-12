@@ -1,11 +1,10 @@
-package main_test
+package main
 
 import (
 	"bytes"
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,19 +14,19 @@ import (
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-const uri = "tcp://127.0.0.1:7878"
-
 func TestClient_RequestResponse(t *testing.T) {
-	client := createClient(uri)
+	client, err := createClient(addr)
+	require.NoError(t, err, "bad client")
 	defer func() {
 		_ = client.Close()
 	}()
 	wg := &sync.WaitGroup{}
-	n := 50 * 10000
+	n := 100 * 10000
 	wg.Add(n)
-	data := []byte(common.RandAlphanumeric(4096))
+	data := []byte(common.RandAlphanumeric(1024))
 
 	now := time.Now()
 	ctx := context.Background()
@@ -51,13 +50,10 @@ func TestClient_RequestResponse(t *testing.T) {
 	assert.Equal(t, 0, common.CountByteBuffer(), "bytebuff leak")
 }
 
-func TestClients_RequestResponse(t *testing.T) {
-	log.Println("---------------")
-	doOnce(10000)
-}
-
-func createClient(uri string) rsocket.Client {
-	client, err := rsocket.Connect().
+func createClient(uri string) (rsocket.Client, error) {
+	return rsocket.Connect().
+		//Fragment(1024).
+		//Resume().
 		SetupPayload(payload.NewString("你好", "世界")).
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
 			return rsocket.NewAbstractSocket(
@@ -72,41 +68,4 @@ func createClient(uri string) rsocket.Client {
 		}).
 		Transport(uri).
 		Start(context.Background())
-	if err != nil {
-		panic(err)
-	}
-	return client
-}
-
-func doOnce(totals int) {
-	wg := &sync.WaitGroup{}
-	wg.Add(totals)
-	data := []byte(strings.Repeat("A", 4096))
-	md := []byte("benchmark_test")
-	ctx := context.Background()
-	clients := make([]rsocket.Client, totals)
-	now := time.Now()
-	for i := 0; i < totals; i++ {
-		clients[i] = createClient(uri)
-	}
-	log.Println("SETUP:", time.Since(now))
-	now = time.Now()
-	for _, client := range clients {
-		client.RequestResponse(payload.New(data, md)).
-			DoFinally(func(ctx context.Context, sig rx.SignalType) {
-				wg.Done()
-			}).
-			SubscribeOn(rx.ElasticScheduler()).
-			Subscribe(ctx)
-	}
-	wg.Wait()
-	cost := time.Since(now)
-
-	log.Println("TOTALS:", totals)
-	log.Println("COST:", cost)
-	log.Printf("QPS: %.2f\n", float64(totals)/cost.Seconds())
-	time.Sleep(10 * time.Hour)
-	for _, client := range clients {
-		_ = client.Close()
-	}
 }

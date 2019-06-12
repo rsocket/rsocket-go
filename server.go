@@ -8,10 +8,10 @@ import (
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
 	"github.com/rsocket/rsocket-go/internal/framing"
-	"github.com/rsocket/rsocket-go/internal/logger"
 	"github.com/rsocket/rsocket-go/internal/session"
 	"github.com/rsocket/rsocket-go/internal/socket"
 	"github.com/rsocket/rsocket-go/internal/transport"
+	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/rx"
 )
 
@@ -48,7 +48,7 @@ type (
 	// Start start a RSocket server.
 	Start interface {
 		// Serve serve RSocket server.
-		Serve() error
+		Serve(ctx context.Context) error
 	}
 )
 
@@ -103,7 +103,7 @@ func (p *server) Transport(transport string) Start {
 	return p
 }
 
-func (p *server) Serve() error {
+func (p *server) Serve(ctx context.Context) error {
 	defer func() {
 		_ = p.scheduler.Close()
 	}()
@@ -120,9 +120,13 @@ func (p *server) Serve() error {
 		return err
 	}
 
+	defer func() {
+		_ = t.Close()
+	}()
+
 	go func(ctx context.Context) {
 		_ = p.loopCleanSession(ctx)
-	}(context.Background())
+	}(ctx)
 
 	t.Accept(func(ctx context.Context, tp *transport.Transport) {
 		socketChan := make(chan socket.ServerSocket, 1)
@@ -149,17 +153,12 @@ func (p *server) Serve() error {
 			close(socketChan)
 		}()
 
-		begin := time.Now()
 		first, err := tp.ReadFirst(ctx)
 		if err != nil {
 			logger.Errorf("read first frame failed: %s\n", err)
 			_ = tp.Close()
 			return
 		}
-
-		logger.Infof("read first frame cost: %dns\n", time.Since(begin).Nanoseconds())
-
-		begin = time.Now()
 
 		switch frame := first.(type) {
 		case *framing.FrameResume:
@@ -182,12 +181,11 @@ func (p *server) Serve() error {
 			_ = tp.Close()
 			return
 		}
-		logger.Infof("setup cost: %d\n", time.Since(begin).Nanoseconds())
 		if err := tp.Start(ctx); err != nil {
 			logger.Warnf("transport exit: %s\n", err.Error())
 		}
 	})
-	return t.Listen()
+	return t.Listen(ctx)
 }
 
 func (p *server) doSetup(
@@ -200,10 +198,6 @@ func (p *server) doSetup(
 
 	// 1. receive a token but server doesn't support resume.
 	if isResume && !p.resumeOpts.enable {
-		//e := framing.NewFrameError(0, common.ErrorCodeUnsupportedSetup, errUnavailableResume)
-		//err = tp.Send(e)
-		//e.Release()
-		//_ = tp.Close()
 		err = framing.NewFrameError(0, common.ErrorCodeUnsupportedSetup, errUnavailableResume)
 		return
 	}

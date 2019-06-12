@@ -1,97 +1,63 @@
 package transport
 
 import (
-	"fmt"
-	"regexp"
-	"strconv"
+	"net/url"
+	"strings"
+
+	"github.com/pkg/errors"
 )
 
 const (
-	_ protocol = iota
-	protoTCP
-	protoWebsocket
+	schemaUNIX      = "unix"
+	schemaTCP       = "tcp"
+	schemaWebsocket = "ws"
 )
 
-var (
-	regURI = regexp.MustCompile("^(tcp://|ws://)?([^/:]+):([1-9][0-9]+)$")
-
-	protoMap = map[protocol]string{
-		protoTCP:       "tcp",
-		protoWebsocket: "ws",
-	}
-)
-
-// URI is used to create a RSocket transport.
-type URI struct {
-	proto protocol
-	host  string
-	port  int
-}
-
-func (p *URI) String() string {
-	return fmt.Sprintf("URI{protocol=%s, host=%s, port=%d}", p.proto, p.host, p.port)
-}
+// URI represents a URI of RSocket transport.
+type URI url.URL
 
 // MakeClientTransport creates a new client-side transport.
 func (p *URI) MakeClientTransport() (*Transport, error) {
-	switch p.proto {
-	case protoTCP:
-		return newTCPClientTransport(fmt.Sprintf("%s:%d", p.host, p.port))
-	case protoWebsocket:
-		url := fmt.Sprintf("%s://%s:%d/", p.proto, p.host, p.port)
-		return newWebsocketClientTransport(url)
+	switch strings.ToLower(p.Scheme) {
+	case schemaTCP:
+		return newTCPClientTransport(schemaTCP, p.Host)
+	case schemaWebsocket:
+		return newWebsocketClientTransport(p.pp().String())
+	case schemaUNIX:
+		return newTCPClientTransport(schemaUNIX, p.Path)
+	default:
+		return nil, errors.Errorf("unsupported transport url: %s", p.pp().String())
 	}
-	return nil, fmt.Errorf("rsocket: cannot create client transport")
 }
 
 // MakeServerTransport creates a new server-side transport.
 func (p *URI) MakeServerTransport() (tp ServerTransport, err error) {
-	addr := fmt.Sprintf("%s:%d", p.host, p.port)
-	switch p.proto {
-	case protoTCP:
-		tp = newTCPServerTransport(addr)
-	case protoWebsocket:
-		// TODO: parse path
-		tp = newWebsocketServerTransport(addr, defaultWebsocketPath)
+	switch strings.ToLower(p.Scheme) {
+	case schemaTCP:
+		tp = newTCPServerTransport(schemaTCP, p.Host)
+	case schemaWebsocket:
+		tp = newWebsocketServerTransport(p.Host, p.Path)
+	case schemaUNIX:
+		tp = newTCPServerTransport(schemaUNIX, p.Path)
 	default:
-		err = fmt.Errorf("rsocket: unsupported proto %s", p.proto)
+		err = errors.Errorf("unsupported transport url: %s", p.pp().String())
 	}
 	return
 }
 
-type protocol int8
+func (p *URI) String() string {
+	return p.pp().String()
+}
 
-func (s protocol) String() string {
-	found, ok := protoMap[s]
-	if !ok {
-		panic(fmt.Errorf("rsocket: unknown transport protocol %d", s))
-	}
-	return found
+func (p *URI) pp() *url.URL {
+	return (*url.URL)(p)
 }
 
 // ParseURI parse URI string and returns a URI.
-func ParseURI(uri string) (*URI, error) {
-	mat := regURI.FindStringSubmatch(uri)
-	if mat == nil {
-		return nil, fmt.Errorf("rsocket: invalid URI %s", uri)
+func ParseURI(rawurl string) (*URI, error) {
+	u, err := url.Parse(rawurl)
+	if err != nil {
+		return nil, errors.Wrapf(err, "parse url failed: %s", rawurl)
 	}
-	proto := mat[1]
-	host := mat[2]
-	port, _ := strconv.Atoi(mat[3])
-	switch proto {
-	case "tcp://", "":
-		return &URI{
-			proto: protoTCP,
-			host:  host,
-			port:  port,
-		}, nil
-	case "ws://":
-		return &URI{
-			proto: protoWebsocket,
-			host:  host,
-			port:  port,
-		}, nil
-	default:
-		return nil, fmt.Errorf("rsocket: unsupported protocol %s", proto)
-	}
+	return (*URI)(u), nil
 }

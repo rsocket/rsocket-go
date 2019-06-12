@@ -3,8 +3,8 @@ package socket
 import (
 	"context"
 
-	"github.com/rsocket/rsocket-go/internal/logger"
 	"github.com/rsocket/rsocket-go/internal/transport"
+	"github.com/rsocket/rsocket-go/logger"
 )
 
 type defaultClientSocket struct {

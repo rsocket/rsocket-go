@@ -83,7 +83,7 @@ func main() {
 
 ```
 
-> NOTICE: more server examples are [Here](./example/echo/echo.go)
+> NOTICE: more server examples are [Here](cmd/echo/echo.go)
 
 ## Advanced
 

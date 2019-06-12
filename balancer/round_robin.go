@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/internal/logger"
+	"github.com/rsocket/rsocket-go/logger"
 )
 
 type labelClient struct {
