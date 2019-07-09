@@ -59,7 +59,7 @@ func decodeCompositeMetadataOnce(raw []byte) (l int, cm CompositeMetadata, err e
 		size += int(idOrLen)
 		ret.mime = string(raw[1 : 1+idOrLen])
 	}
-	metadataLen := common.NewUint24Bytes(raw[size:size+3]).AsInt()
+	metadataLen := common.NewUint24Bytes(raw[size : size+3]).AsInt()
 	end := size + 3 + metadataLen
 	ret.data = raw[size+3 : end]
 	return end, ret, nil

@@ -4,6 +4,8 @@ import (
 	"github.com/rsocket/rsocket-go/internal/socket"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
+	"github.com/rsocket/rsocket-go/rx/flux"
+	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
 type (
@@ -17,11 +19,11 @@ type (
 		// MetadataPush sends asynchronous Metadata frame.
 		MetadataPush(msg payload.Payload)
 		// RequestResponse request single response.
-		RequestResponse(msg payload.Payload) rx.Mono
+		RequestResponse(msg payload.Payload) mono.Mono
 		// RequestStream request a completable stream.
-		RequestStream(msg payload.Payload) rx.Flux
+		RequestStream(msg payload.Payload) flux.Flux
 		// RequestChannel request a completable stream in both directions.
-		RequestChannel(msgs rx.Publisher) rx.Flux
+		RequestChannel(msgs rx.Publisher) flux.Flux
 	}
 
 	// CloseableRSocket is a RSocket which support more events.
@@ -59,21 +61,21 @@ func FireAndForget(fn func(msg payload.Payload)) OptAbstractSocket {
 }
 
 // RequestResponse register request handler for RequestResponse.
-func RequestResponse(fn func(msg payload.Payload) rx.Mono) OptAbstractSocket {
+func RequestResponse(fn func(msg payload.Payload) mono.Mono) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.RR = fn
 	}
 }
 
 // RequestStream register request handler for RequestStream.
-func RequestStream(fn func(msg payload.Payload) rx.Flux) OptAbstractSocket {
+func RequestStream(fn func(msg payload.Payload) flux.Flux) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.RS = fn
 	}
 }
 
 // RequestChannel register request handler for RequestChannel.
-func RequestChannel(fn func(msgs rx.Publisher) rx.Flux) OptAbstractSocket {
+func RequestChannel(fn func(msgs rx.Publisher) flux.Flux) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.RC = fn
 	}

@@ -55,9 +55,6 @@ func NewFrameMetadataPush(metadata []byte) *FrameMetadataPush {
 		panic(err)
 	}
 	return &FrameMetadataPush{
-		&BaseFrame{
-			header: defaultFrameMetadataPushHeader,
-			body:   bf,
-		},
+		NewBaseFrame(defaultFrameMetadataPushHeader, bf),
 	}
 }

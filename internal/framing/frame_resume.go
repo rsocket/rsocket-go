@@ -93,9 +93,6 @@ func NewFrameResume(version common.Version, token []byte, firstAvailableClientPo
 		panic(err)
 	}
 	return &FrameResume{
-		&BaseFrame{
-			header: NewFrameHeader(0, FrameTypeResume),
-			body:   bf,
-		},
+		NewBaseFrame(NewFrameHeader(0, FrameTypeResume), bf),
 	}
 }

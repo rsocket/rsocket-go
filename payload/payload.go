@@ -17,10 +17,16 @@ var (
 )
 
 type (
+	Releasable interface {
+		// Release release all resources of payload.
+		// Some payload implements is pooled, so you must release resoures after using it.
+		Release()
+	}
 	// Payload is a stream message (upstream or downstream).
 	// It contains data associated with a stream created by a previous request.
 	// In Reactive Streams and Rx this is the 'onNext' event.
 	Payload interface {
+		Releasable
 		// Metadata returns raw metadata bytes.
 		// The ok result indicates whether metadata exists.
 		Metadata() (metadata []byte, ok bool)
@@ -31,9 +37,6 @@ type (
 		Data() []byte
 		// DataUTF8 returns data as UTF8 string.
 		DataUTF8() string
-		// Release release all resources of payload.
-		// Some payload implements is pooled, so you must release resoures after using it.
-		Release()
 	}
 
 	// SetupPayload is particular payload for RSocket Setup.

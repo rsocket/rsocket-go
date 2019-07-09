@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jjeffcaii/reactor-go/scheduler"
 	. "github.com/rsocket/rsocket-go"
 	. "github.com/rsocket/rsocket-go/balancer"
 	. "github.com/rsocket/rsocket-go/payload"
@@ -31,14 +32,14 @@ func TestRoundRobin(t *testing.T) {
 		go func(n int) {
 			for j := 0; j < y; j++ {
 				b.Next().RequestResponse(NewString(fmt.Sprintf("GO_%04d_%04d", n, j), "go")).
-					DoOnSuccess(func(ctx context.Context, s Subscription, elem Payload) {
+					DoOnSuccess(func(elem Payload) {
 						m, _ := elem.MetadataUTF8()
 						log.Println("elem:", elem.DataUTF8(), m)
 					}).
-					DoFinally(func(ctx context.Context, st SignalType) {
+					DoFinally(func(st SignalType) {
 						wg.Done()
 					}).
-					SubscribeOn(ElasticScheduler()).
+					SubscribeOn(scheduler.Elastic()).
 					Subscribe(context.Background())
 				time.Sleep(1 * time.Second)
 			}

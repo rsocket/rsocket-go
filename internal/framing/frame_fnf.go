@@ -65,9 +65,6 @@ func NewFrameFNF(sid uint32, data, metadata []byte, flags ...FrameFlag) *FrameFN
 		panic(err)
 	}
 	return &FrameFNF{
-		&BaseFrame{
-			header: NewFrameHeader(sid, FrameTypeRequestFNF, fg),
-			body:   bf,
-		},
+		NewBaseFrame(NewFrameHeader(sid, FrameTypeRequestFNF, fg), bf),
 	}
 }

@@ -59,9 +59,6 @@ func NewFrameKeepalive(position uint64, data []byte, respond bool) *FrameKeepali
 		}
 	}
 	return &FrameKeepalive{
-		&BaseFrame{
-			header: NewFrameHeader(0, FrameTypeKeepalive, fg),
-			body:   bf,
-		},
+		NewBaseFrame(NewFrameHeader(0, FrameTypeKeepalive, fg), bf),
 	}
 }

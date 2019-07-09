@@ -4,24 +4,29 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	_ "net/http/pprof"
 	"strconv"
-	"strings"
+	"time"
 
+	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
+	"github.com/rsocket/rsocket-go/rx/flux"
+	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
-//const addr = "tcp://127.0.0.1:7878"
-const addr = "unix:///tmp/rsocket.echo.sock"
+const ListenAt = "tcp://127.0.0.1:7878"
 
-//const addr = "ws://127.0.0.1:7878/echo"
+//const ListenAt = "unix:///tmp/rsocket.echo.sock"
+//const ListenAt = "ws://127.0.0.1:7878/echo"
 
 func main() {
-	//go func() {
-	//	log.Println(http.ListenAndServe(":4444", nil))
-	//}()
+	go func() {
+		log.Println(http.ListenAndServe(":4444", nil))
+	}()
 	//logger.SetLevel(logger.LevelDebug)
 	//go common.TraceByteBuffLeak(context.Background(), 10*time.Second)
 	err := rsocket.Receive().
@@ -48,11 +53,14 @@ func main() {
 
 			sendingSocket.OnClose(func() {
 				log.Println("***** socket disconnected *****")
+				time.AfterFunc(5*time.Second, func() {
+					log.Println("leaks:", common.CountByteBuffer())
+				})
 			})
 
 			return responder()
 		}).
-		Transport(addr).
+		Transport(ListenAt).
 		Serve(context.Background())
 	if err != nil {
 		panic(err)
@@ -67,9 +75,9 @@ func responder() rsocket.RSocket {
 		rsocket.FireAndForget(func(elem payload.Payload) {
 			log.Println("GOT FNF:", elem)
 		}),
-		rsocket.RequestResponse(func(pl payload.Payload) rx.Mono {
+		rsocket.RequestResponse(func(pl payload.Payload) mono.Mono {
 			// just echo
-			return rx.JustMono(pl)
+			return mono.Just(pl)
 
 			// Graceful with context API.
 			//return rx.NewMono(func(ctx context.Context, sink rx.MonoProducer) {
@@ -82,7 +90,7 @@ func responder() rsocket.RSocket {
 			//	}
 			//})
 		}),
-		rsocket.RequestStream(func(pl payload.Payload) rx.Flux {
+		rsocket.RequestStream(func(pl payload.Payload) flux.Flux {
 			// for test: client metadata is totals as string
 
 			// Here is my Java client code:
@@ -111,7 +119,7 @@ func responder() rsocket.RSocket {
 			if n, err := strconv.Atoi(m); err == nil {
 				totals = n
 			}
-			return rx.NewFlux(func(ctx context.Context, emitter rx.Producer) {
+			return flux.Create(func(ctx context.Context, emitter flux.Sink) {
 				for i := 0; i < totals; i++ {
 					// You can use context for graceful coroutine shutdown, stop produce.
 					select {
@@ -120,24 +128,27 @@ func responder() rsocket.RSocket {
 						return
 					default:
 						//time.Sleep(10 * time.Millisecond)
-						_ = emitter.Next(payload.NewString(fmt.Sprintf("%s_%d", s, i), m))
+						emitter.Next(payload.NewString(fmt.Sprintf("%s_%d", s, i), m))
 					}
 				}
 				emitter.Complete()
 			})
 		}),
-		rsocket.RequestChannel(func(payloads rx.Publisher) rx.Flux {
-			rx.ToFlux(payloads).
+		rsocket.RequestChannel(func(payloads rx.Publisher) flux.Flux {
+			//return payloads.(flux.Flux)
+			payloads.(flux.Flux).
 				//LimitRate(1).
-				SubscribeOn(rx.ElasticScheduler()).
-				DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+				SubscribeOn(scheduler.Elastic()).
+				DoOnNext(func(elem payload.Payload) {
 					log.Println("receiving:", elem)
 				}).
 				Subscribe(context.Background())
-			return rx.Range(0, 3).
-				Map(func(n int) payload.Payload {
-					return payload.NewString(strings.Repeat("c", 373), fmt.Sprintf("%d", n))
-				})
+			return flux.Create(func(i context.Context, sink flux.Sink) {
+				for i := 0; i < 3; i++ {
+					sink.Next(payload.NewString("world", fmt.Sprintf("%d", i)))
+				}
+				sink.Complete()
+			})
 
 			//return payloads.(rx.Flux)
 			// echo all incoming payloads

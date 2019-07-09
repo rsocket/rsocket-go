@@ -38,9 +38,6 @@ func NewResumeOK(position uint64) *FrameResumeOK {
 		panic(err)
 	}
 	return &FrameResumeOK{
-		&BaseFrame{
-			header: NewFrameHeader(0, FrameTypeResumeOK),
-			body:   bf,
-		},
+		NewBaseFrame(NewFrameHeader(0, FrameTypeResumeOK), bf),
 	}
 }

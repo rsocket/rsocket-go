@@ -45,11 +45,7 @@ func NewFrameRequestN(sid, n uint32, flags ...FrameFlag) *FrameRequestN {
 		common.ReturnByteBuffer(bf)
 		panic(err)
 	}
-
 	return &FrameRequestN{
-		&BaseFrame{
-			header: NewFrameHeader(sid, FrameTypeRequestN, fg),
-			body:   bf,
-		},
+		NewBaseFrame(NewFrameHeader(sid, FrameTypeRequestN, fg), bf),
 	}
 }

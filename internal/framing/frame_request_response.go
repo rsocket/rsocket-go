@@ -67,9 +67,6 @@ func NewFrameRequestResponse(id uint32, data, metadata []byte, flags ...FrameFla
 		}
 	}
 	return &FrameRequestResponse{
-		&BaseFrame{
-			header: NewFrameHeader(id, FrameTypeRequestResponse, fg),
-			body:   bf,
-		},
+		NewBaseFrame(NewFrameHeader(id, FrameTypeRequestResponse, fg), bf),
 	}
 }

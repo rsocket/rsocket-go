@@ -55,9 +55,6 @@ func NewFrameError(streamID uint32, code common.ErrorCode, data []byte) *FrameEr
 		panic(err)
 	}
 	return &FrameError{
-		&BaseFrame{
-			header: NewFrameHeader(streamID, FrameTypeError),
-			body:   bf,
-		},
+		NewBaseFrame(NewFrameHeader(streamID, FrameTypeError), bf),
 	}
 }

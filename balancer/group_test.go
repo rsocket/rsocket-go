@@ -12,7 +12,7 @@ import (
 	. "github.com/rsocket/rsocket-go"
 	. "github.com/rsocket/rsocket-go/balancer"
 	. "github.com/rsocket/rsocket-go/payload"
-	. "github.com/rsocket/rsocket-go/rx"
+	"github.com/rsocket/rsocket-go/rx/mono"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +34,7 @@ func ExampleNewGroup() {
 				group.Get(serviceID).Put(sendingSocket)
 			}
 			// Proxy requests by group.
-			return NewAbstractSocket(RequestResponse(func(msg Payload) Mono {
+			return NewAbstractSocket(RequestResponse(func(msg Payload) mono.Mono {
 				requestServiceID, ok := msg.MetadataUTF8()
 				if !ok {
 					panic(errors.New("missing service ID in metadata"))
@@ -66,10 +66,10 @@ func TestServiceSubscribe(t *testing.T) {
 			}).
 			SetupPayload(NewString("This is a Service Publisher!", "md5")).
 			Acceptor(func(socket RSocket) RSocket {
-				return NewAbstractSocket(RequestResponse(func(msg Payload) Mono {
+				return NewAbstractSocket(RequestResponse(func(msg Payload) mono.Mono {
 					result := NewString(fmt.Sprintf("%02x", md5.Sum(msg.Data())), "MD5 RESULT")
 					log.Println("[publisher] accept MD5 request:", msg.DataUTF8())
-					return JustMono(result)
+					return mono.Just(result)
 				}))
 			}).
 			Transport(uri).
@@ -93,7 +93,7 @@ func TestServiceSubscribe(t *testing.T) {
 		_ = cli.Close()
 	}()
 	cli.RequestResponse(NewString("Hello World!", "md5")).
-		DoOnSuccess(func(ctx context.Context, s Subscription, elem Payload) {
+		DoOnSuccess(func(elem Payload) {
 			log.Println("[subscriber] receive MD5 response:", elem.DataUTF8())
 			require.Equal(t, "ed076287532e86365e841e92bfc50d8c", elem.DataUTF8(), "bad md5")
 		}).
