@@ -23,22 +23,21 @@ package main
 
 import (
 	"context"
-	
+
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
+	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
 func main() {
-	// Create and serve
 	err := rsocket.Receive().
 		Resume().
 		Fragment(1024).
 		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) rsocket.RSocket {
 			// bind responder
 			return rsocket.NewAbstractSocket(
-				rsocket.RequestResponse(func(msg payload.Payload) rx.Mono {
-					return rx.JustMono(msg)
+				rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
+					return mono.Just(msg)
 				}),
 			)
 		}).
@@ -46,7 +45,6 @@ func main() {
 		Serve(context.Background())
 	panic(err)
 }
-
 ```
 
 > Connect to echo server
@@ -60,7 +58,6 @@ import (
 
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
 )
 
 func main() {
@@ -76,13 +73,12 @@ func main() {
 	}
 	defer cli.Close()
 	// Send request
-	cli.RequestResponse(payload.NewString("你好", "世界")).
-		DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
-			log.Println("receive response:", elem)
-		}).
-		Subscribe(context.Background())
+	result, err := cli.RequestResponse(payload.NewString("你好", "世界")).Block(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	log.Println("response:", result)
 }
-
 ```
 
 > NOTICE: more server examples are [Here](cmd/echo/echo.go)
@@ -91,13 +87,11 @@ func main() {
 
 ### Load Balance
 
-Basic load balance feature, please checkout current master branch. It's a client side load-balancer.
-
-> NOTICE: Balancer APIs are [here](./balancer)
+Basic load balance feature, see [here](./balancer).
 
 ### Reactor API
 
-`Mono` and `Flux` are two parts of Reactor API.
+`Mono` and `Flux` are two parts of Reactor API. They are based on my another project [reactor-go](https://github.com/jjeffcaii/reactor-go/).
 
 #### Mono
 
@@ -109,34 +103,39 @@ package main
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
+	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
 func main() {
-	// Create a Mono which produce a simple payload.
-	mono := rx.NewMono(func(ctx context.Context, sink rx.MonoProducer) {
-		// Use context API if you want.
-		sink.Success(payload.NewString("foo", "bar"))
-	})
+	// Create a Mono using Just.
+	m := mono.Just(payload.NewString("Hello World!", "text/plain"))
+
+	// More create
+	//m := mono.Create(func(i context.Context, sink mono.Sink) {
+	//	sink.Success(payload.NewString("Hello World!", "text/plain"))
+	//})
 
 	done := make(chan struct{})
 
-	mono.
-		DoFinally(func(ctx context.Context, st rx.SignalType) {
+	m.
+		DoFinally(func(s rx.SignalType) {
 			close(done)
 		}).
-		DoOnSuccess(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+		DoOnSuccess(func(input payload.Payload) {
 			// Handle and consume payload.
 			// Do something here...
+			fmt.Println("bingo:", input)
 		}).
-		SubscribeOn(rx.ElasticScheduler()).
+		SubscribeOn(scheduler.Elastic()).
 		Subscribe(context.Background())
 
 	<-done
 }
-
 ```
 
 ### Flux
@@ -149,27 +148,48 @@ package main
 
 import (
 	"context"
-	"time"
+	"fmt"
 
+	flxx "github.com/jjeffcaii/reactor-go/flux"
+	"github.com/rsocket/rsocket-go/extension"
 	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
+	"github.com/rsocket/rsocket-go/rx/flux"
 )
 
 func main() {
 	// Create a Flux and produce 10 elements.
-	flux := rx.NewFlux(func(ctx context.Context, producer rx.Producer) {
+	f := flux.Create(func(ctx context.Context, sink flux.Sink) {
 		for i := 0; i < 10; i++ {
-			producer.Next(payload.NewString("hello", time.Now().String()))
+			sink.Next(payload.NewString(fmt.Sprintf("Hello@%d", i), extension.TextPlain.String()))
 		}
-		producer.Complete()
+		sink.Complete()
 	})
-	flux.DoOnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
+
+	// Or use Just.
+	//f := flux.Just(
+	//	payload.NewString("foo", extension.TextPlain.String()),
+	//	payload.NewString("bar", extension.TextPlain.String()),
+	//	payload.NewString("qux", extension.TextPlain.String()),
+	//)
+
+	f.
+		DoOnNext(func(elem payload.Payload) {
 			// Handle and consume elements
 			// Do something here...
+			fmt.Println("bingo:", elem)
 		}).
 		Subscribe(context.Background())
-}
 
+	// Or you can use Raw reactor-go API. :-D
+	f2 := flux.Raw(flxx.Range(0, 10).Map(func(i interface{}) interface{} {
+		return payload.NewString(fmt.Sprintf("Hello@%d", i.(int)), extension.TextPlain.String())
+	}))
+	f2.
+		DoOnNext(func(input payload.Payload) {
+			fmt.Println("bingo:", input)
+		}).
+		BlockLast(context.Background())
+}
 ```
 
 #### Backpressure & RequestN
@@ -179,24 +199,52 @@ func main() {
 You can call func `Request` in `Subscription` or use `LimitRate` before subscribe.
 
 ```go
-// Here is an example which consume Payload one by one.
-flux.Subscribe(
-    context.Background(),
-    rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
-        // Init Request 1 element.
-        s.Request(1)
-    }),
-    rx.OnNext(func(ctx context.Context, s rx.Subscription, elem payload.Payload) {
-        // Consume element, do something...
+package main
 
-        // Request for next one manually.
-        s.Request(1)
-    }),
+import (
+	"context"
+	"fmt"
+
+	"github.com/rsocket/rsocket-go/extension"
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
+	"github.com/rsocket/rsocket-go/rx/flux"
 )
+
+func main() {
+	// Here is an example which consume Payload one by one.
+	f := flux.Create(func(ctx context.Context, s flux.Sink) {
+		for i := 0; i < 5; i++ {
+			s.Next(payload.NewString(fmt.Sprintf("Hello@%d", i), extension.TextPlain.String()))
+		}
+		s.Complete()
+	})
+
+	var su rx.Subscription
+	f.
+		DoOnRequest(func(n int) {
+			fmt.Printf("requesting next %d element......\n", n)
+		}).
+		Subscribe(
+			context.Background(),
+			rx.OnSubscribe(func(s rx.Subscription) {
+				// Init Request 1 element.
+				su = s
+				su.Request(1)
+			}),
+			rx.OnNext(func(elem payload.Payload) {
+				// Consume element, do something...
+				fmt.Println("bingo:", elem)
+				// Request for next one manually.
+				su.Request(1)
+			}),
+		)
+}
+
 ```
 
 #### Dependencies
- - [ants](https://github.com/panjf2000/ants)
+ - [reactor-go](https://github.com/jjeffcaii/reactor-go)
  - [bytebufferpool](https://github.com/valyala/bytebufferpool)
  - [testify](https://github.com/stretchr/testify)
  - [websocket](https://github.com/gorilla/websocket)
@@ -206,7 +254,6 @@ flux.Subscribe(
 #### Transport
  - [x] TCP
  - [x] Websocket
- - [ ] Aeron
 
 #### Duplex Socket
  - [x] MetadataPush
