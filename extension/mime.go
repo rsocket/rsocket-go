@@ -62,9 +62,9 @@ const (
 	VideoH264
 	VideoH265
 	VideoVP8
-	MessageZipkin
-	MessageRouting
-	MessageCompositeMetadata
+	MessageZipkin            MIME = 0x7D
+	MessageRouting           MIME = 0x7E
+	MessageCompositeMetadata MIME = 0x7F
 )
 
 func init() {

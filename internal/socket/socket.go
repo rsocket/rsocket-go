@@ -8,6 +8,8 @@ import (
 	"github.com/rsocket/rsocket-go/internal/transport"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
+	"github.com/rsocket/rsocket-go/rx/flux"
+	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
 // Closeable represents a closeable target.
@@ -24,11 +26,11 @@ type Responder interface {
 	// MetadataPush sends asynchronous Metadata frame.
 	MetadataPush(msg payload.Payload)
 	// RequestResponse request single response.
-	RequestResponse(msg payload.Payload) rx.Mono
+	RequestResponse(msg payload.Payload) mono.Mono
 	// RequestStream request a completable stream.
-	RequestStream(msg payload.Payload) rx.Flux
+	RequestStream(msg payload.Payload) flux.Flux
 	// RequestChannel request a completable stream in both directions.
-	RequestChannel(msgs rx.Publisher) rx.Flux
+	RequestChannel(msgs rx.Publisher) flux.Flux
 }
 
 // ClientSocket represents a client-side socket.
@@ -59,9 +61,9 @@ type ServerSocket interface {
 type AbstractRSocket struct {
 	FF func(payload.Payload)
 	MP func(payload.Payload)
-	RR func(payload.Payload) rx.Mono
-	RS func(payload.Payload) rx.Flux
-	RC func(rx.Publisher) rx.Flux
+	RR func(payload.Payload) mono.Mono
+	RS func(payload.Payload) flux.Flux
+	RC func(rx.Publisher) flux.Flux
 }
 
 // MetadataPush starts a request of MetadataPush.
@@ -75,17 +77,17 @@ func (p AbstractRSocket) FireAndForget(msg payload.Payload) {
 }
 
 // RequestResponse starts a request of RequestResponse.
-func (p AbstractRSocket) RequestResponse(msg payload.Payload) rx.Mono {
+func (p AbstractRSocket) RequestResponse(msg payload.Payload) mono.Mono {
 	return p.RR(msg)
 }
 
 // RequestStream starts a request of RequestStream.
-func (p AbstractRSocket) RequestStream(msg payload.Payload) rx.Flux {
+func (p AbstractRSocket) RequestStream(msg payload.Payload) flux.Flux {
 	return p.RS(msg)
 }
 
 // RequestChannel starts a request of RequestChannel.
-func (p AbstractRSocket) RequestChannel(msgs rx.Publisher) rx.Flux {
+func (p AbstractRSocket) RequestChannel(msgs rx.Publisher) flux.Flux {
 	return p.RC(msgs)
 }
 
@@ -103,15 +105,15 @@ func (p *baseSocket) MetadataPush(msg payload.Payload) {
 	p.socket.MetadataPush(msg)
 }
 
-func (p *baseSocket) RequestResponse(msg payload.Payload) rx.Mono {
+func (p *baseSocket) RequestResponse(msg payload.Payload) mono.Mono {
 	return p.socket.RequestResponse(msg)
 }
 
-func (p *baseSocket) RequestStream(msg payload.Payload) rx.Flux {
+func (p *baseSocket) RequestStream(msg payload.Payload) flux.Flux {
 	return p.socket.RequestStream(msg)
 }
 
-func (p *baseSocket) RequestChannel(msgs rx.Publisher) rx.Flux {
+func (p *baseSocket) RequestChannel(msgs rx.Publisher) flux.Flux {
 	return p.socket.RequestChannel(msgs)
 }
 

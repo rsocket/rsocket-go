@@ -10,7 +10,6 @@ import (
 	"github.com/rsocket/rsocket-go/internal/socket"
 	"github.com/rsocket/rsocket-go/internal/transport"
 	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
 )
 
 var defaultMimeType = []byte("application/binary")
@@ -173,7 +172,6 @@ func (p *implClientBuilder) Start(ctx context.Context) (client Client, err error
 
 	sk := socket.NewClientDuplexRSocket(
 		p.fragment,
-		rx.ElasticScheduler(),
 		p.setup.KeepaliveInterval,
 	)
 

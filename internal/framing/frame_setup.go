@@ -216,9 +216,6 @@ func NewFrameSetup(
 		}
 	}
 	return &FrameSetup{
-		&BaseFrame{
-			header: NewFrameHeader(0, FrameTypeSetup, fg),
-			body:   bf,
-		},
+		NewBaseFrame(NewFrameHeader(0, FrameTypeSetup, fg), bf),
 	}
 }

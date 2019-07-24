@@ -88,9 +88,6 @@ func NewFrameRequestChannel(sid uint32, n uint32, data, metadata []byte, flags .
 		}
 	}
 	return &FrameRequestChannel{
-		&BaseFrame{
-			header: NewFrameHeader(sid, FrameTypeRequestChannel, fg),
-			body:   bf,
-		},
+		NewBaseFrame(NewFrameHeader(sid, FrameTypeRequestChannel, fg), bf),
 	}
 }

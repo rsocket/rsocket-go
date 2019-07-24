@@ -12,11 +12,9 @@ import (
 	"github.com/rsocket/rsocket-go/internal/socket"
 	"github.com/rsocket/rsocket-go/internal/transport"
 	"github.com/rsocket/rsocket-go/logger"
-	"github.com/rsocket/rsocket-go/rx"
 )
 
 const (
-	serverWorkerPoolSize       = 10000
 	serverSessionCleanInterval = 500 * time.Millisecond
 	serverSessionDuration      = 30 * time.Second
 )
@@ -55,10 +53,9 @@ type (
 // Receive receives server connections from client RSockets.
 func Receive() ServerBuilder {
 	return &server{
-		fragment:  fragmentation.MaxFragment,
-		scheduler: rx.NewElasticScheduler(serverWorkerPoolSize),
-		sm:        session.NewManager(),
-		done:      make(chan struct{}),
+		fragment: fragmentation.MaxFragment,
+		sm:       session.NewManager(),
+		done:     make(chan struct{}),
 		resumeOpts: &serverResumeOptions{
 			sessionDuration: serverSessionDuration,
 		},
@@ -75,7 +72,6 @@ type server struct {
 	fragment   int
 	addr       string
 	acc        ServerAcceptor
-	scheduler  rx.Scheduler
 	sm         *session.Manager
 	done       chan struct{}
 }
@@ -104,9 +100,6 @@ func (p *server) Transport(transport string) Start {
 }
 
 func (p *server) Serve(ctx context.Context) error {
-	defer func() {
-		_ = p.scheduler.Close()
-	}()
 	u, err := transport.ParseURI(p.addr)
 	if err != nil {
 		return err
@@ -202,7 +195,7 @@ func (p *server) doSetup(
 		return
 	}
 
-	rawSocket := socket.NewServerDuplexRSocket(p.fragment, p.scheduler)
+	rawSocket := socket.NewServerDuplexRSocket(p.fragment)
 
 	// 2. no resume
 	if !isResume {

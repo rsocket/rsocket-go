@@ -67,9 +67,6 @@ func NewFramePayload(id uint32, data, metadata []byte, flags ...FrameFlag) *Fram
 		}
 	}
 	return &FramePayload{
-		&BaseFrame{
-			header: NewFrameHeader(id, FrameTypePayload, fg),
-			body:   bf,
-		},
+		NewBaseFrame(NewFrameHeader(id, FrameTypePayload, fg), bf),
 	}
 }
