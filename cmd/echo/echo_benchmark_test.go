@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
@@ -46,7 +47,7 @@ func TestClient_RequestResponse(t *testing.T) {
 
 	for i := 0; i < n; i++ {
 		m1 := []byte(fmt.Sprintf("benchmark_test_%d", i))
-		client.RequestResponse(payload.New(data, m1)).SubscribeWith(ctx, sub)
+		client.RequestResponse(payload.New(data, m1)).SubscribeOn(scheduler.Elastic()).SubscribeWith(ctx, sub)
 	}
 	wg.Wait()
 	cost := time.Since(now)

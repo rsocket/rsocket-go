@@ -21,10 +21,7 @@ import (
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
-const (
-	outsSize  = 64
-	outsSizeB = 16
-)
+const outsSize = 64
 
 var (
 	errSocketClosed            = errors.New("socket closed already")
@@ -38,17 +35,32 @@ type DuplexRSocket struct {
 	counter         *transport.Counter
 	tp              *transport.Transport
 	outs            chan framing.Frame
-	outsPriority    chan framing.Frame
+	outsPriority    []framing.Frame
 	responder       Responder
-	messages        *sync.Map
+	messages        *u32map
 	sids            streamIDs
 	mtu             int
-	fragments       *sync.Map // key=streamID, value=Joiner
+	fragments       *u32map // key=streamID, value=Joiner
 	once            sync.Once
 	done            chan struct{}
 	keepaliver      *keepaliver
 	cond            *sync.Cond
 	singleScheduler scheduler.Scheduler
+}
+
+func (p *DuplexRSocket) nextStreamID() (sid uint32) {
+	var lap1st bool
+	for {
+		// There's no necessery to check StreamID conflicts.
+		sid, lap1st = p.sids.next()
+		if lap1st {
+			return
+		}
+		_, ok := p.messages.Load(sid)
+		if !ok {
+			return
+		}
+	}
 }
 
 // Close close current socket.
@@ -58,7 +70,6 @@ func (p *DuplexRSocket) Close() (err error) {
 			p.keepaliver.Stop()
 		}
 		_ = p.singleScheduler.(io.Closer).Close()
-		close(p.outsPriority)
 		close(p.outs)
 		p.cond.L.Lock()
 		p.cond.Broadcast()
@@ -68,17 +79,20 @@ func (p *DuplexRSocket) Close() (err error) {
 			err = p.tp.Close()
 		}
 
-		p.messages.Range(func(key, value interface{}) bool {
+		p.messages.Range(func(key uint32, value interface{}) bool {
 			if cc, ok := value.(io.Closer); ok {
 				_ = cc.Close()
 			}
 			return true
 		})
+		_ = p.messages.Close()
 
-		p.fragments.Range(func(key, value interface{}) bool {
+		p.fragments.Range(func(key uint32, value interface{}) bool {
 			value.(fragmentation.Joiner).Release()
 			return true
 		})
+		_ = p.fragments.Close()
+
 		<-p.done
 	})
 	return
@@ -93,7 +107,7 @@ func (p *DuplexRSocket) FireAndForget(sending payload.Payload) {
 	if ok {
 		size += 3 + len(m)
 	}
-	sid := p.sids.next()
+	sid := p.nextStreamID()
 	if !p.shouldSplit(size) {
 		p.sendFrame(framing.NewFrameFNF(sid, data, m))
 		return
@@ -124,7 +138,7 @@ func (p *DuplexRSocket) MetadataPush(payload payload.Payload) {
 
 // RequestResponse start a request of RequestResponse.
 func (p *DuplexRSocket) RequestResponse(pl payload.Payload) (mo mono.Mono) {
-	sid := p.sids.next()
+	sid := p.nextStreamID()
 	resp := mono.CreateProcessor()
 
 	p.register(sid, reqRR{pc: resp})
@@ -174,11 +188,12 @@ func (p *DuplexRSocket) register(sid uint32, msg interface{}) {
 
 func (p *DuplexRSocket) unregister(sid uint32) {
 	p.messages.Delete(sid)
+	p.fragments.Delete(sid)
 }
 
 // RequestStream start a request of RequestStream.
 func (p *DuplexRSocket) RequestStream(sending payload.Payload) (ret flux.Flux) {
-	sid := p.sids.next()
+	sid := p.nextStreamID()
 	pc := flux.CreateProcessor()
 
 	p.register(sid, reqRS{pc: pc})
@@ -243,7 +258,7 @@ func (p *DuplexRSocket) RequestStream(sending payload.Payload) (ret flux.Flux) {
 
 // RequestChannel start a request of RequestChannel.
 func (p *DuplexRSocket) RequestChannel(publisher rx.Publisher) (ret flux.Flux) {
-	sid := p.sids.next()
+	sid := p.nextStreamID()
 
 	sending := publisher.(flux.Flux)
 	receiving := flux.CreateProcessor()
@@ -634,7 +649,6 @@ func (p *DuplexRSocket) onFrameError(input framing.Frame) (err error) {
 		return
 	}
 
-	// TODO: How to auto-release error frame?
 	switch vv := v.(type) {
 	case reqRR:
 		vv.pc.Error(f)
@@ -841,10 +855,111 @@ func (p *DuplexRSocket) sendPayload(
 	})
 }
 
+func (p *DuplexRSocket) drainWithKeepalive() (ok bool) {
+	if len(p.outs) == cap(p.outs) {
+		p.drain()
+	}
+	var out framing.Frame
+	select {
+	case <-p.keepaliver.C():
+		ok = true
+		out = framing.NewFrameKeepalive(p.counter.ReadBytes(), nil, true)
+		if p.tp != nil {
+			err := p.tp.Send(out, true)
+			if err != nil {
+				logger.Errorf("send keepalive frame failed: %s\n", err.Error())
+			}
+		}
+		out.Release()
+	case out, ok = <-p.outs:
+		if !ok {
+			return
+		}
+		if p.tp == nil {
+			p.outsPriority = append(p.outsPriority, out)
+		} else if err := p.tp.Send(out, true); err != nil {
+			logger.Errorf("send frame failed: %s\n", err.Error())
+			p.outsPriority = append(p.outsPriority, out)
+		} else {
+			out.Release()
+		}
+	}
+	return
+}
+
+func (p *DuplexRSocket) drain() (ok bool) {
+	var out framing.Frame
+	var flush bool
+	// when channel is full
+	cycle := 1
+	if n := len(p.outs); n == cap(p.outs) {
+		cycle = n
+	}
+	for i := 0; i < cycle; i++ {
+		out, ok = <-p.outs
+		if !ok {
+			return
+		}
+		if p.drainOne(out) {
+			flush = true
+		}
+	}
+	if !flush {
+		return
+	}
+	if err := p.tp.Flush(); err != nil {
+		logger.Errorf("flush failed: %v\n", err)
+	}
+	return
+}
+
+func (p *DuplexRSocket) drainOne(out framing.Frame) (wrote bool) {
+	if p.tp == nil {
+		p.outsPriority = append(p.outsPriority, out)
+		return
+	}
+	err := p.tp.Send(out, false)
+	if err != nil {
+		p.outsPriority = append(p.outsPriority, out)
+		logger.Errorf("send frame failed: %s\n", err.Error())
+		return
+	}
+	wrote = true
+	out.Release()
+	return
+}
+
+func (p *DuplexRSocket) drainOutBack() {
+	if len(p.outsPriority) < 1 {
+		return
+	}
+	defer func() {
+		for i := range p.outsPriority {
+			p.outsPriority[i].Release()
+		}
+		p.outsPriority = p.outsPriority[:0]
+	}()
+	if p.tp == nil {
+		return
+	}
+	var out framing.Frame
+	for i := range p.outsPriority {
+		out = p.outsPriority[i]
+		if p.tp != nil {
+			if err := p.tp.Send(out, false); err != nil {
+				logger.Errorf("send frame failed: %v\n", err)
+			}
+		}
+		out.Release()
+	}
+	if err := p.tp.Flush(); err != nil {
+		logger.Errorf("flush failed: %v\n", err)
+	}
+}
+
 func (p *DuplexRSocket) loopWriteWithKeepaliver(ctx context.Context) error {
-	var finish uint8
-	for finish < 2 {
-		if finish < 1 && p.tp == nil {
+	for {
+		if p.tp == nil {
 			p.cond.L.Lock()
 			p.cond.Wait()
 			p.cond.L.Unlock()
@@ -852,7 +967,7 @@ func (p *DuplexRSocket) loopWriteWithKeepaliver(ctx context.Context) error {
 
 		select {
 		case <-ctx.Done():
-			// TODO: release all frames in chan
+			p.cleanOuts()
 			return ctx.Err()
 		default:
 		}
@@ -861,7 +976,7 @@ func (p *DuplexRSocket) loopWriteWithKeepaliver(ctx context.Context) error {
 		case <-p.keepaliver.C():
 			kf := framing.NewFrameKeepalive(p.counter.ReadBytes(), nil, true)
 			if p.tp != nil {
-				err := p.tp.Send(kf)
+				err := p.tp.Send(kf, true)
 				if err != nil {
 					logger.Errorf("send keepalive frame failed: %s\n", err.Error())
 				}
@@ -869,48 +984,22 @@ func (p *DuplexRSocket) loopWriteWithKeepaliver(ctx context.Context) error {
 			kf.Release()
 		default:
 		}
-
-		select {
-		case out, ok := <-p.outsPriority:
-			if !ok {
-				finish++
-				continue
-			}
-			if p.tp != nil {
-				if err := p.tp.Send(out); err != nil {
-					logger.Errorf("send frame failed: %s\n", err.Error())
-				}
-			}
-			out.Release()
-		default:
-		}
-
-		select {
-		case <-p.keepaliver.C():
-			kf := framing.NewFrameKeepalive(p.counter.ReadBytes(), nil, true)
-			if p.tp != nil {
-				err := p.tp.Send(kf)
-				if err != nil {
-					logger.Errorf("send keepalive frame failed: %s\n", err.Error())
-				}
-			}
-			kf.Release()
-		case out, ok := <-p.outs:
-			if !ok {
-				finish++
-				continue
-			}
-			if p.tp == nil {
-				p.outsPriority <- out
-			} else if err := p.tp.Send(out); err != nil {
-				logger.Errorf("send frame failed: %s\n", err.Error())
-				p.outsPriority <- out
-			} else {
-				out.Release()
-			}
+		p.drainOutBack()
+		if !p.drainWithKeepalive() {
+			break
 		}
 	}
 	return nil
+}
+
+func (p *DuplexRSocket) cleanOuts() {
+	for _, value := range p.outsPriority {
+		value.Release()
+	}
+	p.outsPriority = nil
+	for value := range p.outs {
+		value.Release()
+	}
 }
 
 func (p *DuplexRSocket) loopWrite(ctx context.Context) error {
@@ -919,10 +1008,8 @@ func (p *DuplexRSocket) loopWrite(ctx context.Context) error {
 		defer p.keepaliver.Stop()
 		return p.loopWriteWithKeepaliver(ctx)
 	}
-
-	var finish uint8
-	for finish < 2 {
-		if finish < 1 && p.tp == nil {
+	for {
+		if p.tp == nil {
 			p.cond.L.Lock()
 			p.cond.Wait()
 			p.cond.L.Unlock()
@@ -930,37 +1017,14 @@ func (p *DuplexRSocket) loopWrite(ctx context.Context) error {
 
 		select {
 		case <-ctx.Done():
-			// TODO: release all frames in chan
+			p.cleanOuts()
 			return ctx.Err()
 		default:
 		}
 
-		select {
-		case out, ok := <-p.outsPriority:
-			if !ok {
-				finish++
-				continue
-			}
-			if p.tp != nil {
-				if err := p.tp.Send(out); err != nil {
-					logger.Errorf("send frame failed: %s\n", err.Error())
-				}
-			}
-			out.Release()
-		default:
-		}
-		out, ok := <-p.outs
-		if !ok {
-			finish++
-			continue
-		}
-		if p.tp == nil {
-			p.outsPriority <- out
-		} else if err := p.tp.Send(out); err != nil {
-			p.outsPriority <- out
-			logger.Errorf("send frame failed: %s\n", err.Error())
-		} else {
-			out.Release()
+		p.drainOutBack()
+		if !p.drain() {
+			break
 		}
 	}
 	return nil
@@ -982,11 +1046,10 @@ func (p *DuplexRSocket) shouldSplit(size int) bool {
 func NewServerDuplexRSocket(mtu int) *DuplexRSocket {
 	return &DuplexRSocket{
 		outs:            make(chan framing.Frame, outsSize),
-		outsPriority:    make(chan framing.Frame, outsSizeB),
 		mtu:             mtu,
-		messages:        &sync.Map{},
+		messages:        newU32Map(),
 		sids:            &serverStreamIDs{},
-		fragments:       &sync.Map{},
+		fragments:       newU32Map(),
 		done:            make(chan struct{}),
 		cond:            sync.NewCond(&sync.Mutex{}),
 		counter:         transport.NewCounter(),
@@ -1002,11 +1065,10 @@ func NewClientDuplexRSocket(
 	ka := newKeepaliver(keepaliveInterval)
 	s = &DuplexRSocket{
 		outs:            make(chan framing.Frame, outsSize),
-		outsPriority:    make(chan framing.Frame, outsSizeB),
 		mtu:             mtu,
-		messages:        &sync.Map{},
+		messages:        newU32Map(),
 		sids:            &clientStreamIDs{},
-		fragments:       &sync.Map{},
+		fragments:       newU32Map(),
 		done:            make(chan struct{}),
 		cond:            sync.NewCond(&sync.Mutex{}),
 		counter:         transport.NewCounter(),

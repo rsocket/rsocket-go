@@ -106,6 +106,7 @@ func TestFluxRequest(t *testing.T) {
 	sub := rx.NewSubscriber(
 		rx.OnNext(func(input payload.Payload) {
 			log.Println("onNext:", input)
+			su.Request(1)
 		}),
 		rx.OnComplete(func() {
 			log.Println("complete")
@@ -141,17 +142,25 @@ func TestFluxProcessorWithRequest(t *testing.T) {
 		sink.Complete()
 	})
 
-	s := rx.NewSubscriber(rx.OnNext(func(input payload.Payload) {
-		log.Println("next:", input)
-	}), rx.OnSubscribe(func(s rx.Subscription) {
-		log.Println("onSub:")
-		s.Request(1)
-	}))
+	var su rx.Subscription
 
-	f.DoFinally(func(s rx.SignalType) {
-		println("finally")
-	}).SubscribeOn(scheduler.Elastic()).SubscribeWith(context.Background(), s)
+	sub := rx.NewSubscriber(
+		rx.OnNext(func(input payload.Payload) {
+			su.Request(1)
+		}),
+		rx.OnSubscribe(func(s rx.Subscription) {
+			su = s
+			su.Request(1)
+		}),
+	)
 
-	time.Sleep(10 * time.Second)
+	done := make(chan struct{})
 
+	f.
+		DoFinally(func(s rx.SignalType) {
+			close(done)
+		}).
+		SubscribeOn(scheduler.Elastic()).
+		SubscribeWith(context.Background(), sub)
+	<-done
 }

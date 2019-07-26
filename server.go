@@ -159,7 +159,7 @@ func (p *server) Serve(ctx context.Context) error {
 		case *framing.FrameSetup:
 			sendingSocket, err := p.doSetup(frame, tp, socketChan)
 			if err != nil {
-				_ = tp.Send(err)
+				_ = tp.Send(err, true)
 				err.Release()
 				_ = tp.Close()
 				return
@@ -169,7 +169,7 @@ func (p *server) Serve(ctx context.Context) error {
 			}(ctx, sendingSocket)
 		default:
 			err := framing.NewFrameError(0, common.ErrorCodeConnectionError, []byte("first frame must be setup or resume"))
-			_ = tp.Send(err)
+			_ = tp.Send(err, true)
 			err.Release()
 			_ = tp.Close()
 			return
@@ -242,7 +242,7 @@ func (p *server) doResume(frame *framing.FrameResume, tp *transport.Transport, s
 			common.Str2bytes(fmt.Sprintf("no such session")),
 		)
 	}
-	if err := tp.Send(sending); err != nil {
+	if err := tp.Send(sending, true); err != nil {
 		logger.Errorf("send resume response failed: %s\n", err)
 		_ = tp.Close()
 	}

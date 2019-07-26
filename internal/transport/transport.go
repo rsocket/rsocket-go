@@ -72,9 +72,22 @@ func (p *Transport) SetLifetime(lifetime time.Duration) {
 }
 
 // Send send a frame.
-func (p *Transport) Send(frame framing.Frame) error {
+func (p *Transport) Send(frame framing.Frame, flush bool) error {
 	if err := p.conn.Write(frame); err != nil {
-		return errors.Wrap(err, "send frame failed")
+		return errors.Wrap(err, "send failed")
+	}
+	if !flush {
+		return nil
+	}
+	if err := p.conn.Flush(); err != nil {
+		return errors.Wrap(err, "flush failed")
+	}
+	return nil
+}
+
+func (p *Transport) Flush() error {
+	if err := p.conn.Flush(); err != nil {
+		return errors.Wrap(err, "flush failed")
 	}
 	return nil
 }

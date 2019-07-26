@@ -1,7 +1,7 @@
 # rsocket-go
 ![logo](./logo.jpg)
 
-[![Travis (.org)](https://img.shields.io/travis/rsocket/rsocket-go.svg)]((https://img.shields.io/travis/rsocket/rsocket-go.svg))
+[![Travis (.org)](https://img.shields.io/travis/rsocket/rsocket-go.svg)](https://travis-ci.com/rsocket/rsocket-go)
 [![Slack](https://img.shields.io/badge/slack-rsocket--go-blue.svg)](https://rsocket.slack.com/messages/C9VGZ5MV3)
 [![GoDoc](https://godoc.org/github.com/rsocket/rsocket-go?status.svg)](https://godoc.org/github.com/rsocket/rsocket-go)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rsocket/rsocket-go)](https://goreportcard.com/report/github.com/rsocket/rsocket-go)

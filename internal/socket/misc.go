@@ -1,7 +1,7 @@
 package socket
 
 import (
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -9,6 +9,54 @@ import (
 	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/rx"
 )
+
+type u32map struct {
+	k sync.RWMutex
+	m map[uint32]interface{}
+}
+
+func (p *u32map) Close() error {
+	p.k.Lock()
+	p.m = nil
+	p.k.Unlock()
+	return nil
+}
+
+func (p *u32map) Range(fn func(uint32, interface{}) bool) {
+	p.k.RLock()
+	for key, value := range p.m {
+		if !fn(key, value) {
+			break
+		}
+	}
+	p.k.RUnlock()
+}
+
+func (p *u32map) Load(key uint32) (v interface{}, ok bool) {
+	p.k.RLock()
+	v, ok = p.m[key]
+	p.k.RUnlock()
+	return
+}
+
+func (p *u32map) Store(key uint32, value interface{}) {
+	p.k.Lock()
+	p.m[key] = value
+	p.k.Unlock()
+	return
+}
+
+func (p *u32map) Delete(key uint32) {
+	p.k.Lock()
+	delete(p.m, key)
+	p.k.Unlock()
+}
+
+func newU32Map() *u32map {
+	return &u32map{
+		m: make(map[uint32]interface{}, 0),
+	}
+}
 
 // SetupInfo represents basic info of setup.
 type SetupInfo struct {
@@ -34,36 +82,6 @@ func (p *SetupInfo) ToFrame() *framing.FrameSetup {
 		p.Data,
 		p.Metadata,
 	)
-}
-
-type streamIDs interface {
-	next() uint32
-}
-
-type serverStreamIDs struct {
-	cur uint32
-}
-
-func (p *serverStreamIDs) next() uint32 {
-	// 2,4,6,8...
-	v := 2 * atomic.AddUint32(&p.cur, 1)
-	if v != 0 {
-		return v
-	}
-	return p.next()
-}
-
-type clientStreamIDs struct {
-	cur uint32
-}
-
-func (p *clientStreamIDs) next() uint32 {
-	// 1,3,5,7
-	v := 2*(atomic.AddUint32(&p.cur, 1)-1) + 1
-	if v != 0 {
-		return v
-	}
-	return p.next()
 }
 
 func tryRecover(e interface{}) (err error) {

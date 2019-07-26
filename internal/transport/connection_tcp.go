@@ -12,8 +12,6 @@ import (
 	"github.com/rsocket/rsocket-go/logger"
 )
 
-const tcpConnWriteBuffSize = 16 * 1024
-
 type tcpConn struct {
 	rawConn net.Conn
 	writer  *bufio.Writer
@@ -68,6 +66,14 @@ func (p *tcpConn) Read() (f framing.Frame, err error) {
 	return
 }
 
+func (p *tcpConn) Flush() (err error) {
+	err = p.writer.Flush()
+	if err != nil {
+		err = errors.Wrap(err, "flush failed")
+	}
+	return
+}
+
 func (p *tcpConn) Write(frame framing.Frame) (err error) {
 	size := frame.Len()
 	if p.counter != nil && frame.IsResumable() {
@@ -86,21 +92,18 @@ func (p *tcpConn) Write(frame framing.Frame) (err error) {
 	if logger.IsDebugEnabled() {
 		logger.Debugf("---> snd: %s\n", frame)
 	}
-	err = p.writer.Flush()
-	if err != nil {
-		err = errors.Wrap(err, "write frame failed")
-	}
 	return
 }
 
 func (p *tcpConn) Close() error {
+	_ = p.Flush()
 	return p.rawConn.Close()
 }
 
 func newTCPRConnection(rawConn net.Conn) *tcpConn {
 	return &tcpConn{
 		rawConn: rawConn,
-		writer:  bufio.NewWriterSize(rawConn, tcpConnWriteBuffSize),
+		writer:  bufio.NewWriter(rawConn),
 		decoder: NewLengthBasedFrameDecoder(rawConn),
 	}
 }

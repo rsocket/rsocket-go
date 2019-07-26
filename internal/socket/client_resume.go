@@ -86,7 +86,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		})
 
 		f = p.setup.ToFrame()
-		err = tp.Send(f)
+		err = tp.Send(f, true)
 		f.Release()
 		p.socket.SetTransport(tp)
 		return
@@ -118,7 +118,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		return
 	})
 
-	err = tp.Send(f)
+	err = tp.Send(f, true)
 	f.Release()
 	if err != nil {
 		return err

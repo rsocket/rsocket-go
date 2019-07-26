@@ -65,6 +65,10 @@ func (p *wsConnection) Read() (f framing.Frame, err error) {
 	return
 }
 
+func (p *wsConnection) Flush() (err error) {
+	return
+}
+
 func (p *wsConnection) Write(frame framing.Frame) (err error) {
 	err = p.c.WriteMessage(websocket.BinaryMessage, frame.Bytes())
 	if err == io.EOF {

@@ -33,7 +33,7 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 		_ = p.socket.loopWrite(ctx)
 	}(ctx)
 	setupFrame := setup.ToFrame()
-	err = p.socket.tp.Send(setupFrame)
+	err = p.socket.tp.Send(setupFrame, true)
 	setupFrame.Release()
 	return
 }
