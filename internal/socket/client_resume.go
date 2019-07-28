@@ -2,6 +2,7 @@ package socket
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"math"
 	"sync/atomic"
@@ -20,6 +21,7 @@ type resumeClientSocket struct {
 	connects int32
 	uri      *transport.URI
 	setup    *SetupInfo
+	tc       *tls.Config
 }
 
 func (p *resumeClientSocket) Setup(ctx context.Context, setup *SetupInfo) error {
@@ -47,7 +49,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		_ = p.Close()
 		return
 	}
-	tp, err := p.uri.MakeClientTransport()
+	tp, err := p.uri.MakeClientTransport(p.tc)
 	if err != nil {
 		if connects == 1 {
 			return
@@ -150,9 +152,10 @@ func (p *resumeClientSocket) isClosed() bool {
 }
 
 // NewClientResume creates a client-side socket with resume support.
-func NewClientResume(uri *transport.URI, socket *DuplexRSocket) ClientSocket {
+func NewClientResume(uri *transport.URI, socket *DuplexRSocket, tc *tls.Config) ClientSocket {
 	return &resumeClientSocket{
 		baseSocket: newBaseSocket(socket),
 		uri:        uri,
+		tc:         tc,
 	}
 }

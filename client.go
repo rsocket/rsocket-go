@@ -2,6 +2,7 @@ package rsocket
 
 import (
 	"context"
+	"crypto/tls"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,6 +36,12 @@ type (
 	ClientStarter interface {
 		// Start start a client socket.
 		Start(ctx context.Context) (Client, error)
+		// Start start a client socket with TLS.
+		// Here's an example:
+		// tc:=&tls.Config{
+		//	InsecureSkipVerify: true,
+		//}
+		StartTLS(ctx context.Context, tc *tls.Config) (Client, error)
 	}
 
 	// ClientBuilder can be used to build a RSocket client.
@@ -66,7 +73,8 @@ type (
 		// URI is used to create RSocket Transport:
 		// Example:
 		// "tcp://127.0.0.1:7878" means a TCP RSocket transport.
-		// "ws://127.0.0.1:8080/a/b/c" means a Websocket RSocket transport. (NOTICE: Websocket will be supported in the future).
+		// "ws://127.0.0.1:8080/a/b/c" means a Websocket RSocket transport.
+		// "wss://127.0.0.1:8080/a/b/c" means a  Websocket RSocket transport with HTTPS.
 		Transport(uri string) ClientStarter
 	}
 )
@@ -157,7 +165,15 @@ func (p *implClientBuilder) Transport(transport string) ClientStarter {
 	return p
 }
 
+func (p *implClientBuilder) StartTLS(ctx context.Context, tc *tls.Config) (Client, error) {
+	return p.start(ctx, tc)
+}
+
 func (p *implClientBuilder) Start(ctx context.Context) (client Client, err error) {
+	return p.start(ctx, nil)
+}
+
+func (p *implClientBuilder) start(ctx context.Context, tc *tls.Config) (client Client, err error) {
 	var uri *transport.URI
 	uri, err = transport.ParseURI(p.addr)
 	if err != nil {
@@ -179,9 +195,9 @@ func (p *implClientBuilder) Start(ctx context.Context) (client Client, err error
 	var cs setupClientSocket
 	if p.resume != nil {
 		p.setup.Token = p.resume.tokenGen()
-		cs = socket.NewClientResume(uri, sk)
+		cs = socket.NewClientResume(uri, sk, tc)
 	} else {
-		cs = socket.NewClient(uri, sk)
+		cs = socket.NewClient(uri, sk, tc)
 	}
 	if p.acceptor != nil {
 		sk.SetResponder(p.acceptor(cs))

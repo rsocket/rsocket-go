@@ -7,7 +7,7 @@ import (
 
 // Manager is used to manage RSocket session when resume is enabled.
 type Manager struct {
-	locker *sync.RWMutex
+	locker sync.RWMutex
 	h      *sHeap
 	m      map[string]*Session
 }
@@ -63,8 +63,7 @@ func (p *Manager) Pop() (session *Session) {
 // NewManager returns a new blank session manager.
 func NewManager() *Manager {
 	return &Manager{
-		locker: &sync.RWMutex{},
-		h:      &sHeap{},
-		m:      make(map[string]*Session),
+		h: &sHeap{},
+		m: make(map[string]*Session),
 	}
 }

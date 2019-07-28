@@ -2,9 +2,11 @@ package transport
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
@@ -22,8 +24,9 @@ type wsServerTransport struct {
 	addr      string
 	path      string
 	acceptor  ServerTransportAcceptor
-	onceClose *sync.Once
+	onceClose sync.Once
 	server    *http.Server
+	tls       *tls.Config
 }
 
 func (p *wsServerTransport) Close() (err error) {
@@ -53,10 +56,17 @@ func (p *wsServerTransport) Listen(ctx context.Context) (err error) {
 			p.acceptor(ctx, tp)
 		}(c, ctx)
 	})
+
 	p.server = &http.Server{
 		Addr:    p.addr,
 		Handler: mux,
 	}
+
+	if p.tls != nil {
+		p.server.TLSConfig = p.tls
+		p.server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+	}
+
 	stop := make(chan struct{})
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -67,8 +77,11 @@ func (p *wsServerTransport) Listen(ctx context.Context) (err error) {
 		}()
 		<-ctx.Done()
 	}(ctx, stop)
-
-	err = p.server.ListenAndServe()
+	if p.tls == nil {
+		err = p.server.ListenAndServe()
+	} else {
+		err = p.server.ListenAndServeTLS("", "")
+	}
 	if err == io.EOF || isClosedErr(err) {
 		err = nil
 	} else {
@@ -79,24 +92,32 @@ func (p *wsServerTransport) Listen(ctx context.Context) (err error) {
 	return
 }
 
-func newWebsocketServerTransport(addr string, path string) *wsServerTransport {
+func newWebsocketServerTransport(addr string, path string, c *tls.Config) *wsServerTransport {
 	if path == "" {
 		path = defaultWebsocketPath
 	}
 	return &wsServerTransport{
-		addr:      addr,
-		path:      path,
-		onceClose: &sync.Once{},
+		addr: addr,
+		path: path,
+		tls:  c,
 	}
 }
 
-func newWebsocketClientTransport(url string) (tp *Transport, err error) {
-	var wsConn *websocket.Conn
-	wsConn, _, err = websocket.DefaultDialer.Dial(url, nil)
-	if err != nil {
-		return
+func newWebsocketClientTransport(url string, tc *tls.Config) (*Transport, error) {
+	var d *websocket.Dialer
+	if tc == nil {
+		d = websocket.DefaultDialer
+	} else {
+		d = &websocket.Dialer{
+			Proxy:            http.ProxyFromEnvironment,
+			HandshakeTimeout: 45 * time.Second,
+			TLSClientConfig:  tc,
+		}
 	}
-	c := newWebsocketConnection(wsConn)
-	tp = newTransportClient(c)
-	return
+
+	wsConn, _, err := d.Dial(url, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "dial websocket failed")
+	}
+	return newTransportClient(newWebsocketConnection(wsConn)), nil
 }

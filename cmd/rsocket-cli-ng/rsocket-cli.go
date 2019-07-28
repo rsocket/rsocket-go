@@ -1,4 +1,4 @@
-package rsocket_cli_ng
+package main
 
 import (
 	"bufio"

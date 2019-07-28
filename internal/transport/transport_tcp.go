@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"net"
 	"os"
@@ -16,7 +17,8 @@ type tcpServerTransport struct {
 	network, addr string
 	acceptor      ServerTransportAcceptor
 	listener      net.Listener
-	onceClose     *sync.Once
+	onceClose     sync.Once
+	tls           *tls.Config
 }
 
 func (p *tcpServerTransport) Accept(acceptor ServerTransportAcceptor) {
@@ -34,13 +36,23 @@ func (p *tcpServerTransport) Close() (err error) {
 }
 
 func (p *tcpServerTransport) Listen(ctx context.Context) (err error) {
-	l, err := net.Listen(p.network, p.addr)
-	if err != nil {
-		err = errors.Wrap(err, "server listen failed")
-		return
+	if p.tls == nil {
+		p.listener, err = net.Listen(p.network, p.addr)
+		if err != nil {
+			err = errors.Wrap(err, "server listen failed")
+			return
+		}
+	} else {
+		p.listener, err = tls.Listen(p.network, p.addr, p.tls)
+		if err != nil {
+			err = errors.Wrap(err, "server listen failed")
+			return
+		}
 	}
-	p.listener = l
+	return p.listen(ctx)
+}
 
+func (p *tcpServerTransport) listen(ctx context.Context) (err error) {
 	// Remove unix socket file before exit.
 	if p.network == schemaUNIX {
 		// Monitor signal of current process and unlink unix socket file.
@@ -86,20 +98,24 @@ func (p *tcpServerTransport) Listen(ctx context.Context) (err error) {
 	return
 }
 
-func newTCPServerTransport(network, addr string) *tcpServerTransport {
+func newTCPServerTransport(network, addr string, c *tls.Config) *tcpServerTransport {
 	return &tcpServerTransport{
-		network:   network,
-		addr:      addr,
-		onceClose: &sync.Once{},
+		network: network,
+		addr:    addr,
+		tls:     c,
 	}
 }
 
-func newTCPClientTransport(network, addr string) (tp *Transport, err error) {
-	rawConn, err := net.Dial(network, addr)
+func newTCPClientTransport(network, addr string, tlsConfig *tls.Config) (tp *Transport, err error) {
+	var rawConn net.Conn
+	if tlsConfig == nil {
+		rawConn, err = net.Dial(network, addr)
+	} else {
+		rawConn, err = tls.Dial(network, addr, tlsConfig)
+	}
 	if err != nil {
 		return
 	}
-	conn := newTCPRConnection(rawConn)
-	tp = newTransportClient(conn)
+	tp = newTransportClient(newTCPRConnection(rawConn))
 	return
 }

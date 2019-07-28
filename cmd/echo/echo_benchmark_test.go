@@ -20,7 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const ListenAt = "tcp://127.0.0.1:7878"
+//const ListenAt = "tcp://127.0.0.1:7878"
+const ListenAt = "ws://127.0.0.1:7878/echo"
 
 func TestClient_RequestResponse(t *testing.T) {
 	client, err := createClient(ListenAt)
@@ -29,7 +30,7 @@ func TestClient_RequestResponse(t *testing.T) {
 		_ = client.Close()
 	}()
 	wg := &sync.WaitGroup{}
-	n := 50 * 10000
+	n := 1 * 10000
 	wg.Add(n)
 	data := []byte(common.RandAlphanumeric(1024))
 

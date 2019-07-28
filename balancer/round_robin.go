@@ -18,7 +18,7 @@ type balancerRoundRobin struct {
 	seq     int
 	clients []*labelClient
 	done    chan struct{}
-	once    *sync.Once
+	once    sync.Once
 	onLeave []func(string)
 }
 
@@ -122,7 +122,6 @@ func NewRoundRobinBalancer() Balancer {
 	return &balancerRoundRobin{
 		cond: sync.NewCond(&sync.Mutex{}),
 		seq:  -1,
-		once: &sync.Once{},
 		done: make(chan struct{}),
 	}
 }

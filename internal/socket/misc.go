@@ -43,7 +43,6 @@ func (p *u32map) Store(key uint32, value interface{}) {
 	p.k.Lock()
 	p.m[key] = value
 	p.k.Unlock()
-	return
 }
 
 func (p *u32map) Delete(key uint32) {
@@ -54,7 +53,7 @@ func (p *u32map) Delete(key uint32) {
 
 func newU32Map() *u32map {
 	return &u32map{
-		m: make(map[uint32]interface{}, 0),
+		m: make(map[uint32]interface{}),
 	}
 }
 
