@@ -94,7 +94,7 @@ func (p AbstractRSocket) RequestChannel(msgs rx.Publisher) flux.Flux {
 type baseSocket struct {
 	socket  *DuplexRSocket
 	closers []func()
-	once    *sync.Once
+	once    sync.Once
 }
 
 func (p *baseSocket) FireAndForget(msg payload.Payload) {
@@ -136,6 +136,5 @@ func (p *baseSocket) Close() (err error) {
 func newBaseSocket(rawSocket *DuplexRSocket) *baseSocket {
 	return &baseSocket{
 		socket: rawSocket,
-		once:   &sync.Once{},
 	}
 }

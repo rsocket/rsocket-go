@@ -2,6 +2,7 @@ package rsocket
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -47,6 +48,31 @@ type (
 	Start interface {
 		// Serve serve RSocket server.
 		Serve(ctx context.Context) error
+		// Serve serve RSocket server with TLS.
+		//
+		// You can generate cert.pem and key.pem for local testing:
+		//
+		//	 go run $GOROOT/src/crypto/tls/generate_cert.go --host localhost
+		//
+		//	 Load X509
+		//	cert, err := tls.LoadX509KeyPair("cert.pem", "key.pem")
+		//	if err != nil {
+		//		panic(err)
+		//	}
+		//	// Init TLS configuration.
+		//	tc := &tls.Config{
+		//		MinVersion:               tls.VersionTLS12,
+		//		CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
+		//		PreferServerCipherSuites: true,
+		//		CipherSuites: []uint16{
+		//			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+		//			tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+		//			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+		//			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+		//		},
+		//		Certificates: []tls.Certificate{cert},
+		//	}
+		ServeTLS(ctx context.Context, c *tls.Config) error
 	}
 )
 
@@ -99,7 +125,15 @@ func (p *server) Transport(transport string) Start {
 	return p
 }
 
+func (p *server) ServeTLS(ctx context.Context, c *tls.Config) error {
+	return p.serve(ctx, c)
+}
+
 func (p *server) Serve(ctx context.Context) error {
+	return p.serve(ctx, nil)
+}
+
+func (p *server) serve(ctx context.Context, tc *tls.Config) error {
 	u, err := transport.ParseURI(p.addr)
 	if err != nil {
 		return err
@@ -108,7 +142,7 @@ func (p *server) Serve(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	t, err := u.MakeServerTransport()
+	t, err := u.MakeServerTransport(tc)
 	if err != nil {
 		return err
 	}

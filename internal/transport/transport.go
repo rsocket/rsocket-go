@@ -35,7 +35,7 @@ type Transport struct {
 	conn        Conn
 	maxLifetime time.Duration
 	lastRcvPos  uint64
-	once        *sync.Once
+	once        sync.Once
 
 	hSetup           FrameHandler
 	hResume          FrameHandler
@@ -296,6 +296,5 @@ func newTransportClient(c Conn) *Transport {
 	return &Transport{
 		conn:        c,
 		maxLifetime: common.DefaultKeepaliveMaxLifetime,
-		once:        &sync.Once{},
 	}
 }
