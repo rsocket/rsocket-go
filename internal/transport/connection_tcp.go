@@ -81,13 +81,17 @@ func (p *tcpConn) Write(frame framing.Frame) (err error) {
 		err = errors.Wrap(err, "write frame failed")
 		return
 	}
+	var debugStr string
+	if logger.IsDebugEnabled() {
+		debugStr = frame.String()
+	}
 	_, err = frame.WriteTo(p.writer)
 	if err != nil {
 		err = errors.Wrap(err, "write frame failed")
 		return
 	}
 	if logger.IsDebugEnabled() {
-		logger.Debugf("---> snd: %s\n", frame)
+		logger.Debugf("---> snd: %s\n", debugStr)
 	}
 	return
 }

@@ -76,13 +76,13 @@ func (p *FrameSetup) Token() []byte {
 // DataMimeType returns MIME of data.
 func (p *FrameSetup) DataMimeType() (mime string) {
 	_, b := p.mime()
-	return common.Bytes2str(b)
+	return string(b)
 }
 
 // MetadataMimeType returns MIME of metadata.
 func (p *FrameSetup) MetadataMimeType() string {
 	a, _ := p.mime()
-	return common.Bytes2str(a)
+	return string(a)
 }
 
 // Metadata returns metadata bytes.
@@ -111,14 +111,14 @@ func (p *FrameSetup) Data() []byte {
 func (p *FrameSetup) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := p.Metadata()
 	if ok {
-		metadata = common.Bytes2str(raw)
+		metadata = string(raw)
 	}
 	return
 }
 
 // DataUTF8 returns data as UTF8 string.
 func (p *FrameSetup) DataUTF8() string {
-	return common.Bytes2str(p.Data())
+	return string(p.Data())
 }
 
 func (p *FrameSetup) mime() (metadata []byte, data []byte) {

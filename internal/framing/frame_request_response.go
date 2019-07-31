@@ -35,7 +35,7 @@ func (p *FrameRequestResponse) Data() []byte {
 func (p *FrameRequestResponse) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := p.Metadata()
 	if ok {
-		metadata = common.Bytes2str(raw)
+		metadata = string(raw)
 	}
 	return
 }

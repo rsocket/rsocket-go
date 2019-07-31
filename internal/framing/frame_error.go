@@ -18,6 +18,10 @@ type FrameError struct {
 	*BaseFrame
 }
 
+func (p *FrameError) String() string {
+	return fmt.Sprintf("FrameError{%s,code=%s,data=%s}", p.header, p.ErrorCode(), p.ErrorData())
+}
+
 // Validate returns error if frame is invalid.
 func (p *FrameError) Validate() (err error) {
 	if p.Len() < minErrorFrameLen {
@@ -47,11 +51,11 @@ func NewFrameError(streamID uint32, code common.ErrorCode, data []byte) *FrameEr
 	var b4 [4]byte
 	binary.BigEndian.PutUint32(b4[:], uint32(code))
 	if _, err := bf.Write(b4[:]); err != nil {
-		
+
 		panic(err)
 	}
 	if _, err := bf.Write(data); err != nil {
-		
+
 		panic(err)
 	}
 	return &FrameError{

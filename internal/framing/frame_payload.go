@@ -35,14 +35,14 @@ func (p *FramePayload) Data() []byte {
 func (p *FramePayload) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := p.Metadata()
 	if ok {
-		metadata = common.Bytes2str(raw)
+		metadata = string(raw)
 	}
 	return
 }
 
 // DataUTF8 returns data as UTF8 string.
 func (p *FramePayload) DataUTF8() string {
-	return common.Bytes2str(p.Data())
+	return string(p.Data())
 }
 
 // NewFramePayload returns a new payload frame.

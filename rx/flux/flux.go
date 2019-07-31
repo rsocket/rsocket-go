@@ -17,6 +17,7 @@ type Sink interface {
 
 type Flux interface {
 	rx.Publisher
+	Take(n int) Flux
 	Filter(rx.FnPredicate) Flux
 	DoOnError(rx.FnOnError) Flux
 	DoOnNext(rx.FnOnNext) Flux
@@ -28,7 +29,9 @@ type Flux interface {
 	SwitchOnFirst(FnSwitchOnFirst) Flux
 	SubscribeOn(scheduler.Scheduler) Flux
 	Raw() flux.Flux
+	BlockFirst(context.Context) (payload.Payload, error)
 	BlockLast(context.Context) (payload.Payload, error)
+	ToChan(ctx context.Context, cap int) (c <-chan payload.Payload, e <-chan error)
 }
 
 type Processor interface {

@@ -62,6 +62,9 @@ const (
 	VideoH264
 	VideoH265
 	VideoVP8
+	Hessian
+	JavaObject
+	CloudEventsJSON
 	MessageZipkin            MIME = 0x7D
 	MessageRouting           MIME = 0x7E
 	MessageCompositeMetadata MIME = 0x7F
@@ -107,6 +110,9 @@ func init() {
 		VideoH264:                "video/H264",
 		VideoH265:                "video/H265",
 		VideoVP8:                 "video/VP8",
+		Hessian:                  "application/x-hessian",
+		JavaObject:               "application/x-java-object",
+		CloudEventsJSON:          "application/cloudevents+json",
 		MessageZipkin:            "message/x.rsocket.tracing-zipkin.v0",
 		MessageRouting:           "message/x.rsocket.routing.v0",
 		MessageCompositeMetadata: "message/x.rsocket.composite-metadata.v0",

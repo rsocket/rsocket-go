@@ -30,7 +30,3 @@ func (p *strPayload) Data() []byte {
 func (p *strPayload) DataUTF8() string {
 	return p.data
 }
-
-func (*strPayload) Release() {
-	// ignore
-}

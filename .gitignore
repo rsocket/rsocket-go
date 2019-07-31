@@ -21,3 +21,5 @@ suppressions/
 *.zip
 
 .idea
+
+cmd/rsocket-cli/rsocket-cli

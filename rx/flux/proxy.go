@@ -7,6 +7,7 @@ import (
 	"github.com/jjeffcaii/reactor-go/flux"
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
+	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -45,6 +46,10 @@ func (p proxy) Error(e error) {
 	p.mustProcessor().Error(e)
 }
 
+func (p proxy) Take(n int) Flux {
+	return newProxy(p.Flux.Take(n))
+}
+
 func (p proxy) Filter(fn rx.FnPredicate) Flux {
 	return newProxy(p.Flux.Filter(func(i interface{}) bool {
 		return fn(i.(payload.Payload))
@@ -65,25 +70,50 @@ func (p proxy) DoOnNext(fn rx.FnOnNext) Flux {
 	}))
 }
 
-func (p proxy) BlockLast(ctx context.Context) (last payload.Payload, err error) {
-	done := make(chan struct{})
-	sub := rs.NewSubscriber(
-		rs.OnNext(func(v interface{}) {
-			last = v.(payload.Payload)
-		}),
-		rs.OnError(func(e error) {
-			err = e
-		}),
-	)
-	p.Flux.
-		DoFinally(func(s rs.SignalType) {
-			if s == rs.SignalTypeCancel {
-				err = rs.ErrSubscribeCancelled
+func (p proxy) ToChan(ctx context.Context, cap int) (c <-chan payload.Payload, e <-chan error) {
+	if cap < 1 {
+		cap = 1
+	}
+	ch := make(chan payload.Payload, cap)
+	err := make(chan error, 1)
+	p.
+		DoFinally(func(s rx.SignalType) {
+			if s == rx.SignalCancel {
+				err <- rs.ErrSubscribeCancelled
 			}
-			close(done)
+			close(ch)
+			close(err)
 		}).
-		SubscribeWith(ctx, sub)
-	<-done
+		Subscribe(ctx,
+			rx.OnNext(func(v payload.Payload) {
+				if _, ok := v.(framing.Frame); ok {
+					ch <- payload.Clone(v)
+				} else {
+					ch <- v
+				}
+			}),
+			rx.OnError(func(e error) {
+				err <- e
+			}),
+		)
+	return ch, err
+}
+
+func (p proxy) BlockFirst(ctx context.Context) (first payload.Payload, err error) {
+	v, err := p.Flux.BlockFirst(ctx)
+	if err != nil {
+		return
+	}
+	first = v.(payload.Payload)
+	return
+}
+
+func (p proxy) BlockLast(ctx context.Context) (last payload.Payload, err error) {
+	v, err := p.Flux.BlockLast(ctx)
+	if err != nil {
+		return
+	}
+	last = v.(payload.Payload)
 	return
 }
 

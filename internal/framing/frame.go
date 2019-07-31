@@ -2,6 +2,7 @@ package framing
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -123,6 +124,7 @@ func newFlags(flags ...FrameFlag) FrameFlag {
 
 // Frame is a single message containing a request, response, or protocol processing.
 type Frame interface {
+	fmt.Stringer
 	io.WriterTo
 	// Header returns frame FrameHeader.
 	Header() FrameHeader
@@ -210,7 +212,10 @@ func (p *BaseFrame) WriteTo(w io.Writer) (n int64, err error) {
 
 // Bytes returns frame in bytes.
 func (p *BaseFrame) Bytes() []byte {
-	return append(p.header[:], p.body.Bytes()...)
+	ret := make([]byte, HeaderLen+p.body.Len())
+	copy(ret[:HeaderLen], p.header[:])
+	copy(ret[HeaderLen:], p.body.Bytes())
+	return ret
 }
 
 // NewBaseFrame returns a new BaseFrame.
