@@ -30,6 +30,12 @@ func Just(payloads ...payload.Payload) Flux {
 	return newProxy(flux.Just(values...))
 }
 
+func Error(err error) Flux  {
+	return Create(func(ctx context.Context, s Sink) {
+		s.Error(err)
+	})
+}
+
 func Create(gen func(ctx context.Context, s Sink)) Flux {
 	return newProxy(flux.Create(func(ctx context.Context, sink flux.Sink) {
 		gen(ctx, newProxySink(sink))

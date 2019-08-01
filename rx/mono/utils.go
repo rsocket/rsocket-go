@@ -26,6 +26,12 @@ func Empty() Mono {
 	return empty
 }
 
+func Error(err error) Mono {
+	return Create(func(i context.Context, sink Sink) {
+		sink.Error(err)
+	})
+}
+
 func Create(gen func(context.Context, Sink)) Mono {
 	return newProxy(mono.Create(func(i context.Context, sink mono.Sink) {
 		gen(i, sinkProxy{sink})
