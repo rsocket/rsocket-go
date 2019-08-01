@@ -30,7 +30,7 @@ func TestClient_RequestResponse(t *testing.T) {
 		_ = client.Close()
 	}()
 	wg := &sync.WaitGroup{}
-	n := 1 * 10000
+	n := 1 * 1000000
 	wg.Add(n)
 	data := []byte(common.RandAlphanumeric(1024))
 

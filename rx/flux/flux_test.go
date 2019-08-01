@@ -3,6 +3,7 @@ package flux_test
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
 	"log"
 	"strconv"
 	"testing"
@@ -163,4 +164,148 @@ func TestFluxProcessorWithRequest(t *testing.T) {
 		SubscribeOn(scheduler.Elastic()).
 		SubscribeWith(context.Background(), sub)
 	<-done
+}
+
+func TestCreateFromChannel(t *testing.T) {
+	payloads := make(chan *payload.Payload)
+	err := make(chan error)
+
+	go func() {
+		defer close(payloads)
+		defer close(err)
+
+		for i := 1; i <= 10000; i++ {
+			p := payload.NewString(strconv.Itoa(i), strconv.Itoa(i))
+			payloads <- &p
+		}
+	}()
+
+	background := context.Background()
+	last, e := flux.
+		CreateFromChannel(payloads, err).
+		BlockLast(background)
+
+	if e != nil {
+		t.Error(e)
+	}
+
+	assert.Equal(t, "10000", last.DataUTF8())
+
+	m, _ := last.MetadataUTF8()
+	assert.Equal(t, "10000", m)
+}
+
+func TestCreateFromChannelAndEmitError(t *testing.T) {
+	payloads := make(chan *payload.Payload)
+	err := make(chan error)
+
+	go func() {
+		defer close(payloads)
+		defer close(err)
+		err <- errors.New("boom")
+	}()
+
+	background := context.Background()
+	_, e := flux.
+		CreateFromChannel(payloads, err).
+		BlockLast(background)
+
+	if e == nil {
+		t.Fail()
+	}
+}
+
+func TestCreateFromChannelWithNoEmitsOrErrors(t *testing.T) {
+	payloads := make(chan *payload.Payload)
+	err := make(chan error)
+
+	go func() {
+		defer close(payloads)
+		defer close(err)
+	}()
+
+	background := context.Background()
+	_, e := flux.
+		CreateFromChannel(payloads, err).
+		BlockLast(background)
+
+	if e != nil {
+		t.Fail()
+	}
+}
+
+func TestToChannel(t *testing.T) {
+	payloads := make(chan *payload.Payload)
+	err := make(chan error)
+
+	go func() {
+		defer close(payloads)
+		defer close(err)
+
+		for i := 1; i <= 10; i++ {
+			p := payload.NewString(strconv.Itoa(i), strconv.Itoa(i))
+			payloads <- &p
+		}
+	}()
+
+	f := flux.CreateFromChannel(payloads, err)
+
+	channel, chanerrors := flux.ToChannel(f, context.Background())
+
+	var count int
+loop:
+	for {
+		select {
+		case _, o := <-channel:
+			if o {
+				count++
+			} else {
+				break loop
+			}
+		case err := <-chanerrors:
+			if err != nil {
+				t.Error(err)
+				break loop
+			}
+		}
+	}
+
+	assert.Equal(t, 10, count)
+}
+
+func TestToChannelEmitError(t *testing.T) {
+	payloads := make(chan *payload.Payload)
+	err := make(chan error)
+
+	go func() {
+		defer close(payloads)
+		defer close(err)
+
+		for i := 1; i <= 10; i++ {
+			err <- errors.New("boom!")
+		}
+	}()
+
+	f := flux.CreateFromChannel(payloads, err)
+
+	channel, chanerrors := flux.ToChannel(f, context.Background())
+
+loop:
+	for {
+		select {
+		case _, o := <-channel:
+			if o {
+				t.Fail()
+			} else {
+				break loop
+			}
+		case err := <-chanerrors:
+			if err != nil {
+				break loop
+			} else {
+				t.Fail()
+			}
+		}
+	}
+
 }

@@ -86,9 +86,12 @@ func (p proxy) BlockLast(ctx context.Context) (last payload.Payload, err error) 
 		last = nil
 	}
 	// To prevent bytebuff leak, clone it.
-	origin := last
-	last = payload.Clone(origin)
-	origin.Release()
+	if last != nil {
+		origin := last
+		last = payload.Clone(origin)
+		origin.Release()
+	}
+
 	return
 }
 
