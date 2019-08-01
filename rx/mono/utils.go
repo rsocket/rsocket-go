@@ -2,10 +2,10 @@ package mono
 
 import (
 	"context"
-	rs "github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/mono"
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
 )
 
 var empty = newProxy(mono.Empty())
@@ -80,22 +80,21 @@ func CreateFromChannel(payloads <-chan *payload.Payload, err <-chan error) Mono 
 	return mono
 }
 
-func ToChannel(input mono.Mono, ctx context.Context) (<-chan *payload.Payload, <-chan error) {
+func ToChannel(input Mono, ctx context.Context) (<-chan *payload.Payload, <-chan error) {
 	return ToChannelOnScheduler(input, ctx, scheduler.Parallel())
 }
 
-func ToChannelOnScheduler(input mono.Mono, ctx context.Context, scheduler scheduler.Scheduler) (<-chan *payload.Payload, <-chan error) {
+func ToChannelOnScheduler(input Mono, ctx context.Context, scheduler scheduler.Scheduler) (<-chan *payload.Payload, <-chan error) {
 	errorChannel := make(chan error, 1)
 	payloadChannel := make(chan *payload.Payload, 1)
 
-	input.SubscribeOn(scheduler).
-		DoOnNext(func(v interface{}) {
-			payloadChannel <- v.(*payload.Payload)
-		}).
+	input.SubscribeOn(scheduler).DoOnSuccess(func(input payload.Payload) {
+		payloadChannel <- &input
+	}).
 		DoOnError(func(e error) {
 			errorChannel <- e
 		}).
-		DoFinally(func(s rs.SignalType) {
+		DoFinally(func(s rx.SignalType) {
 			close(payloadChannel)
 			close(errorChannel)
 		}).Subscribe(ctx)
