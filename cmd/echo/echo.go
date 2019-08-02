@@ -17,10 +17,10 @@ import (
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
-//const ListenAt = "tcp://127.0.0.1:7878"
+const ListenAt = "tcp://127.0.0.1:7878"
 
 //const ListenAt = "unix:///tmp/rsocket.echo.sock"
-const ListenAt = "ws://127.0.0.1:7878/echo"
+//const ListenAt = "ws://127.0.0.1:7878/echo"
 
 func main() {
 	//go func() {

@@ -167,7 +167,7 @@ func TestFluxProcessorWithRequest(t *testing.T) {
 }
 
 func TestCreateFromChannel(t *testing.T) {
-	payloads := make(chan *payload.Payload)
+	payloads := make(chan payload.Payload)
 	err := make(chan error)
 
 	go func() {
@@ -176,7 +176,7 @@ func TestCreateFromChannel(t *testing.T) {
 
 		for i := 1; i <= 10000; i++ {
 			p := payload.NewString(strconv.Itoa(i), strconv.Itoa(i))
-			payloads <- &p
+			payloads <- p
 		}
 	}()
 
@@ -196,7 +196,7 @@ func TestCreateFromChannel(t *testing.T) {
 }
 
 func TestCreateFromChannelAndEmitError(t *testing.T) {
-	payloads := make(chan *payload.Payload)
+	payloads := make(chan payload.Payload)
 	err := make(chan error)
 
 	go func() {
@@ -216,7 +216,7 @@ func TestCreateFromChannelAndEmitError(t *testing.T) {
 }
 
 func TestCreateFromChannelWithNoEmitsOrErrors(t *testing.T) {
-	payloads := make(chan *payload.Payload)
+	payloads := make(chan payload.Payload)
 	err := make(chan error)
 
 	go func() {
@@ -235,7 +235,7 @@ func TestCreateFromChannelWithNoEmitsOrErrors(t *testing.T) {
 }
 
 func TestToChannel(t *testing.T) {
-	payloads := make(chan *payload.Payload)
+	payloads := make(chan payload.Payload)
 	err := make(chan error)
 
 	go func() {
@@ -244,7 +244,7 @@ func TestToChannel(t *testing.T) {
 
 		for i := 1; i <= 10; i++ {
 			p := payload.NewString(strconv.Itoa(i), strconv.Itoa(i))
-			payloads <- &p
+			payloads <- p
 		}
 	}()
 
@@ -274,7 +274,7 @@ loop:
 }
 
 func TestToChannelEmitError(t *testing.T) {
-	payloads := make(chan *payload.Payload)
+	payloads := make(chan payload.Payload)
 	err := make(chan error)
 
 	go func() {

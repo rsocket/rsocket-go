@@ -10,14 +10,14 @@ import (
 )
 
 func TestCreateFromChannel(t *testing.T) {
-	payloads := make(chan *payload.Payload)
+	payloads := make(chan payload.Payload)
 	err := make(chan error)
 
 	go func() {
 		defer close(payloads)
 		defer close(err)
 		p := payload.NewString("data", "metadata")
-		payloads <- &p
+		payloads <- p
 	}()
 
 	background := context.Background()
@@ -35,7 +35,7 @@ func TestCreateFromChannel(t *testing.T) {
 }
 
 func TestCreateFromChannelAndEmitError(t *testing.T) {
-	payloads := make(chan *payload.Payload)
+	payloads := make(chan payload.Payload)
 	err := make(chan error)
 
 	go func() {
@@ -55,7 +55,7 @@ func TestCreateFromChannelAndEmitError(t *testing.T) {
 }
 
 func TestCreateFromChannelWithNoEmitsOrErrors(t *testing.T) {
-	payloads := make(chan *payload.Payload)
+	payloads := make(chan payload.Payload)
 	err := make(chan error)
 
 	go func() {
@@ -74,14 +74,14 @@ func TestCreateFromChannelWithNoEmitsOrErrors(t *testing.T) {
 }
 
 func TestToChannel(t *testing.T) {
-	payloads := make(chan *payload.Payload)
+	payloads := make(chan payload.Payload)
 	err := make(chan error)
 
 	go func() {
 		defer close(payloads)
 		defer close(err)
 		p := payload.NewString("data", "metadata")
-		payloads <- &p
+		payloads <- p
 	}()
 
 	f := flux.CreateFromChannel(payloads, err)
@@ -93,8 +93,8 @@ loop:
 		select {
 		case p, o := <-channel:
 			if o {
-				assert.Equal(t, "data", payload.Payload(*p).DataUTF8())
-				md, _ := payload.Payload(*p).MetadataUTF8()
+				assert.Equal(t, "data", p.DataUTF8())
+				md, _ := p.MetadataUTF8()
 				assert.Equal(t, "metadata", md)
 			} else {
 				break loop
@@ -110,7 +110,7 @@ loop:
 }
 
 func TestToChannelEmitError(t *testing.T) {
-	payloads := make(chan *payload.Payload)
+	payloads := make(chan payload.Payload)
 	err := make(chan error)
 
 	go func() {
