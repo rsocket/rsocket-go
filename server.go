@@ -194,7 +194,6 @@ func (p *server) serve(ctx context.Context, tc *tls.Config) error {
 			sendingSocket, err := p.doSetup(frame, tp, socketChan)
 			if err != nil {
 				_ = tp.Send(err, true)
-				err.Release()
 				_ = tp.Close()
 				return
 			}
@@ -204,7 +203,6 @@ func (p *server) serve(ctx context.Context, tc *tls.Config) error {
 		default:
 			err := framing.NewFrameError(0, common.ErrorCodeConnectionError, []byte("first frame must be setup or resume"))
 			_ = tp.Send(err, true)
-			err.Release()
 			_ = tp.Close()
 			return
 		}
@@ -220,7 +218,6 @@ func (p *server) doSetup(
 	tp *transport.Transport,
 	socketChan chan<- socket.ServerSocket,
 ) (sendingSocket socket.ServerSocket, err *framing.FrameError) {
-	defer frame.Release()
 	isResume := frame.Header().Flag().Check(framing.FlagResume)
 
 	// 1. receive a token but server doesn't support resume.
@@ -258,7 +255,6 @@ func (p *server) doSetup(
 }
 
 func (p *server) doResume(frame *framing.FrameResume, tp *transport.Transport, socketChan chan<- socket.ServerSocket) {
-	defer frame.Release()
 	var sending framing.Frame
 	if !p.resumeOpts.enable {
 		sending = framing.NewFrameError(0, common.ErrorCodeRejectedResume, errUnavailableResume)
@@ -280,7 +276,6 @@ func (p *server) doResume(frame *framing.FrameResume, tp *transport.Transport, s
 		logger.Errorf("send resume response failed: %s\n", err)
 		_ = tp.Close()
 	}
-	sending.Release()
 }
 
 func (p *server) loopCleanSession(ctx context.Context) (err error) {

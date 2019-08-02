@@ -31,10 +31,9 @@ func (p *FrameResumeOK) LastReceivedClientPosition() uint64 {
 func NewResumeOK(position uint64) *FrameResumeOK {
 	var b8 [8]byte
 	binary.BigEndian.PutUint64(b8[:], position)
-	bf := common.BorrowByteBuffer()
+	bf := common.New()
 	_, err := bf.Write(b8[:])
 	if err != nil {
-		common.ReturnByteBuffer(bf)
 		panic(err)
 	}
 	return &FrameResumeOK{

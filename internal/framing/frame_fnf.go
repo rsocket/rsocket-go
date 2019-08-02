@@ -48,20 +48,17 @@ func (p *FrameFNF) DataUTF8() string {
 // NewFrameFNF returns a new fire and forget frame.
 func NewFrameFNF(sid uint32, data, metadata []byte, flags ...FrameFlag) *FrameFNF {
 	fg := newFlags(flags...)
-	bf := common.BorrowByteBuffer()
+	bf := common.New()
 	if len(metadata) > 0 {
 		fg |= FlagMetadata
 		if err := bf.WriteUint24(len(metadata)); err != nil {
-			common.ReturnByteBuffer(bf)
 			panic(err)
 		}
 		if _, err := bf.Write(metadata); err != nil {
-			common.ReturnByteBuffer(bf)
 			panic(err)
 		}
 	}
 	if _, err := bf.Write(data); err != nil {
-		common.ReturnByteBuffer(bf)
 		panic(err)
 	}
 	return &FrameFNF{

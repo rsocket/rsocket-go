@@ -27,14 +27,13 @@ func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame func(idx
 		var idx, cursor1, cursor2 int
 		var follow bool
 		for {
-			bf = common.BorrowByteBuffer()
+			bf = common.New()
 			var wroteM int
 			left := mtu - framing.HeaderLen
 			if idx == 0 && skip > 0 {
 				left -= skip
 				for i := 0; i < skip; i++ {
 					if err := bf.WriteByte(0); err != nil {
-						common.ReturnByteBuffer(bf)
 						panic(err)
 					}
 				}
@@ -44,7 +43,6 @@ func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame func(idx
 				left -= 3
 				// write metadata length placeholder
 				if err := bf.WriteUint24(0); err != nil {
-					common.ReturnByteBuffer(bf)
 					panic(err)
 				}
 			}
@@ -58,11 +56,9 @@ func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame func(idx
 				}
 			}
 			if _, err := bf.Write(metadata[begin1:cursor1]); err != nil {
-				common.ReturnByteBuffer(bf)
 				panic(err)
 			}
 			if _, err := bf.Write(data[begin2:cursor2]); err != nil {
-				common.ReturnByteBuffer(bf)
 				panic(err)
 			}
 			follow = cursor1+cursor2 < lenM+lenD

@@ -19,7 +19,7 @@ func TestDecode_Payload(t *testing.T) {
 	assert.NoError(t, err, "bad bytes")
 	h := ParseFrameHeader(bs[:HeaderLen])
 	log.Println(h)
-	bf := common.BorrowByteBuffer()
+	bf := common.New()
 	_, _ = bf.Write(bs[HeaderLen:])
 	pl := &FramePayload{
 		BaseFrame: NewBaseFrame(h, bf),

@@ -236,7 +236,6 @@ func (p *Transport) DeliveryFrame(ctx context.Context, frame framing.Frame) (err
 	case framing.FrameTypeMetadataPush:
 		if sid != 0 {
 			// skip invalid metadata push
-			frame.Release()
 			logger.Warnf("rsocket.Transport: omit MetadataPush with non-zero stream id %d\n", sid)
 			return
 		}
@@ -256,8 +255,6 @@ func (p *Transport) DeliveryFrame(ctx context.Context, frame framing.Frame) (err
 			err = errors.New(frame.(*framing.FrameError).Error())
 			if p.hError0 != nil {
 				_ = p.hError0(frame)
-			} else {
-				frame.Release()
 			}
 			return
 		}
@@ -280,7 +277,6 @@ func (p *Transport) DeliveryFrame(ctx context.Context, frame framing.Frame) (err
 	// missing handler
 	if handler == nil {
 		err = errors.Errorf("missing frame handler: type=%s", t)
-		frame.Release()
 		return
 	}
 

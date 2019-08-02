@@ -55,7 +55,6 @@ func TestClient_RequestResponse(t *testing.T) {
 	log.Println(n, "COST:", cost)
 	log.Println(n, "QPS:", float64(n)/cost.Seconds())
 
-	assert.Equal(t, 0, common.CountByteBuffer(), "bytebuff leak")
 }
 
 func createClient(uri string) (rsocket.Client, error) {

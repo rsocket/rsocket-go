@@ -37,10 +37,9 @@ func (p *tcpConn) Read() (f framing.Frame, err error) {
 		return
 	}
 	h := framing.ParseFrameHeader(raw)
-	bf := common.BorrowByteBuffer()
+	bf := common.New()
 	_, err = bf.Write(raw[framing.HeaderLen:])
 	if err != nil {
-		common.ReturnByteBuffer(bf)
 		err = errors.Wrap(err, "read frame failed")
 		return
 	}
@@ -50,13 +49,11 @@ func (p *tcpConn) Read() (f framing.Frame, err error) {
 	}
 	f, err = framing.NewFromBase(base)
 	if err != nil {
-		common.ReturnByteBuffer(bf)
 		err = errors.Wrap(err, "read frame failed")
 		return
 	}
 	err = f.Validate()
 	if err != nil {
-		common.ReturnByteBuffer(bf)
 		err = errors.Wrap(err, "read frame failed")
 		return
 	}

@@ -28,16 +28,12 @@ func Fuzz(data []byte) int {
 
 func handleRaw(raw []byte) (err error) {
 	h := framing.ParseFrameHeader(raw)
-	bf := common.BorrowByteBuffer()
+	bf := common.New()
 	var frame framing.Frame
 	frame, err = framing.NewFromBase(framing.NewBaseFrame(h, bf))
 	if err != nil {
-		common.ReturnByteBuffer(bf)
 		return
 	}
-
-	// release resource borrowed
-	defer frame.Release()
 
 	switch f := frame.(type) {
 	case fmt.Stringer:

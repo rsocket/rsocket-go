@@ -14,7 +14,6 @@ func BenchmarkToFragments(b *testing.B) {
 	metadata := []byte(common.RandAlphanumeric(1024 * 1024))
 
 	fn := func(idx int, fg framing.FrameFlag, body *common.ByteBuff) {
-		common.ReturnByteBuffer(body)
 	}
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {

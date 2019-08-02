@@ -43,15 +43,15 @@ func (p *FrameError) ErrorData() []byte {
 
 // NewFrameError returns a new error frame.
 func NewFrameError(streamID uint32, code common.ErrorCode, data []byte) *FrameError {
-	bf := common.BorrowByteBuffer()
+	bf := common.New()
 	var b4 [4]byte
 	binary.BigEndian.PutUint32(b4[:], uint32(code))
 	if _, err := bf.Write(b4[:]); err != nil {
-		common.ReturnByteBuffer(bf)
+		
 		panic(err)
 	}
 	if _, err := bf.Write(data); err != nil {
-		common.ReturnByteBuffer(bf)
+		
 		panic(err)
 	}
 	return &FrameError{

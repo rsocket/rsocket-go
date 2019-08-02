@@ -23,6 +23,6 @@ func (p *FrameCancel) String() string {
 // NewFrameCancel returns a new cancel frame.
 func NewFrameCancel(sid uint32) *FrameCancel {
 	return &FrameCancel{
-		NewBaseFrame(NewFrameHeader(sid, FrameTypeCancel), common.BorrowByteBuffer()),
+		NewBaseFrame(NewFrameHeader(sid, FrameTypeCancel), common.New()),
 	}
 }

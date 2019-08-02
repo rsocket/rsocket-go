@@ -69,9 +69,6 @@ func (p proxy) BlockLast(ctx context.Context) (last payload.Payload, err error) 
 	done := make(chan struct{})
 	sub := rs.NewSubscriber(
 		rs.OnNext(func(v interface{}) {
-			if last != nil {
-				last.Release()
-			}
 			last = v.(payload.Payload)
 		}),
 		rs.OnError(func(e error) {
@@ -88,14 +85,12 @@ func (p proxy) BlockLast(ctx context.Context) (last payload.Payload, err error) 
 		SubscribeWith(ctx, sub)
 	<-done
 	if err != nil && last != nil {
-		last.Release()
 		last = nil
 	}
 	// To prevent bytebuff leak, clone it.
 	if last != nil {
 		origin := last
 		last = payload.Clone(origin)
-		origin.Release()
 	}
 
 	return
