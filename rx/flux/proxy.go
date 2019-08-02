@@ -31,6 +31,12 @@ func (p proxy) Next(v payload.Payload) {
 	p.mustProcessor().Next(v)
 }
 
+func (p proxy) Map(fn func(in payload.Payload) payload.Payload) Flux {
+	return newProxy(p.Flux.Map(func(i interface{}) interface{} {
+		return fn(i.(payload.Payload))
+	}))
+}
+
 func (p proxy) Complete() {
 	p.mustProcessor().Complete()
 }
@@ -86,9 +92,12 @@ func (p proxy) BlockLast(ctx context.Context) (last payload.Payload, err error) 
 		last = nil
 	}
 	// To prevent bytebuff leak, clone it.
-	origin := last
-	last = payload.Clone(origin)
-	origin.Release()
+	if last != nil {
+		origin := last
+		last = payload.Clone(origin)
+		origin.Release()
+	}
+
 	return
 }
 

@@ -24,6 +24,7 @@ type Flux interface {
 	DoFinally(rx.FnFinally) Flux
 	DoOnRequest(rx.FnOnRequest) Flux
 	DoOnSubscribe(rx.FnOnSubscribe) Flux
+	Map(fn func(in payload.Payload) payload.Payload) Flux
 	SwitchOnFirst(FnSwitchOnFirst) Flux
 	SubscribeOn(scheduler.Scheduler) Flux
 	Raw() flux.Flux
