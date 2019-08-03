@@ -4,17 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
-	//_ "net/http/pprof"
-	"strconv"
-	"time"
-
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
+	//_ "net/http/pprof"
+	"strconv"
 )
 
 const ListenAt = "tcp://127.0.0.1:7878"
@@ -52,9 +49,6 @@ func main() {
 
 			sendingSocket.OnClose(func() {
 				log.Println("***** socket disconnected *****")
-				time.AfterFunc(5*time.Second, func() {
-					log.Println("leaks:", common.CountByteBuffer())
-				})
 			})
 
 			return responder()

@@ -88,7 +88,6 @@ func (p *DuplexRSocket) Close() (err error) {
 		_ = p.messages.Close()
 
 		p.fragments.Range(func(key uint32, value interface{}) bool {
-			value.(fragmentation.Joiner).Release()
 			return true
 		})
 		_ = p.fragments.Close()
@@ -100,7 +99,6 @@ func (p *DuplexRSocket) Close() (err error) {
 
 // FireAndForget start a request of FireAndForget.
 func (p *DuplexRSocket) FireAndForget(sending payload.Payload) {
-	defer sending.Release()
 	data := sending.Data()
 	size := framing.HeaderLen + len(sending.Data())
 	m, ok := sending.Metadata()
@@ -131,7 +129,6 @@ func (p *DuplexRSocket) FireAndForget(sending payload.Payload) {
 
 // MetadataPush start a request of MetadataPush.
 func (p *DuplexRSocket) MetadataPush(payload payload.Payload) {
-	defer payload.Release()
 	metadata, _ := payload.Metadata()
 	p.sendFrame(framing.NewFrameMetadataPush(metadata))
 }
@@ -156,7 +153,6 @@ func (p *DuplexRSocket) RequestResponse(pl payload.Payload) (mo mono.Mono) {
 	p.singleScheduler.Worker().Do(func() {
 		// sending...
 		defer func() {
-			pl.Release()
 		}()
 		size := framing.CalcPayloadFrameSize(data, metadata)
 		if !p.shouldSplit(size) {
@@ -221,11 +217,9 @@ func (p *DuplexRSocket) RequestStream(sending payload.Payload) (ret flux.Flux) {
 			if !newborn {
 				frameN := framing.NewFrameRequestN(sid, n32)
 				p.sendFrame(frameN)
-				<-frameN.ReleaseNotify()
 				return
 			}
 
-			defer sending.Release()
 
 			data := sending.Data()
 			metadata, _ := sending.Metadata()
@@ -282,7 +276,6 @@ func (p *DuplexRSocket) RequestChannel(publisher rx.Publisher) (ret flux.Flux) {
 			if !newborn {
 				frameN := framing.NewFrameRequestN(sid, n32)
 				p.sendFrame(frameN)
-				<-frameN.ReleaseNotify()
 				return
 			}
 
@@ -300,8 +293,6 @@ func (p *DuplexRSocket) RequestChannel(publisher rx.Publisher) (ret flux.Flux) {
 						p.sendPayload(sid, item, framing.FlagNext)
 						return
 					}
-
-					defer item.Release()
 
 					d := item.Data()
 					m, _ := item.Metadata()
@@ -395,7 +386,6 @@ func (p *DuplexRSocket) respondRequestResponse(receiving fragmentation.HeaderAnd
 	sending.
 		DoFinally(func(sig rx.SignalType) {
 			p.unregister(sid)
-			receiving.Release()
 		}).
 		SubscribeOn(scheduler.Elastic()).
 		SubscribeWith(context.Background(), sub)
@@ -443,7 +433,6 @@ func (p *DuplexRSocket) respondRequestChannel(pl fragmentation.HeaderAndPayload)
 		DoOnRequest(func(n int) {
 			frameN := framing.NewFrameRequestN(sid, toU32N(n))
 			p.sendFrame(frameN)
-			<-frameN.ReleaseNotify()
 		})
 
 	// TODO: if receiving == sending ???
@@ -494,7 +483,6 @@ func (p *DuplexRSocket) respondRequestChannel(pl fragmentation.HeaderAndPayload)
 }
 
 func (p *DuplexRSocket) respondMetadataPush(input framing.Frame) (err error) {
-	defer input.Release()
 	defer func() {
 		if e := recover(); e != nil {
 			logger.Errorf("respond metadata push failed: %s\n", e)
@@ -513,7 +501,6 @@ func (p *DuplexRSocket) onFrameFNF(frame framing.Frame) error {
 }
 
 func (p *DuplexRSocket) respondFNF(receiving fragmentation.HeaderAndPayload) (err error) {
-	defer receiving.Release()
 	defer func() {
 		if e := recover(); e != nil {
 			logger.Errorf("respond FireAndForget failed: %s\n", e)
@@ -581,7 +568,6 @@ func (p *DuplexRSocket) respondRequestStream(receiving fragmentation.HeaderAndPa
 	sending.
 		DoFinally(func(s rx.SignalType) {
 			p.unregister(sid)
-			receiving.Release()
 		}).
 		SubscribeOn(scheduler.Elastic()).
 		SubscribeWith(context.Background(), sub)
@@ -604,7 +590,6 @@ func (p *DuplexRSocket) SetResponder(responder Responder) {
 func (p *DuplexRSocket) onFrameKeepalive(frame framing.Frame) (err error) {
 	f := frame.(*framing.FrameKeepalive)
 	if !f.Header().Flag().Check(framing.FlagRespond) {
-		f.Release()
 	} else {
 		f.SetHeader(framing.NewFrameHeader(0, framing.FrameTypeKeepalive))
 		p.sendFrame(f)
@@ -613,7 +598,6 @@ func (p *DuplexRSocket) onFrameKeepalive(frame framing.Frame) (err error) {
 }
 
 func (p *DuplexRSocket) onFrameCancel(frame framing.Frame) (err error) {
-	defer frame.Release()
 	sid := frame.Header().StreamID()
 
 	v, ok := p.messages.Load(sid)
@@ -631,8 +615,7 @@ func (p *DuplexRSocket) onFrameCancel(frame framing.Frame) (err error) {
 		panic(fmt.Errorf("illegal cancel target: %v\n", vv))
 	}
 
-	if joiner, ok := p.fragments.Load(sid); ok {
-		joiner.(fragmentation.Joiner).Release()
+	if _, ok := p.fragments.Load(sid); ok {
 		p.fragments.Delete(sid)
 	}
 	return
@@ -663,7 +646,6 @@ func (p *DuplexRSocket) onFrameError(input framing.Frame) (err error) {
 }
 
 func (p *DuplexRSocket) onFrameRequestN(input framing.Frame) (err error) {
-	defer input.Release()
 	f := input.(*framing.FrameRequestN)
 	sid := f.Header().StreamID()
 	v, ok := p.messages.Load(sid)
@@ -730,7 +712,6 @@ func (p *DuplexRSocket) onFramePayload(frame framing.Frame) error {
 	sid := h.StreamID()
 	v, ok := p.messages.Load(sid)
 	if !ok {
-		defer pl.Release()
 		logger.Warnf("unoccupied Payload(id=%d), maybe it has been canceled", sid)
 		return nil
 	}
@@ -747,9 +728,6 @@ func (p *DuplexRSocket) onFramePayload(frame framing.Frame) error {
 		if fg.Check(framing.FlagComplete) {
 			// Release pure complete payload
 			vv.pc.Complete()
-			if !isNext {
-				pl.Release()
-			}
 		}
 	case reqRC:
 		fg := h.Flag()
@@ -759,10 +737,6 @@ func (p *DuplexRSocket) onFramePayload(frame framing.Frame) error {
 		}
 		if fg.Check(framing.FlagComplete) {
 			vv.rcv.Complete()
-			// Release pure complete payload
-			if !isNext {
-				pl.Release()
-			}
 		}
 	case resRC:
 		fg := h.Flag()
@@ -772,10 +746,6 @@ func (p *DuplexRSocket) onFramePayload(frame framing.Frame) error {
 		}
 		if fg.Check(framing.FlagComplete) {
 			vv.rcv.Complete()
-			// Release pure complete payload
-			if !isNext {
-				pl.Release()
-			}
 		}
 	default:
 		panic(fmt.Errorf("illegal Payload for %v\n", vv))
@@ -820,7 +790,6 @@ func (p *DuplexRSocket) toSender(sid uint32, fg framing.FrameFlag) rx.Subscriber
 func (p *DuplexRSocket) sendFrame(f framing.Frame) {
 	defer func() {
 		if e := recover(); e != nil {
-			f.Release()
 			logger.Warnf("send frame failed: %s\n", e)
 		}
 	}()
@@ -832,8 +801,6 @@ func (p *DuplexRSocket) sendPayload(
 	sending payload.Payload,
 	frameFlag framing.FrameFlag,
 ) {
-	defer sending.Release()
-
 	d := sending.Data()
 	m, _ := sending.Metadata()
 	size := framing.CalcPayloadFrameSize(d, m)
@@ -870,7 +837,6 @@ func (p *DuplexRSocket) drainWithKeepalive() (ok bool) {
 				logger.Errorf("send keepalive frame failed: %s\n", err.Error())
 			}
 		}
-		out.Release()
 	case out, ok = <-p.outs:
 		if !ok {
 			return
@@ -880,8 +846,6 @@ func (p *DuplexRSocket) drainWithKeepalive() (ok bool) {
 		} else if err := p.tp.Send(out, true); err != nil {
 			logger.Errorf("send frame failed: %s\n", err.Error())
 			p.outsPriority = append(p.outsPriority, out)
-		} else {
-			out.Release()
 		}
 	}
 	return
@@ -925,7 +889,6 @@ func (p *DuplexRSocket) drainOne(out framing.Frame) (wrote bool) {
 		return
 	}
 	wrote = true
-	out.Release()
 	return
 }
 
@@ -934,9 +897,6 @@ func (p *DuplexRSocket) drainOutBack() {
 		return
 	}
 	defer func() {
-		for i := range p.outsPriority {
-			p.outsPriority[i].Release()
-		}
 		p.outsPriority = p.outsPriority[:0]
 	}()
 	if p.tp == nil {
@@ -950,7 +910,6 @@ func (p *DuplexRSocket) drainOutBack() {
 				logger.Errorf("send frame failed: %v\n", err)
 			}
 		}
-		out.Release()
 	}
 	if err := p.tp.Flush(); err != nil {
 		logger.Errorf("flush failed: %v\n", err)
@@ -981,7 +940,6 @@ func (p *DuplexRSocket) loopWriteWithKeepaliver(ctx context.Context) error {
 					logger.Errorf("send keepalive frame failed: %s\n", err.Error())
 				}
 			}
-			kf.Release()
 		default:
 		}
 		p.drainOutBack()
@@ -993,13 +951,7 @@ func (p *DuplexRSocket) loopWriteWithKeepaliver(ctx context.Context) error {
 }
 
 func (p *DuplexRSocket) cleanOuts() {
-	for _, value := range p.outsPriority {
-		value.Release()
-	}
 	p.outsPriority = nil
-	for value := range p.outs {
-		value.Release()
-	}
 }
 
 func (p *DuplexRSocket) loopWrite(ctx context.Context) error {

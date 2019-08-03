@@ -132,7 +132,6 @@ func TestProxy_BlockLast(t *testing.T) {
 	}).BlockLast(context.Background())
 	assert.NoError(t, err, "err occurred")
 	log.Println(last)
-	last.Release()
 }
 
 func TestFluxProcessorWithRequest(t *testing.T) {

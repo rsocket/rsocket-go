@@ -139,8 +139,6 @@ func (p *implClientBuilder) MetadataMimeType(mime string) ClientBuilder {
 }
 
 func (p *implClientBuilder) SetupPayload(setup payload.Payload) ClientBuilder {
-	defer setup.Release()
-
 	p.setup.Data = nil
 	p.setup.Metadata = nil
 

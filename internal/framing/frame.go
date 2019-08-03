@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/rsocket/rsocket-go/internal/common"
-	"github.com/rsocket/rsocket-go/logger"
 )
 
 var errIncompleteFrame = errors.New("incomplete frame")
@@ -128,8 +127,6 @@ type Frame interface {
 	// Header returns frame FrameHeader.
 	Header() FrameHeader
 	Body() *common.ByteBuff
-	// Release release resources of frame.
-	Release()
 	// Len returns length of frame.
 	Len() int
 	// Validate returns error if frame is invalid.
@@ -148,7 +145,6 @@ type Frame interface {
 type BaseFrame struct {
 	header   FrameHeader
 	body     *common.ByteBuff
-	released chan struct{}
 }
 
 // IsResumable returns true if frame supports resume.
@@ -207,40 +203,12 @@ func (p *BaseFrame) Bytes() []byte {
 	return append(p.header[:], p.body.Bytes()...)
 }
 
-// Release release resources of frame.
-func (p *BaseFrame) Release() {
-	if p.body == nil {
-		return
-	}
-	select {
-	case <-p.released:
-		return
-	default:
-		foo := p.body
-		p.body = nil
-		close(p.released)
-		common.ReturnByteBuffer(foo)
-		if debugLeak && logger.IsDebugEnabled() {
-			logger.Debugf("release: %p %s\n", p, p.header)
-		}
-	}
-}
-
-var debugLeak = false
-
-func (p *BaseFrame) ReleaseNotify() <-chan struct{} {
-	return p.released
-}
 
 // NewBaseFrame returns a new BaseFrame.
 func NewBaseFrame(h FrameHeader, body *common.ByteBuff) (f *BaseFrame) {
 	f = &BaseFrame{
 		header:   h,
 		body:     body,
-		released: make(chan struct{}),
-	}
-	if debugLeak && logger.IsDebugEnabled() {
-		logger.Debugf("create: %p %s\n", f, h)
 	}
 	return
 }

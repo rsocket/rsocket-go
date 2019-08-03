@@ -83,13 +83,11 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 	if len(p.setup.Token) < 1 || connects == 1 {
 		tp.HandleError0(func(frame framing.Frame) (err error) {
 			p.markClosing()
-			frame.Release()
 			return
 		})
 
 		f = p.setup.ToFrame()
 		err = tp.Send(f, true)
-		f.Release()
 		p.socket.SetTransport(tp)
 		return
 	}
@@ -105,7 +103,6 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 
 	tp.HandleResumeOK(func(frame framing.Frame) (err error) {
 		close(resumeErr)
-		frame.Release()
 		return
 	})
 
@@ -116,12 +113,10 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 			resumeErr <- f.Error()
 			close(resumeErr)
 		}
-		frame.Release()
 		return
 	})
 
 	err = tp.Send(f, true)
-	f.Release()
 	if err != nil {
 		return err
 	}

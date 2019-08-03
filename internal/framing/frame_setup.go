@@ -154,64 +154,52 @@ func NewFrameSetup(
 	metadata []byte,
 ) *FrameSetup {
 	var fg FrameFlag
-	bf := common.BorrowByteBuffer()
+	bf := common.New()
 	if _, err := bf.Write(version.Bytes()); err != nil {
-		common.ReturnByteBuffer(bf)
 		panic(err)
 	}
 	var b4 [4]byte
 	binary.BigEndian.PutUint32(b4[:], uint32(timeBetweenKeepalive.Nanoseconds()/1e6))
 	if _, err := bf.Write(b4[:]); err != nil {
-		common.ReturnByteBuffer(bf)
 		panic(err)
 	}
 	binary.BigEndian.PutUint32(b4[:], uint32(maxLifetime.Nanoseconds()/1e6))
 	if _, err := bf.Write(b4[:]); err != nil {
-		common.ReturnByteBuffer(bf)
 		panic(err)
 	}
 	if len(token) > 0 {
 		fg |= FlagResume
 		binary.BigEndian.PutUint16(b4[:2], uint16(len(token)))
 		if _, err := bf.Write(b4[:2]); err != nil {
-			common.ReturnByteBuffer(bf)
 			panic(err)
 		}
 		if _, err := bf.Write(token); err != nil {
-			common.ReturnByteBuffer(bf)
 			panic(err)
 		}
 	}
 	if err := bf.WriteByte(byte(len(mimeMetadata))); err != nil {
-		common.ReturnByteBuffer(bf)
 		panic(err)
 	}
 	if _, err := bf.Write(mimeMetadata); err != nil {
-		common.ReturnByteBuffer(bf)
 		panic(err)
 	}
 	if err := bf.WriteByte(byte(len(mimeData))); err != nil {
-		common.ReturnByteBuffer(bf)
 		panic(err)
 	}
 	if _, err := bf.Write(mimeData); err != nil {
-		common.ReturnByteBuffer(bf)
 		panic(err)
 	}
 	if len(metadata) > 0 {
 		fg |= FlagMetadata
 		if err := bf.WriteUint24(len(metadata)); err != nil {
-			common.ReturnByteBuffer(bf)
 			panic(err)
 		}
 		if _, err := bf.Write(metadata); err != nil {
-			common.ReturnByteBuffer(bf)
 			panic(err)
 		}
 	}
 	if len(data) > 0 {
 		if _, err := bf.Write(data); err != nil {
-			common.ReturnByteBuffer(bf)
 			panic(err)
 		}
 	}

@@ -21,7 +21,7 @@ func TestFramePayload_Basic(t *testing.T) {
 	_, _ = f.WriteTo(bf)
 	bs := bf.Bytes()
 
-	bb := common.BorrowByteBuffer()
+	bb := common.New()
 	_, _ = bb.Write(bs[HeaderLen:])
 	f2 := &FramePayload{
 		NewBaseFrame(ParseFrameHeader(bs[:HeaderLen]), bb),

@@ -71,17 +71,6 @@ func (p *implJoiner) DataUTF8() (data string) {
 	return
 }
 
-func (p *implJoiner) Release() {
-	for {
-		cur := p.root.Front()
-		if cur == nil {
-			break
-		}
-		v := p.root.Remove(cur).(HeaderAndPayload)
-		v.Release()
-	}
-}
-
 func (p *implJoiner) Push(elem HeaderAndPayload) (end bool) {
 	p.root.PushBack(elem)
 	h := elem.Header()

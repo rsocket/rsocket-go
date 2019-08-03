@@ -47,7 +47,6 @@ func (p proxy) Block(ctx context.Context) (pa payload.Payload, err error) {
 	// To prevent bytebuff leak, clone it.
 	vv := v.(payload.Payload)
 	pa = payload.Clone(vv)
-	vv.Release()
 	return
 }
 

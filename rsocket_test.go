@@ -10,7 +10,6 @@ import (
 
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	. "github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/internal/common"
 	. "github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -101,7 +100,7 @@ func testRequestChannel(ctx context.Context, cli Client, t *testing.T) {
 
 	var seq int
 
-	last, err := cli.RequestChannel(send).
+	_, err := cli.RequestChannel(send).
 		DoOnNext(func(elem Payload) {
 			log.Println(elem)
 			m, _ := elem.MetadataUTF8()
@@ -111,7 +110,6 @@ func testRequestChannel(ctx context.Context, cli Client, t *testing.T) {
 		}).
 		BlockLast(ctx)
 	require.NoError(t, err, "block last failed")
-	last.Release()
 }
 
 func testRequestChannelOneByOne(ctx context.Context, cli Client, t *testing.T) {
@@ -234,6 +232,4 @@ func testAll(proto string, addr string, t *testing.T) {
 		testRequestChannelOneByOne(ctx, cli, t)
 	})
 
-	time.Sleep(1 * time.Second)
-	require.Equal(t, 0, common.CountByteBuffer(), "bytebuff leak")
 }

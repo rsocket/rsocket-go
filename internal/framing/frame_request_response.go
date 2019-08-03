@@ -48,21 +48,18 @@ func (p *FrameRequestResponse) DataUTF8() string {
 // NewFrameRequestResponse returns a new RequestResponse frame.
 func NewFrameRequestResponse(id uint32, data, metadata []byte, flags ...FrameFlag) *FrameRequestResponse {
 	fg := newFlags(flags...)
-	bf := common.BorrowByteBuffer()
+	bf := common.New()
 	if len(metadata) > 0 {
 		fg |= FlagMetadata
 		if err := bf.WriteUint24(len(metadata)); err != nil {
-			common.ReturnByteBuffer(bf)
 			panic(err)
 		}
 		if _, err := bf.Write(metadata); err != nil {
-			common.ReturnByteBuffer(bf)
 			panic(err)
 		}
 	}
 	if len(data) > 0 {
 		if _, err := bf.Write(data); err != nil {
-			common.ReturnByteBuffer(bf)
 			panic(err)
 		}
 	}

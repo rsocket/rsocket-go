@@ -10,8 +10,7 @@ import (
 
 func TestDecodeCompositeMetadata(t *testing.T) {
 	const mod = 3
-	bf := common.BorrowByteBuffer()
-	defer common.ReturnByteBuffer(bf)
+	bf := common.New()
 	for i := 0; i < 10; i++ {
 		var cm CompositeMetadata
 		if i%mod == 0 {

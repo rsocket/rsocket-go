@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/rsocket/rsocket-go/internal/common"
-	"github.com/rsocket/rsocket-go/internal/framing"
 )
 
 var (
@@ -17,16 +16,10 @@ var (
 )
 
 type (
-	Releasable interface {
-		// Release release all resources of payload.
-		// Some payload implements is pooled, so you must release resoures after using it.
-		Release()
-	}
 	// Payload is a stream message (upstream or downstream).
 	// It contains data associated with a stream created by a previous request.
 	// In Reactive Streams and Rx this is the 'onNext' event.
 	Payload interface {
-		Releasable
 		// Metadata returns raw metadata bytes.
 		// The ok result indicates whether metadata exists.
 		Metadata() (metadata []byte, ok bool)
@@ -77,17 +70,6 @@ func New(data []byte, metadata []byte) Payload {
 		data:     data,
 		metadata: metadata,
 	}
-}
-
-// NewPooled returns a pooled payload.
-// Remember call Release() at last.
-// Sometimes payload will be released automatically. (eg: sent by a requester).
-func NewPooled(data, metadata []byte) Payload {
-	size := framing.CalcPayloadFrameSize(data, metadata)
-	if size > common.MaxUint24-3 {
-		panic(errTooLargePooledPayload)
-	}
-	return framing.NewFramePayload(0, data, metadata)
 }
 
 // NewString create a new payload with strings.

@@ -11,9 +11,6 @@ var EmptyRawSubscriber rs.Subscriber
 func init() {
 	EmptySubscriber = &subscriber{}
 	EmptyRawSubscriber = rs.NewSubscriber(rs.OnNext(func(v interface{}) {
-		if vv, ok := v.(payload.Payload); ok {
-			vv.Release()
-		}
 	}))
 }
 
@@ -34,16 +31,12 @@ type subscriber struct {
 }
 
 func (s *subscriber) OnNext(payload payload.Payload) {
-	defer payload.Release()
 	if s != nil && s.fnOnNext != nil {
 		s.fnOnNext(payload)
 	}
 }
 
 func (s *subscriber) OnError(err error) {
-	if r, ok := err.(payload.Releasable); ok {
-		defer r.Release()
-	}
 	if s != nil && s.fnOnError != nil {
 		s.fnOnError(err)
 	}

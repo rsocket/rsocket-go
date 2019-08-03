@@ -36,7 +36,6 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 	}(ctx)
 	setupFrame := setup.ToFrame()
 	err = p.socket.tp.Send(setupFrame, true)
-	setupFrame.Release()
 	return
 }
 
