@@ -28,7 +28,7 @@ var testData = "Hello World!"
 func TestAllInOne(t *testing.T) {
 	//logger.SetLevel(logger.LevelDebug)
 	addresses := map[string]string{
-		//"unix":      "unix:///tmp/rsocket.test.sock",
+		"unix":      "unix:///tmp/rsocket.test.sock",
 		"tcp":       "tcp://localhost:7878",
 		"websocket": "ws://localhost:8080/test",
 	}

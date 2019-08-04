@@ -73,9 +73,9 @@ func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame func(idx
 				x := common.NewUint24(wroteM)
 				for i := 0; i < len(x); i++ {
 					if idx == 0 {
-						bf.B[i+skip] = x[i]
+						bf.Bytes()[i+skip] = x[i]
 					} else {
-						bf.B[i] = x[i]
+						bf.Bytes()[i] = x[i]
 					}
 				}
 				fg |= framing.FlagMetadata

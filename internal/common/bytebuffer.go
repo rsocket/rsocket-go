@@ -1,33 +1,30 @@
 package common
 
 import (
+	"bytes"
 	"io"
 )
 
-type ByteBuff struct {
-	// B is a byte buffer to use in append-like workloads.
-	// See example code for details.
-	B []byte
+// ByteBuff provides byte buffer, which can be used for minimizing.
+type ByteBuff bytes.Buffer
+
+func (p *ByteBuff) pp() *bytes.Buffer {
+	return (*bytes.Buffer)(p)
 }
 
 // Len returns size of ByteBuff.
 func (p *ByteBuff) Len() (n int) {
-	if p != nil {
-		n = len(p.B)
-	}
-	return
+	return p.pp().Len()
 }
 
 // WriteTo write bytes to writer.
 func (p *ByteBuff) WriteTo(w io.Writer) (int64, error) {
-	n, err := w.Write(p.B)
-	return int64(n), err
+	return p.pp().WriteTo(w)
 }
 
 // Writer write bytes to current ByteBuff.
 func (p *ByteBuff) Write(bs []byte) (int, error) {
-	p.B = append(p.B, bs...)
-	return len(bs), nil
+	return p.pp().Write(bs)
 }
 
 // WriteUint24 encode and write Uint24 to current ByteBuff.
@@ -39,21 +36,15 @@ func (p *ByteBuff) WriteUint24(n int) (err error) {
 
 // WriteByte write a byte to current ByteBuff.
 func (p *ByteBuff) WriteByte(b byte) error {
-	p.B = append(p.B, b)
-	return nil
-}
-
-// Reset clean all bytes.
-func (p *ByteBuff) Reset() {
-	p.B = p.B[:0]
+	return p.pp().WriteByte(b)
 }
 
 // Bytes returns all bytes in ByteBuff.
 func (p *ByteBuff) Bytes() []byte {
-	return p.B
+	return p.pp().Bytes()
 }
 
 // New borrows a ByteBuff from pool.
-func New() (bb *ByteBuff) {
-	return &ByteBuff{}
+func New() *ByteBuff {
+	return (*ByteBuff)(&bytes.Buffer{})
 }

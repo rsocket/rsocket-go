@@ -75,10 +75,6 @@ func (p *DuplexRSocket) Close() (err error) {
 		p.cond.Broadcast()
 		p.cond.L.Unlock()
 
-		if p.tp != nil {
-			err = p.tp.Close()
-		}
-
 		p.messages.Range(func(key uint32, value interface{}) bool {
 			if cc, ok := value.(io.Closer); ok {
 				_ = cc.Close()
@@ -91,8 +87,11 @@ func (p *DuplexRSocket) Close() (err error) {
 			return true
 		})
 		_ = p.fragments.Close()
-
 		<-p.done
+
+		if p.tp != nil {
+			err = p.tp.Close()
+		}
 	})
 	return
 }
@@ -217,9 +216,9 @@ func (p *DuplexRSocket) RequestStream(sending payload.Payload) (ret flux.Flux) {
 			if !newborn {
 				frameN := framing.NewFrameRequestN(sid, n32)
 				p.sendFrame(frameN)
+				<-frameN.DoneNotify()
 				return
 			}
-
 
 			data := sending.Data()
 			metadata, _ := sending.Metadata()
@@ -276,6 +275,7 @@ func (p *DuplexRSocket) RequestChannel(publisher rx.Publisher) (ret flux.Flux) {
 			if !newborn {
 				frameN := framing.NewFrameRequestN(sid, n32)
 				p.sendFrame(frameN)
+				<-frameN.DoneNotify()
 				return
 			}
 
@@ -433,6 +433,7 @@ func (p *DuplexRSocket) respondRequestChannel(pl fragmentation.HeaderAndPayload)
 		DoOnRequest(func(n int) {
 			frameN := framing.NewFrameRequestN(sid, toU32N(n))
 			p.sendFrame(frameN)
+			<-frameN.DoneNotify()
 		})
 
 	// TODO: if receiving == sending ???
@@ -589,8 +590,7 @@ func (p *DuplexRSocket) SetResponder(responder Responder) {
 
 func (p *DuplexRSocket) onFrameKeepalive(frame framing.Frame) (err error) {
 	f := frame.(*framing.FrameKeepalive)
-	if !f.Header().Flag().Check(framing.FlagRespond) {
-	} else {
+	if f.Header().Flag().Check(framing.FlagRespond) {
 		f.SetHeader(framing.NewFrameHeader(0, framing.FrameTypeKeepalive))
 		p.sendFrame(f)
 	}
@@ -823,7 +823,7 @@ func (p *DuplexRSocket) sendPayload(
 }
 
 func (p *DuplexRSocket) drainWithKeepalive() (ok bool) {
-	if len(p.outs) == cap(p.outs) {
+	if len(p.outs) > 0 {
 		p.drain()
 	}
 	var out framing.Frame
@@ -854,10 +854,9 @@ func (p *DuplexRSocket) drainWithKeepalive() (ok bool) {
 func (p *DuplexRSocket) drain() (ok bool) {
 	var out framing.Frame
 	var flush bool
-	// when channel is full
-	cycle := 1
-	if n := len(p.outs); n == cap(p.outs) {
-		cycle = n
+	cycle := len(p.outs)
+	if cycle < 1 {
+		cycle = 1
 	}
 	for i := 0; i < cycle; i++ {
 		out, ok = <-p.outs
