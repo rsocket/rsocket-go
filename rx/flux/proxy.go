@@ -84,15 +84,6 @@ func (p proxy) BlockLast(ctx context.Context) (last payload.Payload, err error) 
 		}).
 		SubscribeWith(ctx, sub)
 	<-done
-	if err != nil && last != nil {
-		last = nil
-	}
-	// To prevent bytebuff leak, clone it.
-	if last != nil {
-		origin := last
-		last = payload.Clone(origin)
-	}
-
 	return
 }
 

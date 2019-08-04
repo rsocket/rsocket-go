@@ -139,12 +139,22 @@ type Frame interface {
 	Bytes() []byte
 	// IsResumable returns true if frame supports resume.
 	IsResumable() bool
+	Done()
+	DoneNotify() <-chan struct{}
 }
 
 // BaseFrame is basic frame implementation.
 type BaseFrame struct {
-	header   FrameHeader
-	body     *common.ByteBuff
+	header FrameHeader
+	body   *common.ByteBuff
+	done   chan struct{}
+}
+
+func (p *BaseFrame) Done() {
+	close(p.done)
+}
+func (p *BaseFrame) DoneNotify() <-chan struct{} {
+	return p.done
 }
 
 // IsResumable returns true if frame supports resume.
@@ -203,12 +213,12 @@ func (p *BaseFrame) Bytes() []byte {
 	return append(p.header[:], p.body.Bytes()...)
 }
 
-
 // NewBaseFrame returns a new BaseFrame.
 func NewBaseFrame(h FrameHeader, body *common.ByteBuff) (f *BaseFrame) {
 	f = &BaseFrame{
-		header:   h,
-		body:     body,
+		header: h,
+		body:   body,
+		done:   make(chan struct{}),
 	}
 	return
 }
