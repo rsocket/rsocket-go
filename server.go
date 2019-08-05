@@ -3,7 +3,6 @@ package rsocket
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"time"
 
 	"github.com/rsocket/rsocket-go/internal/common"
@@ -269,7 +268,7 @@ func (p *server) doResume(frame *framing.FrameResume, tp *transport.Transport, s
 		sending = framing.NewFrameError(
 			0,
 			common.ErrorCodeRejectedResume,
-			common.Str2bytes(fmt.Sprintf("no such session")),
+			[]byte("no such session"),
 		)
 	}
 	if err := tp.Send(sending, true); err != nil {

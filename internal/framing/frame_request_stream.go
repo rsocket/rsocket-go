@@ -49,14 +49,14 @@ func (p *FrameRequestStream) Data() []byte {
 func (p *FrameRequestStream) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := p.Metadata()
 	if ok {
-		metadata = common.Bytes2str(raw)
+		metadata = string(raw)
 	}
 	return
 }
 
 // DataUTF8 returns data as UTF8 string.
 func (p *FrameRequestStream) DataUTF8() string {
-	return common.Bytes2str(p.Data())
+	return string(p.Data())
 }
 
 // NewFrameRequestStream returns a new request stream frame.

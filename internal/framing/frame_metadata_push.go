@@ -37,7 +37,7 @@ func (p *FrameMetadataPush) Data() []byte {
 func (p *FrameMetadataPush) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := p.Metadata()
 	if ok {
-		metadata = common.Bytes2str(raw)
+		metadata = string(raw)
 	}
 	return
 }

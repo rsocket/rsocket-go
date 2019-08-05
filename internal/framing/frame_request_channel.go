@@ -50,14 +50,14 @@ func (p *FrameRequestChannel) Data() []byte {
 func (p *FrameRequestChannel) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := p.Metadata()
 	if ok {
-		metadata = common.Bytes2str(raw)
+		metadata = string(raw)
 	}
 	return
 }
 
 // DataUTF8 returns data as UTF8 string.
 func (p *FrameRequestChannel) DataUTF8() string {
-	return common.Bytes2str(p.Data())
+	return string(p.Data())
 }
 
 // NewFrameRequestChannel returns a new RequestChannel frame.
