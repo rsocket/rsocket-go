@@ -14,7 +14,10 @@ rsocket-go is an implementation of the [RSocket](http://rsocket.io/) protocol in
  - Design For Golang.
  - Thin [reactive-streams](http://www.reactive-streams.org/) implementation.
  - Simulate Java SDK API.
-
+ - Fast CLI (Compatible with [https://github.com/rsocket/rsocket-cli](https://github.com/rsocket/rsocket-cli/)). 
+   - Installation: `go get github.com/rsocket/rsocket-go/cmd/rsocket-cli`
+   - Example: `rsocket-cli --request -i hello_world --setup setup_me tcp://127.0.0.1:7878`
+ 
 ## Getting started
 
 > Start an echo server
