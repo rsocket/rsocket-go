@@ -35,6 +35,8 @@ type (
 		Resume(opts ...OpServerResume) ServerBuilder
 		// Acceptor register server acceptor which is used to handle incoming RSockets.
 		Acceptor(acceptor ServerAcceptor) ServerTransportBuilder
+		// OnStart register a handler when serve success.
+		OnStart(onStart func()) ServerBuilder
 	}
 
 	// ServerTransportBuilder is used to build a RSocket server with custom Transport string.
@@ -99,6 +101,14 @@ type server struct {
 	acc        ServerAcceptor
 	sm         *session.Manager
 	done       chan struct{}
+	onServe    []func()
+}
+
+func (p *server) OnStart(onStart func()) ServerBuilder {
+	if onStart != nil {
+		p.onServe = append(p.onServe, onStart)
+	}
+	return p
 }
 
 func (p *server) Resume(opts ...OpServerResume) ServerBuilder {
@@ -209,7 +219,15 @@ func (p *server) serve(ctx context.Context, tc *tls.Config) error {
 			logger.Warnf("transport exit: %s\n", err.Error())
 		}
 	})
-	return t.Listen(ctx)
+
+	serveNotifier := make(chan struct{})
+	go func(c <-chan struct{}, fn []func()) {
+		<-c
+		for i := range fn {
+			fn[i]()
+		}
+	}(serveNotifier, p.onServe)
+	return t.Listen(ctx, serveNotifier)
 }
 
 func (p *server) doSetup(

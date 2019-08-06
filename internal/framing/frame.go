@@ -128,6 +128,7 @@ type Frame interface {
 	io.WriterTo
 	// Header returns frame FrameHeader.
 	Header() FrameHeader
+	// Body returns body of frame.
 	Body() *common.ByteBuff
 	// Len returns length of frame.
 	Len() int
@@ -141,7 +142,9 @@ type Frame interface {
 	Bytes() []byte
 	// IsResumable returns true if frame supports resume.
 	IsResumable() bool
+	// Done marks current frame has been sent.
 	Done()
+	// DoneNotify notifies when frame done.
 	DoneNotify() <-chan struct{}
 }
 

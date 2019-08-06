@@ -97,7 +97,6 @@ func (p *tcpConn) Write(frame framing.Frame) (err error) {
 }
 
 func (p *tcpConn) Close() error {
-	_ = p.Flush()
 	return p.rawConn.Close()
 }
 

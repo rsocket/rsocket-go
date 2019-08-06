@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"io"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -25,14 +26,14 @@ type wsServerTransport struct {
 	path      string
 	acceptor  ServerTransportAcceptor
 	onceClose sync.Once
-	server    *http.Server
+	listener  net.Listener
 	tls       *tls.Config
 }
 
 func (p *wsServerTransport) Close() (err error) {
 	p.onceClose.Do(func() {
-		if p.server != nil {
-			err = p.server.Shutdown(context.Background())
+		if p.listener != nil {
+			err = p.listener.Close()
 		}
 	})
 	return
@@ -42,7 +43,7 @@ func (p *wsServerTransport) Accept(acceptor ServerTransportAcceptor) {
 	p.acceptor = acceptor
 }
 
-func (p *wsServerTransport) Listen(ctx context.Context) (err error) {
+func (p *wsServerTransport) Listen(ctx context.Context, notifier chan<- struct{}) (err error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc(p.path, func(w http.ResponseWriter, r *http.Request) {
 		c, err := upgrader.Upgrade(w, r, nil)
@@ -57,15 +58,18 @@ func (p *wsServerTransport) Listen(ctx context.Context) (err error) {
 		}(c, ctx)
 	})
 
-	p.server = &http.Server{
-		Addr:    p.addr,
-		Handler: mux,
+	if p.tls == nil {
+		p.listener, err = net.Listen("tcp", p.addr)
+	} else {
+		p.listener, err = tls.Listen("tcp", p.addr, p.tls)
 	}
 
-	if p.tls != nil {
-		p.server.TLSConfig = p.tls
-		p.server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+	if err != nil {
+		err = errors.Wrap(err, "server listen failed")
+		return
 	}
+
+	notifier <- struct{}{}
 
 	stop := make(chan struct{})
 	ctx, cancel := context.WithCancel(ctx)
@@ -77,11 +81,8 @@ func (p *wsServerTransport) Listen(ctx context.Context) (err error) {
 		}()
 		<-ctx.Done()
 	}(ctx, stop)
-	if p.tls == nil {
-		err = p.server.ListenAndServe()
-	} else {
-		err = p.server.ListenAndServeTLS("", "")
-	}
+
+	err = http.Serve(p.listener, mux)
 	if err == io.EOF || isClosedErr(err) {
 		err = nil
 	} else {

@@ -264,7 +264,6 @@ func (p *DuplexRSocket) RequestChannel(publisher rx.Publisher) (ret flux.Flux) {
 		}).
 		DoOnRequest(func(n int) {
 			n32 := toU32N(n)
-
 			var newborn bool
 			select {
 			case <-rcvRequested:
@@ -330,7 +329,11 @@ func (p *DuplexRSocket) RequestChannel(publisher rx.Publisher) (ret flux.Flux) {
 					// TODO: handle cancel or error
 					switch sig {
 					case rx.SignalComplete:
-						p.sendFrame(framing.NewFramePayload(sid, nil, nil, framing.FlagComplete))
+						complete := framing.NewFramePayload(sid, nil, nil, framing.FlagComplete)
+						p.sendFrame(complete)
+						<-complete.DoneNotify()
+					default:
+						panic(fmt.Errorf("unsupported sending channel signal: %s", sig))
 					}
 				}).
 				SubscribeOn(scheduler.Elastic()).
@@ -413,20 +416,20 @@ func (p *DuplexRSocket) respondRequestChannel(pl fragmentation.HeaderAndPayload)
 	}
 
 	sid := pl.Header().StreamID()
-	rcvProc := flux.CreateProcessor()
+	receivingProcessor := flux.CreateProcessor()
 
-	p.singleScheduler.Worker().Do(func() {
-		rcvProc.Next(pl)
-	})
+	ch := make(chan struct{}, 2)
 
-	rcvDone, sndDone := make(chan struct{}), make(chan struct{})
-
-	receiving := rcvProc.
+	receiving := receivingProcessor.
 		DoFinally(func(s rx.SignalType) {
-			close(rcvDone)
+			ch <- struct{}{}
+			<-ch
 			select {
-			case <-sndDone:
-				p.unregister(sid)
+			case _, ok := <-ch:
+				if ok {
+					close(ch)
+					p.unregister(sid)
+				}
 			default:
 			}
 		}).
@@ -436,8 +439,11 @@ func (p *DuplexRSocket) respondRequestChannel(pl fragmentation.HeaderAndPayload)
 			<-frameN.DoneNotify()
 		})
 
-	// TODO: if receiving == sending ???
+	p.singleScheduler.Worker().Do(func() {
+		receivingProcessor.Next(pl)
+	})
 
+	// TODO: if receiving == sending ???
 	sending, err := func() (flux flux.Flux, err error) {
 		defer func() {
 			err = tryRecover(recover())
@@ -454,32 +460,45 @@ func (p *DuplexRSocket) respondRequestChannel(pl fragmentation.HeaderAndPayload)
 		return nil
 	}
 
+	// Ensure registering message success before func end.
+	mustSub := make(chan struct{})
+
 	sub := rx.NewSubscriber(
 		rx.OnError(func(e error) {
 			p.writeError(sid, err)
 		}),
 		rx.OnComplete(func() {
-			p.sendFrame(framing.NewFramePayload(sid, nil, nil, framing.FlagComplete))
+			complete := framing.NewFramePayload(sid, nil, nil, framing.FlagComplete)
+			p.sendFrame(complete)
+			<-complete.DoneNotify()
 		}),
 		rx.OnSubscribe(func(s rx.Subscription) {
-			p.register(sid, resRC{rcv: rcvProc, snd: s})
+			p.register(sid, resRC{rcv: receivingProcessor, snd: s})
+			close(mustSub)
 			s.Request(initRequestN)
 		}),
-		p.toSender(sid, framing.FlagNext),
+		rx.OnNext(func(elem payload.Payload) {
+			p.sendPayload(sid, elem, framing.FlagNext)
+		}),
 	)
 
 	sending.
 		DoFinally(func(s rx.SignalType) {
-			close(sndDone)
+			ch <- struct{}{}
+			<-ch
 			select {
-			case <-rcvDone:
-				p.unregister(sid)
+			case _, ok := <-ch:
+				if ok {
+					close(ch)
+					p.unregister(sid)
+				}
 			default:
 			}
 		}).
 		SubscribeOn(scheduler.Elastic()).
 		SubscribeWith(context.Background(), sub)
 
+	<-mustSub
 	return nil
 }
 
@@ -552,7 +571,9 @@ func (p *DuplexRSocket) respondRequestStream(receiving fragmentation.HeaderAndPa
 	}
 
 	sub := rx.NewSubscriber(
-		p.toSender(sid, framing.FlagNext),
+		rx.OnNext(func(elem payload.Payload) {
+			p.sendPayload(sid, elem, framing.FlagNext)
+		}),
 		rx.OnSubscribe(func(s rx.Subscription) {
 			p.register(sid, resRS{su: s})
 			s.Request(n32)
@@ -712,7 +733,7 @@ func (p *DuplexRSocket) onFramePayload(frame framing.Frame) error {
 	sid := h.StreamID()
 	v, ok := p.messages.Load(sid)
 	if !ok {
-		logger.Warnf("unoccupied Payload(id=%d), maybe it has been canceled", sid)
+		logger.Warnf("unoccupied Payload(id=%d), maybe it has been canceled(server=%T)\n", sid, p.sids)
 		return nil
 	}
 
@@ -781,12 +802,6 @@ func (p *DuplexRSocket) SetTransport(tp *transport.Transport) {
 	p.cond.L.Unlock()
 }
 
-func (p *DuplexRSocket) toSender(sid uint32, fg framing.FrameFlag) rx.SubscriberOption {
-	return rx.OnNext(func(elem payload.Payload) {
-		p.sendPayload(sid, elem, fg)
-	})
-}
-
 func (p *DuplexRSocket) sendFrame(f framing.Frame) {
 	defer func() {
 		if e := recover(); e != nil {
@@ -820,6 +835,7 @@ func (p *DuplexRSocket) sendPayload(
 			BaseFrame: framing.NewBaseFrame(h, body),
 		})
 	})
+	return
 }
 
 func (p *DuplexRSocket) drainWithKeepalive() (ok bool) {
