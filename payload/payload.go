@@ -1,18 +1,10 @@
 package payload
 
 import (
-	"errors"
-	"fmt"
 	"io/ioutil"
-	"os"
 	"time"
 
 	"github.com/rsocket/rsocket-go/internal/common"
-)
-
-var (
-	errNotFile               = errors.New("target is not file")
-	errTooLargePooledPayload = fmt.Sprintf("too large pooled payload: maximum size is %d", common.MaxUint24-3)
 )
 
 type (
@@ -82,17 +74,6 @@ func NewString(data, metadata string) Payload {
 
 // NewFile create a new payload from file.
 func NewFile(filename string, metadata []byte) (Payload, error) {
-	fi, err := os.Stat(filename)
-	if err != nil {
-		return nil, err
-	}
-	if fi.IsDir() {
-		return nil, errNotFile
-	}
-	// Check file size
-	//if fi.Size() > common.MaxUint24 {
-	//	return nil, errTooLargeFile
-	//}
 	bs, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err

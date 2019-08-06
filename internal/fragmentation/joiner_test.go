@@ -12,7 +12,6 @@ func TestFragmentPayload(t *testing.T) {
 	const totals = 10
 	const sid = uint32(1)
 	fr := NewJoiner(framing.NewFramePayload(sid, []byte("(ROOT)"), []byte("(ROOT)"), framing.FlagFollow, framing.FlagMetadata))
-	defer fr.Release()
 	for i := 0; i < totals; i++ {
 		data := fmt.Sprintf("(data%04d)", i)
 		var frame *framing.FramePayload

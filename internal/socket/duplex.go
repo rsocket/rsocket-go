@@ -835,7 +835,6 @@ func (p *DuplexRSocket) sendPayload(
 			BaseFrame: framing.NewBaseFrame(h, body),
 		})
 	})
-	return
 }
 
 func (p *DuplexRSocket) drainWithKeepalive() (ok bool) {

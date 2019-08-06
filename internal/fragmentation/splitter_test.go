@@ -15,7 +15,6 @@ func TestSplitter_Split(t *testing.T) {
 
 	joiner, err := split2joiner(mtu, data, metadata)
 	assert.NoError(t, err, "split failed")
-	defer joiner.Release()
 
 	m, ok := joiner.Metadata()
 	assert.True(t, ok, "bad metadata")

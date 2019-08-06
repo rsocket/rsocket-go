@@ -13,8 +13,6 @@ func TestDecode_Payload(t *testing.T) {
 	//s := "000000012940000005776f726c6468656c6c6f" // go
 	s := "00000001296000000966726f6d5f6a617661706f6e67" //java
 
-
-
 	bs, err := hex.DecodeString(s)
 	assert.NoError(t, err, "bad bytes")
 	h := ParseFrameHeader(bs[:HeaderLen])
@@ -24,15 +22,5 @@ func TestDecode_Payload(t *testing.T) {
 	pl := &FramePayload{
 		BaseFrame: NewBaseFrame(h, bf),
 	}
-	defer pl.Release()
 	log.Println(pl)
-
-
-
-
-
-
-
-
-
 }
