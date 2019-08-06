@@ -35,7 +35,7 @@ func (p *tcpServerTransport) Close() (err error) {
 	return
 }
 
-func (p *tcpServerTransport) Listen(ctx context.Context) (err error) {
+func (p *tcpServerTransport) Listen(ctx context.Context, notifier chan<- struct{}) (err error) {
 	if p.tls == nil {
 		p.listener, err = net.Listen(p.network, p.addr)
 		if err != nil {
@@ -49,6 +49,7 @@ func (p *tcpServerTransport) Listen(ctx context.Context) (err error) {
 			return
 		}
 	}
+	notifier <- struct{}{}
 	return p.listen(ctx)
 }
 

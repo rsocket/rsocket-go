@@ -4,14 +4,15 @@ import (
 	"context"
 	"fmt"
 	"log"
+	//_ "net/http/pprof"
+	"strconv"
+
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
-	//_ "net/http/pprof"
-	"strconv"
 )
 
 const ListenAt = "tcp://127.0.0.1:7878"
@@ -24,10 +25,12 @@ func main() {
 	//	log.Println(http.ListenAndServe(":4444", nil))
 	//}()
 	//logger.SetLevel(logger.LevelDebug)
-	//go common.TraceByteBuffLeak(context.Background(), 10*time.Second)
 	err := rsocket.Receive().
 		//Fragment(65535).
 		//Resume().
+		OnStart(func() {
+			log.Println("server is listening:", ListenAt)
+		}).
 		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) rsocket.RSocket {
 			//log.Println("SETUP BEGIN:----------------")
 			//log.Println("maxLifeTime:", setup.MaxLifetime())

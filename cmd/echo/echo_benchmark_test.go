@@ -1,4 +1,4 @@
-package main_test
+package main
 
 import (
 	"bytes"
@@ -20,9 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const ListenAt = "tcp://127.0.0.1:7878"
-//const ListenAt = "ws://127.0.0.1:7878/echo"
-
 func TestClient_RequestResponse(t *testing.T) {
 	client, err := createClient(ListenAt)
 	require.NoError(t, err, "bad client")
@@ -30,7 +27,7 @@ func TestClient_RequestResponse(t *testing.T) {
 		_ = client.Close()
 	}()
 	wg := &sync.WaitGroup{}
-	n := 100 * 10000
+	n := 50 * 10000
 	wg.Add(n)
 	data := []byte(common.RandAlphanumeric(1024))
 

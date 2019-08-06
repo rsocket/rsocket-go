@@ -4,9 +4,6 @@ import (
 	"github.com/jjeffcaii/reactor-go"
 )
 
-func init() {
-}
-
 const RequestMax = rs.RequestInfinite
 
 type (
