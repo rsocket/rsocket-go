@@ -8,9 +8,9 @@ env:
 
 before_install:
   - go get -u golang.org/x/lint/golint
-  - go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
+  - curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.17.1
 
 script:
 #  - golint ./...
-#  - golangci-lint run ./...
+  - golangci-lint run ./...
   - go test -race -count=1 . -v
