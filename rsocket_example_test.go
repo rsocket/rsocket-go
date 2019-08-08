@@ -17,13 +17,13 @@ import (
 func Example() {
 	// Serve a server
 	err := Receive().
-		Acceptor(func(setup SetupPayload, sendingSocket CloseableRSocket) RSocket {
+		Acceptor(func(setup SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 			return NewAbstractSocket(
 				RequestResponse(func(msg Payload) mono.Mono {
 					log.Println("incoming request:", msg)
 					return mono.Just(NewString("Pong", time.Now().String()))
 				}),
-			)
+			), nil
 		}).
 		Transport("tcp://127.0.0.1:7878").
 		Serve(context.Background())
@@ -53,11 +53,15 @@ func ExampleReceive() {
 	err := Receive().
 		Resume(WithServerResumeSessionDuration(30 * time.Second)).
 		Fragment(65535).
-		Acceptor(func(setup SetupPayload, sendingSocket CloseableRSocket) RSocket {
+		Acceptor(func(setup SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 			// Handle close.
-			sendingSocket.OnClose(func() {
+			sendingSocket.OnClose(func(err error) {
 				log.Println("sending socket is closed")
 			})
+
+			// You can reject connection. For example, do some authorization.
+			// return nil, errors.New("ACCESS_DENY")
+
 			// Request to client.
 			sendingSocket.RequestResponse(NewString("Ping", time.Now().String())).
 				DoOnSuccess(func(elem Payload) {
@@ -84,7 +88,7 @@ func ExampleReceive() {
 				RequestChannel(func(msgs rx.Publisher) flux.Flux {
 					return msgs.(flux.Flux)
 				}),
-			)
+			), nil
 		}).
 		Transport("tcp://0.0.0.0:7878").
 		Serve(context.Background())

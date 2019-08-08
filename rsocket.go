@@ -10,7 +10,7 @@ import (
 
 type (
 	// ServerAcceptor is alias for server accepter.
-	ServerAcceptor = func(setup payload.SetupPayload, sendingSocket CloseableRSocket) RSocket
+	ServerAcceptor = func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error)
 
 	// RSocket is a contract providing different interaction models for RSocket protocol.
 	RSocket interface {

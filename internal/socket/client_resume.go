@@ -37,7 +37,7 @@ func (p *resumeClientSocket) Close() (err error) {
 		p.markClosing()
 		err = p.socket.Close()
 		for i, l := 0, len(p.closers); i < l; i++ {
-			p.closers[l-i-1]()
+			p.closers[l-i-1](err)
 		}
 	})
 	return
@@ -82,6 +82,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 	// connect first time.
 	if len(p.setup.Token) < 1 || connects == 1 {
 		tp.HandleError0(func(frame framing.Frame) (err error) {
+			p.socket.SetError(frame.(*framing.FrameError))
 			p.markClosing()
 			return
 		})

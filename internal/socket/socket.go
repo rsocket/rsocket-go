@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/rsocket/rsocket-go/internal/transport"
+	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -16,7 +17,7 @@ import (
 type Closeable interface {
 	io.Closer
 	// OnClose bind a handler when closing.
-	OnClose(closer func())
+	OnClose(closer func(error))
 }
 
 // Responder is a contract providing different interaction models for RSocket protocol.
@@ -93,7 +94,7 @@ func (p AbstractRSocket) RequestChannel(msgs rx.Publisher) flux.Flux {
 
 type baseSocket struct {
 	socket  *DuplexRSocket
-	closers []func()
+	closers []func(error)
 	once    sync.Once
 }
 
@@ -117,7 +118,7 @@ func (p *baseSocket) RequestChannel(msgs rx.Publisher) flux.Flux {
 	return p.socket.RequestChannel(msgs)
 }
 
-func (p *baseSocket) OnClose(fn func()) {
+func (p *baseSocket) OnClose(fn func(error)) {
 	if fn != nil {
 		p.closers = append(p.closers, fn)
 	}
@@ -127,7 +128,14 @@ func (p *baseSocket) Close() (err error) {
 	p.once.Do(func() {
 		err = p.socket.Close()
 		for i, l := 0, len(p.closers); i < l; i++ {
-			p.closers[l-i-1]()
+			func(fn func(error)) {
+				defer func() {
+					if e := tryRecover(recover()); e != nil {
+						logger.Errorf("handle socket closer failed: %s\n", e)
+					}
+				}()
+				fn(err)
+			}(p.closers[l-i-1])
 		}
 	})
 	return

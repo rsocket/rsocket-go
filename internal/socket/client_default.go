@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 
+	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/internal/transport"
 	"github.com/rsocket/rsocket-go/logger"
 )
@@ -23,6 +24,11 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 	tp.SetLifetime(setup.KeepaliveLifetime)
 
 	p.socket.SetTransport(tp)
+
+	tp.HandleError0(func(frame framing.Frame) (err error) {
+		p.socket.SetError(frame.(*framing.FrameError))
+		return
+	})
 
 	go func(ctx context.Context, tp *transport.Transport) {
 		if err := tp.Start(ctx); err != nil {

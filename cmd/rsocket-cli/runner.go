@@ -42,7 +42,6 @@ func (p *Runner) preflight() (err error) {
 	if p.Debug {
 		logger.SetLevel(logger.LevelDebug)
 	}
-
 	return
 }
 
@@ -51,17 +50,7 @@ func (p *Runner) Run() error {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-
-	defer func() {
-		cancel()
-	}()
-
-	//go func() {
-	//	cs := make(chan os.Signal, 1)
-	//	signal.Notify(cs, os.Interrupt, syscall.SIGTERM)
-	//	<-cs
-	//	cancel()
-	//}()
+	defer cancel()
 
 	if p.ServerMode {
 		return p.runServerMode(ctx)
@@ -70,13 +59,10 @@ func (p *Runner) Run() error {
 }
 
 func (p *Runner) runClientMode(ctx context.Context) (err error) {
-	var cb rsocket.ClientBuilder
+	cb := rsocket.Connect()
 	if p.Resume {
-		cb = rsocket.Connect().Resume()
-	} else {
-		cb = rsocket.Connect()
+		cb = cb.Resume()
 	}
-
 	setupData, err := p.readData(p.Setup)
 	if err != nil {
 		return
@@ -148,7 +134,7 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 			}
 		}
 		ch <- sb.
-			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) rsocket.RSocket {
+			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 				var options []rsocket.OptAbstractSocket
 				if p.Channel {
 
@@ -160,7 +146,7 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 						return mono.Just(first)
 					}))
 				}
-				return rsocket.NewAbstractSocket(options...)
+				return rsocket.NewAbstractSocket(options...), nil
 			}).
 			Transport(p.URI).
 			Serve(ctx)

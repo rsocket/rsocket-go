@@ -248,9 +248,13 @@ func (p *server) doSetup(
 	// 2. no resume
 	if !isResume {
 		sendingSocket = socket.NewServer(rawSocket)
-		sendingSocket.SetResponder(p.acc(frame, sendingSocket))
-		sendingSocket.SetTransport(tp)
-		socketChan <- sendingSocket
+		if responder, e := p.acc(frame, sendingSocket); e != nil {
+			err = framing.NewFrameError(0, common.ErrorCodeRejectedSetup, []byte(e.Error()))
+		} else {
+			sendingSocket.SetResponder(responder)
+			sendingSocket.SetTransport(tp)
+			socketChan <- sendingSocket
+		}
 		return
 	}
 
@@ -265,9 +269,18 @@ func (p *server) doSetup(
 	// 4. resume success
 	copy(token, frame.Token())
 	sendingSocket = socket.NewServerResume(rawSocket, token)
-	sendingSocket.SetResponder(p.acc(frame, sendingSocket))
-	sendingSocket.SetTransport(tp)
-	socketChan <- sendingSocket
+	if responder, e := p.acc(frame, sendingSocket); e != nil {
+		switch vv := e.(type) {
+		case *framing.FrameError:
+			err = framing.NewFrameError(0, vv.ErrorCode(), vv.ErrorData())
+		default:
+			err = framing.NewFrameError(0, common.ErrorCodeInvalidSetup, []byte(e.Error()))
+		}
+	} else {
+		sendingSocket.SetResponder(responder)
+		sendingSocket.SetTransport(tp)
+		socketChan <- sendingSocket
+	}
 	return
 }
 

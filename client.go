@@ -62,7 +62,7 @@ type (
 		// SetupPayload set the setup payload.
 		SetupPayload(setup payload.Payload) ClientBuilder
 		// OnClose register handler when client socket closed.
-		OnClose(fn func()) ClientBuilder
+		OnClose(fn func(error)) ClientBuilder
 		// Acceptor set acceptor for RSocket client.
 		Acceptor(acceptor ClientSocketAcceptor) ClientTransportBuilder
 	}
@@ -99,7 +99,7 @@ type implClientBuilder struct {
 	addr     string
 	setup    *socket.SetupInfo
 	acceptor ClientSocketAcceptor
-	onCloses []func()
+	onCloses []func(error)
 }
 
 func (p *implClientBuilder) Resume(opts ...ClientResumeOptions) ClientBuilder {
@@ -117,7 +117,7 @@ func (p *implClientBuilder) Fragment(mtu int) ClientBuilder {
 	return p
 }
 
-func (p *implClientBuilder) OnClose(fn func()) ClientBuilder {
+func (p *implClientBuilder) OnClose(fn func(error)) ClientBuilder {
 	p.onCloses = append(p.onCloses, fn)
 	return p
 }
