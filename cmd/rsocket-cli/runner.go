@@ -22,25 +22,26 @@ import (
 var errConflictHeadersAndMetadata = errors.New("can't specify headers and metadata")
 
 type Runner struct {
-	Headers        []string
-	Stream         bool
-	Request        bool
-	FNF            bool
-	Channel        bool
-	MetadataPush   bool
-	ServerMode     bool
-	Input          string
-	Metadata       string
-	MetadataFormat string
-	DataFormat     string
-	Setup          string
-	Debug          bool
-	Ops            int
-	Timeout        time.Duration
-	Keepalive      time.Duration
-	N              int
-	Resume         bool
-	URI            string
+	Headers          []string
+	TransportHeaders []string
+	Stream           bool
+	Request          bool
+	FNF              bool
+	Channel          bool
+	MetadataPush     bool
+	ServerMode       bool
+	Input            string
+	Metadata         string
+	MetadataFormat   string
+	DataFormat       string
+	Setup            string
+	Debug            bool
+	Ops              int
+	Timeout          time.Duration
+	Keepalive        time.Duration
+	N                int
+	Resume           bool
+	URI              string
 }
 
 func (p *Runner) preflight() (err error) {
@@ -95,7 +96,7 @@ func (p *Runner) runClientMode(ctx context.Context) (err error) {
 		DataMimeType(p.DataFormat).
 		MetadataMimeType(p.MetadataFormat).
 		SetupPayload(setupPayload).
-		Transport(p.URI).
+		Transport(p.URI, p.TransportHeaders...).
 		Start(ctx)
 	if err != nil {
 		return
@@ -159,9 +160,18 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 				var options []rsocket.OptAbstractSocket
 				if p.Channel {
-
+					// TODO: support channel
 				} else if p.Stream {
-
+					// TODO: support stream
+				} else if p.FNF {
+					options = append(options, rsocket.FireAndForget(func(msg payload.Payload) {
+						p.showPayload(msg)
+					}))
+				} else if p.MetadataPush {
+					options = append(options, rsocket.MetadataPush(func(msg payload.Payload) {
+						metadata, _ := msg.MetadataUTF8()
+						logger.Infof("%s\n", metadata)
+					}))
 				} else {
 					options = append(options, rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
 						p.showPayload(msg)
@@ -179,6 +189,8 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 
 func (p *Runner) execMetadataPush(ctx context.Context, c rsocket.Client, send payload.Payload) (err error) {
 	c.MetadataPush(send)
+	m, _ := send.MetadataUTF8()
+	logger.Infof("%s\n", m)
 	return
 }
 
@@ -217,23 +229,16 @@ func (p *Runner) execRequestStream(ctx context.Context, c rsocket.Client, send p
 }
 
 func (p *Runner) printFlux(ctx context.Context, f flux.Flux) (err error) {
-	var requested int
 	_, err = f.
 		DoOnNext(func(input payload.Payload) {
-			if requested == 0 {
-				p.showPayload(input)
-			} else {
-				logger.Infof("\n")
-				p.showPayload(input)
-			}
-			requested++
+			p.showPayload(input)
 		}).
 		BlockLast(ctx)
 	return
 }
 
 func (p *Runner) showPayload(pa payload.Payload) {
-	logger.Infof("%s", pa.DataUTF8())
+	logger.Infof("%s\n", pa.DataUTF8())
 }
 
 func (p *Runner) createPayload() flux.Flux {

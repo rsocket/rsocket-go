@@ -22,23 +22,32 @@ var tlsInsecure = &tls.Config{
 	InsecureSkipVerify: true,
 }
 
+func (p *URI) IsWebsocket() bool {
+	switch strings.ToLower(p.Scheme) {
+	case schemaWebsocket, schemaWebsocketSecure:
+		return true
+	default:
+		return false
+	}
+}
+
 // MakeClientTransport creates a new client-side transport.
-func (p *URI) MakeClientTransport(tc *tls.Config) (*Transport, error) {
+func (p *URI) MakeClientTransport(tc *tls.Config, headers map[string][]string) (*Transport, error) {
 	switch strings.ToLower(p.Scheme) {
 	case schemaTCP:
 		return newTCPClientTransport(schemaTCP, p.Host, tc)
 	case schemaWebsocket:
 		if tc == nil {
-			return newWebsocketClientTransport(p.pp().String(), nil)
+			return newWebsocketClientTransport(p.pp().String(), nil, headers)
 		}
 		var clone = (url.URL)(*p)
 		clone.Scheme = "wss"
-		return newWebsocketClientTransport(clone.String(), tc)
+		return newWebsocketClientTransport(clone.String(), tc, headers)
 	case schemaWebsocketSecure:
 		if tc == nil {
 			tc = tlsInsecure
 		}
-		return newWebsocketClientTransport(p.pp().String(), tc)
+		return newWebsocketClientTransport(p.pp().String(), tc, headers)
 	case schemaUNIX:
 		return newTCPClientTransport(schemaUNIX, p.Path, tc)
 	default:

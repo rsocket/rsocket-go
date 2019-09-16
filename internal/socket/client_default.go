@@ -11,12 +11,13 @@ import (
 
 type defaultClientSocket struct {
 	*baseSocket
-	uri *transport.URI
-	tls *tls.Config
+	uri     *transport.URI
+	headers map[string][]string
+	tls     *tls.Config
 }
 
 func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err error) {
-	tp, err := p.uri.MakeClientTransport(p.tls)
+	tp, err := p.uri.MakeClientTransport(p.tls, p.headers)
 	if err != nil {
 		return
 	}
@@ -46,10 +47,11 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 }
 
 // NewClient create a simple client-side socket.
-func NewClient(uri *transport.URI, socket *DuplexRSocket, tc *tls.Config) ClientSocket {
+func NewClient(uri *transport.URI, socket *DuplexRSocket, tc *tls.Config, headers map[string][]string) ClientSocket {
 	return &defaultClientSocket{
 		baseSocket: newBaseSocket(socket),
 		uri:        uri,
+		headers:    headers,
 		tls:        tc,
 	}
 }

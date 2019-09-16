@@ -104,7 +104,7 @@ func newWebsocketServerTransport(addr string, path string, c *tls.Config) *wsSer
 	}
 }
 
-func newWebsocketClientTransport(url string, tc *tls.Config) (*Transport, error) {
+func newWebsocketClientTransport(url string, tc *tls.Config, header http.Header) (*Transport, error) {
 	var d *websocket.Dialer
 	if tc == nil {
 		d = websocket.DefaultDialer
@@ -115,8 +115,7 @@ func newWebsocketClientTransport(url string, tc *tls.Config) (*Transport, error)
 			TLSClientConfig:  tc,
 		}
 	}
-
-	wsConn, _, err := d.Dial(url, nil)
+	wsConn, _, err := d.Dial(url, header)
 	if err != nil {
 		return nil, errors.Wrap(err, "dial websocket failed")
 	}

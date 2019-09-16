@@ -5,12 +5,21 @@ import (
 	"io"
 	"sync"
 
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/internal/transport"
 	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
+)
+
+var (
+	errUnsupportedMetadataPush    = errors.New("unsupported METADATA_PUSH")
+	errUnsupportedFireAndForget   = errors.New("unsupported FIRE_AND_FORGET")
+	errUnsupportedRequestResponse = errors.New("unsupported REQUEST_RESPONSE")
+	errUnsupportedRequestStream   = errors.New("unsupported REQUEST_STREAM")
+	errUnsupportedRequestChannel  = errors.New("unsupported REQUEST_CHANNEL")
 )
 
 // Closeable represents a closeable target.
@@ -69,26 +78,43 @@ type AbstractRSocket struct {
 
 // MetadataPush starts a request of MetadataPush.
 func (p AbstractRSocket) MetadataPush(msg payload.Payload) {
+	if p.MP == nil {
+		logger.Errorf("%s\n", errUnsupportedMetadataPush)
+		return
+	}
 	p.MP(msg)
 }
 
 // FireAndForget starts a request of FireAndForget.
 func (p AbstractRSocket) FireAndForget(msg payload.Payload) {
+	if p.MP == nil {
+		logger.Errorf("%s\n", errUnsupportedFireAndForget)
+		return
+	}
 	p.FF(msg)
 }
 
 // RequestResponse starts a request of RequestResponse.
 func (p AbstractRSocket) RequestResponse(msg payload.Payload) mono.Mono {
+	if p.RR == nil {
+		return mono.Error(errUnsupportedRequestResponse)
+	}
 	return p.RR(msg)
 }
 
 // RequestStream starts a request of RequestStream.
 func (p AbstractRSocket) RequestStream(msg payload.Payload) flux.Flux {
+	if p.RS == nil {
+		return flux.Error(errUnsupportedRequestStream)
+	}
 	return p.RS(msg)
 }
 
 // RequestChannel starts a request of RequestChannel.
 func (p AbstractRSocket) RequestChannel(msgs rx.Publisher) flux.Flux {
+	if p.RC == nil {
+		return flux.Error(errUnsupportedRequestChannel)
+	}
 	return p.RC(msgs)
 }
 

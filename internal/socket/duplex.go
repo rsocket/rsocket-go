@@ -524,7 +524,7 @@ func (p *DuplexRSocket) respondRequestChannel(pl fragmentation.HeaderAndPayload)
 func (p *DuplexRSocket) respondMetadataPush(input framing.Frame) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			logger.Errorf("respond metadata push failed: %s\n", e)
+			logger.Errorf("respond METADATA_PUSH failed: %s\n", e)
 		}
 	}()
 	p.responder.MetadataPush(input.(*framing.FrameMetadataPush))

@@ -3,9 +3,11 @@ package rsocket
 import (
 	"context"
 	"crypto/tls"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
 	"github.com/rsocket/rsocket-go/internal/socket"
@@ -75,7 +77,8 @@ type (
 		// "tcp://127.0.0.1:7878" means a TCP RSocket transport.
 		// "ws://127.0.0.1:8080/a/b/c" means a Websocket RSocket transport.
 		// "wss://127.0.0.1:8080/a/b/c" means a  Websocket RSocket transport with HTTPS.
-		Transport(uri string) ClientStarter
+		// You can add custom headers by "KEY:VALUE" for Websocket transport.
+		Transport(uri string, headers ...string) ClientStarter
 	}
 )
 
@@ -97,6 +100,7 @@ type implClientBuilder struct {
 	resume   *resumeOpts
 	fragment int
 	addr     string
+	headers  []string
 	setup    *socket.SetupInfo
 	acceptor ClientSocketAcceptor
 	onCloses []func(error)
@@ -158,8 +162,9 @@ func (p *implClientBuilder) Acceptor(acceptor ClientSocketAcceptor) ClientTransp
 	return p
 }
 
-func (p *implClientBuilder) Transport(transport string) ClientStarter {
+func (p *implClientBuilder) Transport(transport string, headers ...string) ClientStarter {
 	p.addr = transport
+	p.headers = headers
 	return p
 }
 
@@ -188,14 +193,28 @@ func (p *implClientBuilder) start(ctx context.Context, tc *tls.Config) (client C
 		p.fragment,
 		p.setup.KeepaliveInterval,
 	)
+	var headers map[string][]string
+	if uri.IsWebsocket() {
+		headers = make(map[string][]string)
+		for _, it := range p.headers {
+			idx := strings.Index(it, ":")
+			if idx < 1 {
+				err = errors.Errorf("invalid transport header: %s", it)
+				return
+			}
+			k := strings.TrimSpace(it[:idx])
+			v := strings.TrimSpace(it[idx+1:])
+			headers[k] = append(headers[k], v)
+		}
+	}
 
 	// create a client.
 	var cs setupClientSocket
 	if p.resume != nil {
 		p.setup.Token = p.resume.tokenGen()
-		cs = socket.NewClientResume(uri, sk, tc)
+		cs = socket.NewClientResume(uri, sk, tc, headers)
 	} else {
-		cs = socket.NewClient(uri, sk, tc)
+		cs = socket.NewClient(uri, sk, tc, headers)
 	}
 	if p.acceptor != nil {
 		sk.SetResponder(p.acceptor(cs))
