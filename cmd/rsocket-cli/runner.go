@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -17,7 +19,10 @@ import (
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
+var errConflictHeadersAndMetadata = errors.New("can't specify headers and metadata")
+
 type Runner struct {
+	Headers        []string
 	Stream         bool
 	Request        bool
 	FNF            bool
@@ -41,6 +46,23 @@ type Runner struct {
 func (p *Runner) preflight() (err error) {
 	if p.Debug {
 		logger.SetLevel(logger.LevelDebug)
+	}
+	if len(p.Headers) > 0 && len(p.Metadata) > 0 {
+		return errConflictHeadersAndMetadata
+	}
+	if len(p.Headers) > 0 {
+		headers := make(map[string]string)
+		for _, it := range p.Headers {
+			idx := strings.Index(it, ":")
+			if idx < 0 {
+				return fmt.Errorf("invalid header: %s", it)
+			}
+			k := it[:idx]
+			v := it[idx+1:]
+			headers[strings.TrimSpace(k)] = strings.TrimSpace(v)
+		}
+		bs, _ := json.Marshal(headers)
+		p.Metadata = string(bs)
 	}
 	return
 }
