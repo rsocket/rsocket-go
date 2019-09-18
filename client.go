@@ -3,11 +3,9 @@ package rsocket
 import (
 	"context"
 	"crypto/tls"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
 	"github.com/rsocket/rsocket-go/internal/socket"
@@ -77,8 +75,7 @@ type (
 		// "tcp://127.0.0.1:7878" means a TCP RSocket transport.
 		// "ws://127.0.0.1:8080/a/b/c" means a Websocket RSocket transport.
 		// "wss://127.0.0.1:8080/a/b/c" means a  Websocket RSocket transport with HTTPS.
-		// You can add custom headers by "KEY:VALUE" for Websocket transport.
-		Transport(uri string, headers ...string) ClientStarter
+		Transport(uri string, opts ...TransportOpts) ClientStarter
 	}
 )
 
@@ -96,11 +93,23 @@ func Connect() ClientBuilder {
 	}
 }
 
+type transportOpts struct {
+	addr    string
+	headers map[string][]string
+}
+
+func WithWebsocketHeaders(headers map[string][]string) TransportOpts {
+	return func(opts *transportOpts) {
+		opts.headers = headers
+	}
+}
+
+type TransportOpts = func(*transportOpts)
+
 type implClientBuilder struct {
 	resume   *resumeOpts
 	fragment int
-	addr     string
-	headers  []string
+	tpOpts   *transportOpts
 	setup    *socket.SetupInfo
 	acceptor ClientSocketAcceptor
 	onCloses []func(error)
@@ -162,9 +171,13 @@ func (p *implClientBuilder) Acceptor(acceptor ClientSocketAcceptor) ClientTransp
 	return p
 }
 
-func (p *implClientBuilder) Transport(transport string, headers ...string) ClientStarter {
-	p.addr = transport
-	p.headers = headers
+func (p *implClientBuilder) Transport(transport string, opts ...TransportOpts) ClientStarter {
+	p.tpOpts = &transportOpts{
+		addr: transport,
+	}
+	for i := 0; i < len(opts); i++ {
+		opts[i](p.tpOpts)
+	}
 	return p
 }
 
@@ -178,7 +191,7 @@ func (p *implClientBuilder) Start(ctx context.Context) (client Client, err error
 
 func (p *implClientBuilder) start(ctx context.Context, tc *tls.Config) (client Client, err error) {
 	var uri *transport.URI
-	uri, err = transport.ParseURI(p.addr)
+	uri, err = transport.ParseURI(p.tpOpts.addr)
 	if err != nil {
 		return
 	}
@@ -195,19 +208,8 @@ func (p *implClientBuilder) start(ctx context.Context, tc *tls.Config) (client C
 	)
 	var headers map[string][]string
 	if uri.IsWebsocket() {
-		headers = make(map[string][]string)
-		for _, it := range p.headers {
-			idx := strings.Index(it, ":")
-			if idx < 1 {
-				err = errors.Errorf("invalid transport header: %s", it)
-				return
-			}
-			k := strings.TrimSpace(it[:idx])
-			v := strings.TrimSpace(it[idx+1:])
-			headers[k] = append(headers[k], v)
-		}
+		headers = p.tpOpts.headers
 	}
-
 	// create a client.
 	var cs setupClientSocket
 	if p.resume != nil {

@@ -42,6 +42,7 @@ type Runner struct {
 	N                int
 	Resume           bool
 	URI              string
+	wsHeaders        map[string][]string
 }
 
 func (p *Runner) preflight() (err error) {
@@ -64,6 +65,20 @@ func (p *Runner) preflight() (err error) {
 		}
 		bs, _ := json.Marshal(headers)
 		p.Metadata = string(bs)
+	}
+
+	if len(p.TransportHeaders) > 0 {
+		headers := make(map[string][]string)
+		for _, it := range p.TransportHeaders {
+			idx := strings.Index(it, ":")
+			if idx < 0 {
+				return fmt.Errorf("invalid transport header: %s", it)
+			}
+			k := strings.TrimSpace(it[:idx])
+			v := strings.TrimSpace(it[idx+1:])
+			headers[k] = append(headers[k], v)
+		}
+		p.wsHeaders = headers
 	}
 	return
 }
@@ -96,7 +111,7 @@ func (p *Runner) runClientMode(ctx context.Context) (err error) {
 		DataMimeType(p.DataFormat).
 		MetadataMimeType(p.MetadataFormat).
 		SetupPayload(setupPayload).
-		Transport(p.URI, p.TransportHeaders...).
+		Transport(p.URI, rsocket.WithWebsocketHeaders(p.wsHeaders)).
 		Start(ctx)
 	if err != nil {
 		return
