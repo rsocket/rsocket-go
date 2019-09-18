@@ -162,37 +162,37 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 	ch := make(chan error)
 	go func() {
 		sendings := p.createPayload()
-		var first payload.Payload
-		if !p.Channel {
-			var err error
-			first, err = sendings.BlockFirst(ctx)
-			if err != nil {
-				ch <- err
-				return
-			}
-		}
 		ch <- sb.
 			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 				var options []rsocket.OptAbstractSocket
-				if p.Channel {
-					// TODO: support channel
-				} else if p.Stream {
-					// TODO: support stream
-				} else if p.FNF {
-					options = append(options, rsocket.FireAndForget(func(msg payload.Payload) {
-						p.showPayload(msg)
+				options = append(options, rsocket.RequestStream(func(msg payload.Payload) flux.Flux {
+					p.showPayload(msg)
+					return sendings
+				}))
+				options = append(options, rsocket.RequestChannel(func(msgs rx.Publisher) flux.Flux {
+					msgs.Subscribe(ctx, rx.OnNext(func(input payload.Payload) {
+						p.showPayload(input)
 					}))
-				} else if p.MetadataPush {
-					options = append(options, rsocket.MetadataPush(func(msg payload.Payload) {
-						metadata, _ := msg.MetadataUTF8()
-						logger.Infof("%s\n", metadata)
-					}))
-				} else {
-					options = append(options, rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
-						p.showPayload(msg)
-						return mono.Just(first)
-					}))
-				}
+					return sendings
+				}))
+				options = append(options, rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
+					p.showPayload(msg)
+					return mono.Create(func(i context.Context, sink mono.Sink) {
+						first, err := sendings.BlockFirst(i)
+						if err != nil {
+							sink.Error(err)
+							return
+						}
+						sink.Success(first)
+					})
+				}))
+				options = append(options, rsocket.FireAndForget(func(msg payload.Payload) {
+					p.showPayload(msg)
+				}))
+				options = append(options, rsocket.MetadataPush(func(msg payload.Payload) {
+					metadata, _ := msg.MetadataUTF8()
+					logger.Infof("%s\n", metadata)
+				}))
 				return rsocket.NewAbstractSocket(options...), nil
 			}).
 			Transport(p.URI).
