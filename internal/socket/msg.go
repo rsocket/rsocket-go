@@ -7,22 +7,24 @@ import (
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
+type closerWithError interface {
+	Close(error)
+}
+
 type reqRS struct {
 	pc flux.Processor
 }
 
-func (s reqRS) Close() error {
-	s.pc.Error(errSocketClosed)
-	return nil
+func (s reqRS) Close(err error) {
+	s.pc.Error(err)
 }
 
 type reqRR struct {
 	pc mono.Processor
 }
 
-func (s reqRR) Close() error {
-	s.pc.Error(errSocketClosed)
-	return nil
+func (s reqRR) Close(err error) {
+	s.pc.Error(err)
 }
 
 type reqRC struct {
@@ -30,28 +32,27 @@ type reqRC struct {
 	rcv flux.Processor
 }
 
-func (s reqRC) Close() error {
+func (s reqRC) Close(err error) {
 	s.snd.Cancel()
-	s.rcv.Error(errSocketClosed)
-	return nil
+	s.rcv.Error(err)
 }
 
 type resRR struct {
 	su rs.Subscription
 }
 
-func (s resRR) Close() error {
+func (s resRR) Close(err error) {
 	s.su.Cancel()
-	return nil
+	// TODO: fill err
 }
 
 type resRS struct {
 	su rx.Subscription
 }
 
-func (s resRS) Close() error {
+func (s resRS) Close(err error) {
 	s.su.Cancel()
-	return nil
+	// TODO: fill error
 }
 
 type resRC struct {
@@ -59,8 +60,7 @@ type resRC struct {
 	rcv flux.Processor
 }
 
-func (s resRC) Close() error {
-	s.rcv.Error(errSocketClosed)
+func (s resRC) Close(err error) {
+	s.rcv.Error(err)
 	s.snd.Cancel()
-	return nil
 }

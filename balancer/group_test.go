@@ -28,7 +28,7 @@ func ExampleNewGroup() {
 	// Create a broker with resume.
 	err := Receive().
 		Resume(WithServerResumeSessionDuration(10 * time.Second)).
-		Acceptor(func(setup SetupPayload, sendingSocket CloseableRSocket) RSocket {
+		Acceptor(func(setup SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 			// Register service using Setup Metadata as service ID.
 			if serviceID, ok := setup.MetadataUTF8(); ok {
 				group.Get(serviceID).Put(sendingSocket)
@@ -41,7 +41,7 @@ func ExampleNewGroup() {
 				}
 				log.Println("[broker] redirect request to service", requestServiceID)
 				return group.Get(requestServiceID).Next().RequestResponse(msg)
-			}))
+			})), nil
 		}).
 		Transport(uri).
 		Serve(context.Background())
@@ -61,7 +61,7 @@ func TestServiceSubscribe(t *testing.T) {
 	go func() {
 		done := make(chan struct{})
 		cli, err := Connect().
-			OnClose(func() {
+			OnClose(func(err error) {
 				close(done)
 			}).
 			SetupPayload(NewString("This is a Service Publisher!", "md5")).

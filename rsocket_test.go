@@ -62,7 +62,7 @@ func testAll(proto string, addr string, t *testing.T) {
 			OnStart(func() {
 				close(serving)
 			}).
-			Acceptor(func(setup SetupPayload, sendingSocket CloseableRSocket) RSocket {
+			Acceptor(func(setup SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 				assert.Equal(t, setupData, setup.DataUTF8(), "bad setup data")
 				m, _ := setup.MetadataUTF8()
 				assert.Equal(t, setupMetadata, m, "bad setup metadata")
@@ -110,7 +110,7 @@ func testAll(proto string, addr string, t *testing.T) {
 							s.Complete()
 						})
 					}),
-				)
+				), nil
 			}).
 			Transport(addr).
 			Serve(ctx)

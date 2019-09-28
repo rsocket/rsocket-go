@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -17,32 +19,67 @@ import (
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
+var errConflictHeadersAndMetadata = errors.New("can't specify headers and metadata")
+
 type Runner struct {
-	Stream         bool
-	Request        bool
-	FNF            bool
-	Channel        bool
-	MetadataPush   bool
-	ServerMode     bool
-	Input          string
-	Metadata       string
-	MetadataFormat string
-	DataFormat     string
-	Setup          string
-	Debug          bool
-	Ops            int
-	Timeout        time.Duration
-	Keepalive      time.Duration
-	N              int
-	Resume         bool
-	URI            string
+	Headers          []string
+	TransportHeaders []string
+	Stream           bool
+	Request          bool
+	FNF              bool
+	Channel          bool
+	MetadataPush     bool
+	ServerMode       bool
+	Input            string
+	Metadata         string
+	MetadataFormat   string
+	DataFormat       string
+	Setup            string
+	Debug            bool
+	Ops              int
+	Timeout          time.Duration
+	Keepalive        time.Duration
+	N                int
+	Resume           bool
+	URI              string
+	wsHeaders        map[string][]string
 }
 
 func (p *Runner) preflight() (err error) {
 	if p.Debug {
 		logger.SetLevel(logger.LevelDebug)
 	}
+	if len(p.Headers) > 0 && len(p.Metadata) > 0 {
+		return errConflictHeadersAndMetadata
+	}
+	if len(p.Headers) > 0 {
+		headers := make(map[string]string)
+		for _, it := range p.Headers {
+			idx := strings.Index(it, ":")
+			if idx < 0 {
+				return fmt.Errorf("invalid header: %s", it)
+			}
+			k := it[:idx]
+			v := it[idx+1:]
+			headers[strings.TrimSpace(k)] = strings.TrimSpace(v)
+		}
+		bs, _ := json.Marshal(headers)
+		p.Metadata = string(bs)
+	}
 
+	if len(p.TransportHeaders) > 0 {
+		headers := make(map[string][]string)
+		for _, it := range p.TransportHeaders {
+			idx := strings.Index(it, ":")
+			if idx < 0 {
+				return fmt.Errorf("invalid transport header: %s", it)
+			}
+			k := strings.TrimSpace(it[:idx])
+			v := strings.TrimSpace(it[idx+1:])
+			headers[k] = append(headers[k], v)
+		}
+		p.wsHeaders = headers
+	}
 	return
 }
 
@@ -51,17 +88,7 @@ func (p *Runner) Run() error {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-
-	defer func() {
-		cancel()
-	}()
-
-	//go func() {
-	//	cs := make(chan os.Signal, 1)
-	//	signal.Notify(cs, os.Interrupt, syscall.SIGTERM)
-	//	<-cs
-	//	cancel()
-	//}()
+	defer cancel()
 
 	if p.ServerMode {
 		return p.runServerMode(ctx)
@@ -70,13 +97,10 @@ func (p *Runner) Run() error {
 }
 
 func (p *Runner) runClientMode(ctx context.Context) (err error) {
-	var cb rsocket.ClientBuilder
+	cb := rsocket.Connect()
 	if p.Resume {
-		cb = rsocket.Connect().Resume()
-	} else {
-		cb = rsocket.Connect()
+		cb = cb.Resume()
 	}
-
 	setupData, err := p.readData(p.Setup)
 	if err != nil {
 		return
@@ -87,7 +111,7 @@ func (p *Runner) runClientMode(ctx context.Context) (err error) {
 		DataMimeType(p.DataFormat).
 		MetadataMimeType(p.MetadataFormat).
 		SetupPayload(setupPayload).
-		Transport(p.URI).
+		Transport(p.URI, rsocket.WithWebsocketHeaders(p.wsHeaders)).
 		Start(ctx)
 	if err != nil {
 		return
@@ -138,29 +162,38 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 	ch := make(chan error)
 	go func() {
 		sendings := p.createPayload()
-		var first payload.Payload
-		if !p.Channel {
-			var err error
-			first, err = sendings.BlockFirst(ctx)
-			if err != nil {
-				ch <- err
-				return
-			}
-		}
 		ch <- sb.
-			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) rsocket.RSocket {
+			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 				var options []rsocket.OptAbstractSocket
-				if p.Channel {
-
-				} else if p.Stream {
-
-				} else {
-					options = append(options, rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
-						p.showPayload(msg)
-						return mono.Just(first)
+				options = append(options, rsocket.RequestStream(func(msg payload.Payload) flux.Flux {
+					p.showPayload(msg)
+					return sendings
+				}))
+				options = append(options, rsocket.RequestChannel(func(msgs rx.Publisher) flux.Flux {
+					msgs.Subscribe(ctx, rx.OnNext(func(input payload.Payload) {
+						p.showPayload(input)
 					}))
-				}
-				return rsocket.NewAbstractSocket(options...)
+					return sendings
+				}))
+				options = append(options, rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
+					p.showPayload(msg)
+					return mono.Create(func(i context.Context, sink mono.Sink) {
+						first, err := sendings.BlockFirst(i)
+						if err != nil {
+							sink.Error(err)
+							return
+						}
+						sink.Success(first)
+					})
+				}))
+				options = append(options, rsocket.FireAndForget(func(msg payload.Payload) {
+					p.showPayload(msg)
+				}))
+				options = append(options, rsocket.MetadataPush(func(msg payload.Payload) {
+					metadata, _ := msg.MetadataUTF8()
+					logger.Infof("%s\n", metadata)
+				}))
+				return rsocket.NewAbstractSocket(options...), nil
 			}).
 			Transport(p.URI).
 			Serve(ctx)
@@ -171,6 +204,8 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 
 func (p *Runner) execMetadataPush(ctx context.Context, c rsocket.Client, send payload.Payload) (err error) {
 	c.MetadataPush(send)
+	m, _ := send.MetadataUTF8()
+	logger.Infof("%s\n", m)
 	return
 }
 
@@ -209,23 +244,16 @@ func (p *Runner) execRequestStream(ctx context.Context, c rsocket.Client, send p
 }
 
 func (p *Runner) printFlux(ctx context.Context, f flux.Flux) (err error) {
-	var requested int
 	_, err = f.
 		DoOnNext(func(input payload.Payload) {
-			if requested == 0 {
-				p.showPayload(input)
-			} else {
-				logger.Infof("\n")
-				p.showPayload(input)
-			}
-			requested++
+			p.showPayload(input)
 		}).
 		BlockLast(ctx)
 	return
 }
 
 func (p *Runner) showPayload(pa payload.Payload) {
-	logger.Infof("%s", pa.DataUTF8())
+	logger.Infof("%s\n", pa.DataUTF8())
 }
 
 func (p *Runner) createPayload() flux.Flux {

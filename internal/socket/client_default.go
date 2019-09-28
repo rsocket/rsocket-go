@@ -4,18 +4,20 @@ import (
 	"context"
 	"crypto/tls"
 
+	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/internal/transport"
 	"github.com/rsocket/rsocket-go/logger"
 )
 
 type defaultClientSocket struct {
 	*baseSocket
-	uri *transport.URI
-	tls *tls.Config
+	uri     *transport.URI
+	headers map[string][]string
+	tls     *tls.Config
 }
 
 func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err error) {
-	tp, err := p.uri.MakeClientTransport(p.tls)
+	tp, err := p.uri.MakeClientTransport(p.tls, p.headers)
 	if err != nil {
 		return
 	}
@@ -23,6 +25,11 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 	tp.SetLifetime(setup.KeepaliveLifetime)
 
 	p.socket.SetTransport(tp)
+
+	tp.HandleError0(func(frame framing.Frame) (err error) {
+		p.socket.SetError(frame.(*framing.FrameError))
+		return
+	})
 
 	go func(ctx context.Context, tp *transport.Transport) {
 		if err := tp.Start(ctx); err != nil {
@@ -40,10 +47,11 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 }
 
 // NewClient create a simple client-side socket.
-func NewClient(uri *transport.URI, socket *DuplexRSocket, tc *tls.Config) ClientSocket {
+func NewClient(uri *transport.URI, socket *DuplexRSocket, tc *tls.Config, headers map[string][]string) ClientSocket {
 	return &defaultClientSocket{
 		baseSocket: newBaseSocket(socket),
 		uri:        uri,
+		headers:    headers,
 		tls:        tc,
 	}
 }

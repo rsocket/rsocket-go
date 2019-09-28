@@ -39,7 +39,7 @@ func (p *balancerRoundRobin) PutLabel(label string, client rsocket.Client) {
 		l: label,
 		c: client,
 	})
-	client.OnClose(func() {
+	client.OnClose(func(error) {
 		p.remove(client)
 	})
 	if len(p.clients) == 1 {

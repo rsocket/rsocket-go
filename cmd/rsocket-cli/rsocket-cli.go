@@ -52,10 +52,12 @@ func newFlags(args *Runner) []cli.Flag {
 		cli.StringSliceFlag{
 			Name:  "header,H",
 			Usage: "Custom header to pass to server",
+			Value: (*cli.StringSlice)(&args.Headers),
 		},
 		cli.StringSliceFlag{
 			Name:  "transport-header,T",
 			Usage: "Custom header to pass to the transport",
+			Value: (*cli.StringSlice)(&args.TransportHeaders),
 		},
 		cli.BoolFlag{
 			Name:        "stream",

@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	//_ "net/http/pprof"
 	"strconv"
+	"strings"
 
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
@@ -31,7 +33,7 @@ func main() {
 		OnStart(func() {
 			log.Println("server is listening:", ListenAt)
 		}).
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) rsocket.RSocket {
+		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			//log.Println("SETUP BEGIN:----------------")
 			//log.Println("maxLifeTime:", setup.MaxLifetime())
 			//log.Println("keepaliveInterval:", setup.TimeBetweenKeepalive())
@@ -49,12 +51,14 @@ func main() {
 			//	}).
 			//	SubscribeOn(rx.ElasticScheduler()).
 			//	Subscribe(context.Background())
-
-			sendingSocket.OnClose(func() {
+			sendingSocket.OnClose(func(err error) {
 				log.Println("***** socket disconnected *****")
 			})
-
-			return responder()
+			// For SETUP_REJECT testing.
+			if strings.EqualFold(setup.DataUTF8(), "REJECT_ME") {
+				return nil, errors.New("bye bye bye")
+			}
+			return responder(), nil
 		}).
 		Transport(ListenAt).
 		Serve(context.Background())

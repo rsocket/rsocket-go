@@ -20,6 +20,7 @@ type resumeClientSocket struct {
 	*baseSocket
 	connects int32
 	uri      *transport.URI
+	headers  map[string][]string
 	setup    *SetupInfo
 	tc       *tls.Config
 }
@@ -37,7 +38,7 @@ func (p *resumeClientSocket) Close() (err error) {
 		p.markClosing()
 		err = p.socket.Close()
 		for i, l := 0, len(p.closers); i < l; i++ {
-			p.closers[l-i-1]()
+			p.closers[l-i-1](err)
 		}
 	})
 	return
@@ -49,7 +50,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		_ = p.Close()
 		return
 	}
-	tp, err := p.uri.MakeClientTransport(p.tc)
+	tp, err := p.uri.MakeClientTransport(p.tc, p.headers)
 	if err != nil {
 		if connects == 1 {
 			return
@@ -82,6 +83,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 	// connect first time.
 	if len(p.setup.Token) < 1 || connects == 1 {
 		tp.HandleError0(func(frame framing.Frame) (err error) {
+			p.socket.SetError(frame.(*framing.FrameError))
 			p.markClosing()
 			return
 		})
@@ -147,10 +149,11 @@ func (p *resumeClientSocket) isClosed() bool {
 }
 
 // NewClientResume creates a client-side socket with resume support.
-func NewClientResume(uri *transport.URI, socket *DuplexRSocket, tc *tls.Config) ClientSocket {
+func NewClientResume(uri *transport.URI, socket *DuplexRSocket, tc *tls.Config, headers map[string][]string) ClientSocket {
 	return &resumeClientSocket{
 		baseSocket: newBaseSocket(socket),
 		uri:        uri,
 		tc:         tc,
+		headers:    headers,
 	}
 }

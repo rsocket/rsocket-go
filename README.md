@@ -8,16 +8,19 @@
 [![License](https://img.shields.io/github/license/rsocket/rsocket-go.svg)](https://github.com/rsocket/rsocket-go/blob/master/LICENSE)
 [![GitHub Release](https://img.shields.io/github/release-pre/rsocket/rsocket-go.svg)](https://github.com/rsocket/rsocket-go/releases)
 
-rsocket-go is an implementation of the [RSocket](http://rsocket.io/) protocol in Go. It is still under development, APIs are unstable and maybe change at any time until release of v1.0.0. **Please do not use it in a production environment**.
+
+> rsocket-go is an implementation of the [RSocket](http://rsocket.io/) protocol in Go.
+<br>🚧🚧🚧 ***IT IS UNDER ACTIVE DEVELOPMENT, APIs are unstable and maybe change at any time until release of v1.0.0.***
+<br>⚠️⚠️⚠️ ***DO NOT USE IN ANY PRODUCTION ENVIRONMENT!!!***
 
 ## Features
  - Design For Golang.
  - Thin [reactive-streams](http://www.reactive-streams.org/) implementation.
  - Simulate Java SDK API.
- - Fast CLI (Compatible with [https://github.com/rsocket/rsocket-cli](https://github.com/rsocket/rsocket-cli/)). 
+ - Fast CLI (Compatible with [https://github.com/rsocket/rsocket-cli](https://github.com/rsocket/rsocket-cli/)).
    - Installation: `go get github.com/rsocket/rsocket-go/cmd/rsocket-cli`
    - Example: `rsocket-cli --request -i hello_world --setup setup_me tcp://127.0.0.1:7878`
- 
+
 ## Getting started
 
 > Start an echo server
@@ -36,13 +39,13 @@ func main() {
 	err := rsocket.Receive().
 		Resume().
 		Fragment(1024).
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) rsocket.RSocket {
+		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			// bind responder
 			return rsocket.NewAbstractSocket(
 				rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
 					return mono.Just(msg)
 				}),
-			)
+			), nil
 		}).
 		Transport("tcp://127.0.0.1:7878").
 		Serve(context.Background())

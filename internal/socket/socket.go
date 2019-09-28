@@ -5,18 +5,28 @@ import (
 	"io"
 	"sync"
 
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/internal/transport"
+	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
+var (
+	errUnsupportedMetadataPush    = errors.New("unsupported METADATA_PUSH")
+	errUnsupportedFireAndForget   = errors.New("unsupported FIRE_AND_FORGET")
+	errUnsupportedRequestResponse = errors.New("unsupported REQUEST_RESPONSE")
+	errUnsupportedRequestStream   = errors.New("unsupported REQUEST_STREAM")
+	errUnsupportedRequestChannel  = errors.New("unsupported REQUEST_CHANNEL")
+)
+
 // Closeable represents a closeable target.
 type Closeable interface {
 	io.Closer
 	// OnClose bind a handler when closing.
-	OnClose(closer func())
+	OnClose(closer func(error))
 }
 
 // Responder is a contract providing different interaction models for RSocket protocol.
@@ -68,32 +78,49 @@ type AbstractRSocket struct {
 
 // MetadataPush starts a request of MetadataPush.
 func (p AbstractRSocket) MetadataPush(msg payload.Payload) {
+	if p.MP == nil {
+		logger.Errorf("%s\n", errUnsupportedMetadataPush)
+		return
+	}
 	p.MP(msg)
 }
 
 // FireAndForget starts a request of FireAndForget.
 func (p AbstractRSocket) FireAndForget(msg payload.Payload) {
+	if p.MP == nil {
+		logger.Errorf("%s\n", errUnsupportedFireAndForget)
+		return
+	}
 	p.FF(msg)
 }
 
 // RequestResponse starts a request of RequestResponse.
 func (p AbstractRSocket) RequestResponse(msg payload.Payload) mono.Mono {
+	if p.RR == nil {
+		return mono.Error(errUnsupportedRequestResponse)
+	}
 	return p.RR(msg)
 }
 
 // RequestStream starts a request of RequestStream.
 func (p AbstractRSocket) RequestStream(msg payload.Payload) flux.Flux {
+	if p.RS == nil {
+		return flux.Error(errUnsupportedRequestStream)
+	}
 	return p.RS(msg)
 }
 
 // RequestChannel starts a request of RequestChannel.
 func (p AbstractRSocket) RequestChannel(msgs rx.Publisher) flux.Flux {
+	if p.RC == nil {
+		return flux.Error(errUnsupportedRequestChannel)
+	}
 	return p.RC(msgs)
 }
 
 type baseSocket struct {
 	socket  *DuplexRSocket
-	closers []func()
+	closers []func(error)
 	once    sync.Once
 }
 
@@ -117,7 +144,7 @@ func (p *baseSocket) RequestChannel(msgs rx.Publisher) flux.Flux {
 	return p.socket.RequestChannel(msgs)
 }
 
-func (p *baseSocket) OnClose(fn func()) {
+func (p *baseSocket) OnClose(fn func(error)) {
 	if fn != nil {
 		p.closers = append(p.closers, fn)
 	}
@@ -127,7 +154,14 @@ func (p *baseSocket) Close() (err error) {
 	p.once.Do(func() {
 		err = p.socket.Close()
 		for i, l := 0, len(p.closers); i < l; i++ {
-			p.closers[l-i-1]()
+			func(fn func(error)) {
+				defer func() {
+					if e := tryRecover(recover()); e != nil {
+						logger.Errorf("handle socket closer failed: %s\n", e)
+					}
+				}()
+				fn(err)
+			}(p.closers[l-i-1])
 		}
 	})
 	return

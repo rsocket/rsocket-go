@@ -46,6 +46,11 @@ type DuplexRSocket struct {
 	keepaliver      *keepaliver
 	cond            *sync.Cond
 	singleScheduler scheduler.Scheduler
+	e               error
+}
+
+func (p *DuplexRSocket) SetError(e error) {
+	p.e = e
 }
 
 func (p *DuplexRSocket) nextStreamID() (sid uint32) {
@@ -64,7 +69,7 @@ func (p *DuplexRSocket) nextStreamID() (sid uint32) {
 }
 
 // Close close current socket.
-func (p *DuplexRSocket) Close() (err error) {
+func (p *DuplexRSocket) Close() error {
 	p.once.Do(func() {
 		if p.keepaliver != nil {
 			p.keepaliver.Stop()
@@ -75,25 +80,39 @@ func (p *DuplexRSocket) Close() (err error) {
 		p.cond.Broadcast()
 		p.cond.L.Unlock()
 
-		p.messages.Range(func(key uint32, value interface{}) bool {
-			if cc, ok := value.(io.Closer); ok {
-				_ = cc.Close()
+		_ = p.fragments.Close()
+		<-p.done
+
+		if p.tp != nil {
+			if p.e == nil {
+				p.e = p.tp.Close()
+			} else {
+				_ = p.tp.Close()
 			}
-			return true
-		})
-		_ = p.messages.Close()
+		}
 
 		p.fragments.Range(func(key uint32, value interface{}) bool {
 			return true
 		})
 		_ = p.fragments.Close()
-		<-p.done
 
-		if p.tp != nil {
-			err = p.tp.Close()
-		}
+		p.messages.Range(func(key uint32, value interface{}) bool {
+			if cc, ok := value.(closerWithError); ok {
+				if p.e == nil {
+					go func() {
+						cc.Close(errSocketClosed)
+					}()
+				} else {
+					go func(e error) {
+						cc.Close(e)
+					}(p.e)
+				}
+			}
+			return true
+		})
+		_ = p.messages.Close()
 	})
-	return
+	return p.e
 }
 
 // FireAndForget start a request of FireAndForget.
@@ -505,7 +524,7 @@ func (p *DuplexRSocket) respondRequestChannel(pl fragmentation.HeaderAndPayload)
 func (p *DuplexRSocket) respondMetadataPush(input framing.Frame) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			logger.Errorf("respond metadata push failed: %s\n", e)
+			logger.Errorf("respond METADATA_PUSH failed: %s\n", e)
 		}
 	}()
 	p.responder.MetadataPush(input.(*framing.FrameMetadataPush))
@@ -671,7 +690,9 @@ func (p *DuplexRSocket) onFrameRequestN(input framing.Frame) (err error) {
 	sid := f.Header().StreamID()
 	v, ok := p.messages.Load(sid)
 	if !ok {
-		logger.Warnf("non-exists RequestN: id=%d", sid)
+		if logger.IsDebugEnabled() {
+			logger.Debugf("ignore non-exists RequestN: id=%d\n", sid)
+		}
 		return
 	}
 	n := toIntN(f.N())

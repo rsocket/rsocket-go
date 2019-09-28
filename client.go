@@ -62,7 +62,7 @@ type (
 		// SetupPayload set the setup payload.
 		SetupPayload(setup payload.Payload) ClientBuilder
 		// OnClose register handler when client socket closed.
-		OnClose(fn func()) ClientBuilder
+		OnClose(fn func(error)) ClientBuilder
 		// Acceptor set acceptor for RSocket client.
 		Acceptor(acceptor ClientSocketAcceptor) ClientTransportBuilder
 	}
@@ -75,7 +75,7 @@ type (
 		// "tcp://127.0.0.1:7878" means a TCP RSocket transport.
 		// "ws://127.0.0.1:8080/a/b/c" means a Websocket RSocket transport.
 		// "wss://127.0.0.1:8080/a/b/c" means a  Websocket RSocket transport with HTTPS.
-		Transport(uri string) ClientStarter
+		Transport(uri string, opts ...TransportOpts) ClientStarter
 	}
 )
 
@@ -93,13 +93,26 @@ func Connect() ClientBuilder {
 	}
 }
 
+type transportOpts struct {
+	addr    string
+	headers map[string][]string
+}
+
+func WithWebsocketHeaders(headers map[string][]string) TransportOpts {
+	return func(opts *transportOpts) {
+		opts.headers = headers
+	}
+}
+
+type TransportOpts = func(*transportOpts)
+
 type implClientBuilder struct {
 	resume   *resumeOpts
 	fragment int
-	addr     string
+	tpOpts   *transportOpts
 	setup    *socket.SetupInfo
 	acceptor ClientSocketAcceptor
-	onCloses []func()
+	onCloses []func(error)
 }
 
 func (p *implClientBuilder) Resume(opts ...ClientResumeOptions) ClientBuilder {
@@ -117,7 +130,7 @@ func (p *implClientBuilder) Fragment(mtu int) ClientBuilder {
 	return p
 }
 
-func (p *implClientBuilder) OnClose(fn func()) ClientBuilder {
+func (p *implClientBuilder) OnClose(fn func(error)) ClientBuilder {
 	p.onCloses = append(p.onCloses, fn)
 	return p
 }
@@ -158,8 +171,13 @@ func (p *implClientBuilder) Acceptor(acceptor ClientSocketAcceptor) ClientTransp
 	return p
 }
 
-func (p *implClientBuilder) Transport(transport string) ClientStarter {
-	p.addr = transport
+func (p *implClientBuilder) Transport(transport string, opts ...TransportOpts) ClientStarter {
+	p.tpOpts = &transportOpts{
+		addr: transport,
+	}
+	for i := 0; i < len(opts); i++ {
+		opts[i](p.tpOpts)
+	}
 	return p
 }
 
@@ -173,7 +191,7 @@ func (p *implClientBuilder) Start(ctx context.Context) (client Client, err error
 
 func (p *implClientBuilder) start(ctx context.Context, tc *tls.Config) (client Client, err error) {
 	var uri *transport.URI
-	uri, err = transport.ParseURI(p.addr)
+	uri, err = transport.ParseURI(p.tpOpts.addr)
 	if err != nil {
 		return
 	}
@@ -188,14 +206,17 @@ func (p *implClientBuilder) start(ctx context.Context, tc *tls.Config) (client C
 		p.fragment,
 		p.setup.KeepaliveInterval,
 	)
-
+	var headers map[string][]string
+	if uri.IsWebsocket() {
+		headers = p.tpOpts.headers
+	}
 	// create a client.
 	var cs setupClientSocket
 	if p.resume != nil {
 		p.setup.Token = p.resume.tokenGen()
-		cs = socket.NewClientResume(uri, sk, tc)
+		cs = socket.NewClientResume(uri, sk, tc, headers)
 	} else {
-		cs = socket.NewClient(uri, sk, tc)
+		cs = socket.NewClient(uri, sk, tc, headers)
 	}
 	if p.acceptor != nil {
 		sk.SetResponder(p.acceptor(cs))
