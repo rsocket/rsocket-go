@@ -24,6 +24,7 @@ func TestDecodeFrameSetup(t *testing.T) {
 		mimeData,
 		data,
 		metadata,
+		false,
 	)
 	log.Println(setup)
 	assert.Equal(t, "1.0", setup.Version().String())

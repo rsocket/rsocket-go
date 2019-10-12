@@ -49,10 +49,12 @@ type (
 		ClientTransportBuilder
 		// Fragment set fragmentation size which default is 16_777_215(16MB).
 		Fragment(mtu int) ClientBuilder
+
 		// KeepAlive defines current client keepalive settings.
 		KeepAlive(tickPeriod, ackTimeout time.Duration, missedAcks int) ClientBuilder
 		// Resume enable resume for current RSocket.
 		Resume(opts ...ClientResumeOptions) ClientBuilder
+		Lease() ClientBuilder
 		// DataMimeType is used to set payload data MIME type.
 		// Default MIME type is `application/binary`.
 		DataMimeType(mime string) ClientBuilder
@@ -98,12 +100,14 @@ type transportOpts struct {
 	headers map[string][]string
 }
 
+// WithWebsocketHeaders attach headers for websocket transport.
 func WithWebsocketHeaders(headers map[string][]string) TransportOpts {
 	return func(opts *transportOpts) {
 		opts.headers = headers
 	}
 }
 
+// TransportOpts represents options of transport.
 type TransportOpts = func(*transportOpts)
 
 type implClientBuilder struct {
@@ -113,6 +117,11 @@ type implClientBuilder struct {
 	setup    *socket.SetupInfo
 	acceptor ClientSocketAcceptor
 	onCloses []func(error)
+}
+
+func (p *implClientBuilder) Lease() ClientBuilder {
+	p.setup.Lease = true
+	return p
 }
 
 func (p *implClientBuilder) Resume(opts ...ClientResumeOptions) ClientBuilder {

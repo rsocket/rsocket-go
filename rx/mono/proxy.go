@@ -35,6 +35,24 @@ func (p proxy) Error(e error) {
 	p.mustProcessor().Error(e)
 }
 
+func (p proxy) ToChan(ctx context.Context) (c <-chan payload.Payload, e <-chan error) {
+	errorChannel := make(chan error, 1)
+	payloadChannel := make(chan payload.Payload, 1)
+	p.
+		DoOnSuccess(func(input payload.Payload) {
+			payloadChannel <- input
+		}).
+		DoOnError(func(e error) {
+			errorChannel <- e
+		}).
+		DoFinally(func(s rx.SignalType) {
+			close(payloadChannel)
+			close(errorChannel)
+		}).
+		Subscribe(ctx)
+	return payloadChannel, errorChannel
+}
+
 func (p proxy) SubscribeOn(sc scheduler.Scheduler) Mono {
 	return newProxy(p.Mono.SubscribeOn(sc))
 }
@@ -44,7 +62,9 @@ func (p proxy) Block(ctx context.Context) (pa payload.Payload, err error) {
 	if err != nil {
 		return
 	}
-	pa = v.(payload.Payload)
+	if v != nil {
+		pa = v.(payload.Payload)
+	}
 	return
 }
 

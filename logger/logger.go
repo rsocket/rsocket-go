@@ -28,7 +28,7 @@ func (s Level) String() string {
 
 const (
 	// LevelDebug is DEBUG level.
-	LevelDebug Level = iota
+	LevelDebug Level = 1 << iota
 	// LevelInfo is INFO level.
 	LevelInfo
 	// LevelWarn is WARN level.
@@ -64,14 +64,16 @@ func SetFunc(level Level, fn Func) {
 	if fn == nil {
 		return
 	}
-	switch level {
-	case LevelDebug:
+	if level&LevelDebug != 0 {
 		d = fn
-	case LevelInfo:
+	}
+	if level&LevelInfo != 0 {
 		i = fn
-	case LevelWarn:
+	}
+	if level&LevelWarn != 0 {
 		w = fn
-	case LevelError:
+	}
+	if level&LevelError != 0 {
 		e = fn
 	}
 }

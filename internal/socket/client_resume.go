@@ -5,20 +5,20 @@ import (
 	"crypto/tls"
 	"errors"
 	"math"
-	"sync/atomic"
 	"time"
 
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/internal/transport"
 	"github.com/rsocket/rsocket-go/logger"
+	"go.uber.org/atomic"
 )
 
 const reconnectDelay = 1 * time.Second
 
 type resumeClientSocket struct {
 	*baseSocket
-	connects int32
+	connects *atomic.Int32
 	uri      *transport.URI
 	headers  map[string][]string
 	setup    *SetupInfo
@@ -45,7 +45,7 @@ func (p *resumeClientSocket) Close() (err error) {
 }
 
 func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
-	connects := atomic.AddInt32(&(p.connects), 1)
+	connects := p.connects.Inc()
 	if connects < 0 {
 		_ = p.Close()
 		return
@@ -82,13 +82,13 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 
 	// connect first time.
 	if len(p.setup.Token) < 1 || connects == 1 {
-		tp.HandleError0(func(frame framing.Frame) (err error) {
+		tp.HandleDisaster(func(frame framing.Frame) (err error) {
 			p.socket.SetError(frame.(*framing.FrameError))
 			p.markClosing()
 			return
 		})
 
-		f = p.setup.ToFrame()
+		f = p.setup.toFrame()
 		err = tp.Send(f, true)
 		p.socket.SetTransport(tp)
 		return
@@ -108,7 +108,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		return
 	})
 
-	tp.HandleError0(func(frame framing.Frame) (err error) {
+	tp.HandleDisaster(func(frame framing.Frame) (err error) {
 		// TODO: process other error with zero StreamID
 		f := frame.(*framing.FrameError)
 		if f.ErrorCode() == common.ErrorCodeRejectedResume {
@@ -141,11 +141,11 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 }
 
 func (p *resumeClientSocket) markClosing() {
-	atomic.StoreInt32(&(p.connects), math.MinInt32)
+	p.connects.Store(math.MinInt32)
 }
 
 func (p *resumeClientSocket) isClosed() bool {
-	return atomic.LoadInt32(&(p.connects)) < 0
+	return p.connects.Load() < 0
 }
 
 // NewClientResume creates a client-side socket with resume support.
@@ -155,5 +155,6 @@ func NewClientResume(uri *transport.URI, socket *DuplexRSocket, tc *tls.Config, 
 		uri:        uri,
 		tc:         tc,
 		headers:    headers,
+		connects:   atomic.NewInt32(0),
 	}
 }

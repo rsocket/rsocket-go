@@ -11,7 +11,7 @@ import (
 
 	. "github.com/rsocket/rsocket-go"
 	. "github.com/rsocket/rsocket-go/balancer"
-	. "github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx/mono"
 	"github.com/stretchr/testify/require"
 )
@@ -28,13 +28,13 @@ func ExampleNewGroup() {
 	// Create a broker with resume.
 	err := Receive().
 		Resume(WithServerResumeSessionDuration(10 * time.Second)).
-		Acceptor(func(setup SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
+		Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 			// Register service using Setup Metadata as service ID.
 			if serviceID, ok := setup.MetadataUTF8(); ok {
 				group.Get(serviceID).Put(sendingSocket)
 			}
 			// Proxy requests by group.
-			return NewAbstractSocket(RequestResponse(func(msg Payload) mono.Mono {
+			return NewAbstractSocket(RequestResponse(func(msg payload.Payload) mono.Mono {
 				requestServiceID, ok := msg.MetadataUTF8()
 				if !ok {
 					panic(errors.New("missing service ID in metadata"))
@@ -64,10 +64,10 @@ func TestServiceSubscribe(t *testing.T) {
 			OnClose(func(err error) {
 				close(done)
 			}).
-			SetupPayload(NewString("This is a Service Publisher!", "md5")).
+			SetupPayload(payload.NewString("This is a Service Publisher!", "md5")).
 			Acceptor(func(socket RSocket) RSocket {
-				return NewAbstractSocket(RequestResponse(func(msg Payload) mono.Mono {
-					result := NewString(fmt.Sprintf("%02x", md5.Sum(msg.Data())), "MD5 RESULT")
+				return NewAbstractSocket(RequestResponse(func(msg payload.Payload) mono.Mono {
+					result := payload.NewString(fmt.Sprintf("%02x", md5.Sum(msg.Data())), "MD5 RESULT")
 					log.Println("[publisher] accept MD5 request:", msg.DataUTF8())
 					return mono.Just(result)
 				}))
@@ -85,17 +85,19 @@ func TestServiceSubscribe(t *testing.T) {
 
 	// Create a client and request md5 service.
 	cli, err := Connect().
-		SetupPayload(NewString("This is a Subscriber", "")).
+		SetupPayload(payload.NewString("This is a Subscriber", "")).
 		Transport(uri).
 		Start(context.Background())
 	require.NoError(t, err, "create client failed")
 	defer func() {
 		_ = cli.Close()
+		time.Sleep(200 * time.Millisecond)
 	}()
-	cli.RequestResponse(NewString("Hello World!", "md5")).
-		DoOnSuccess(func(elem Payload) {
+	_, err = cli.RequestResponse(payload.NewString("Hello World!", "md5")).
+		DoOnSuccess(func(elem payload.Payload) {
 			log.Println("[subscriber] receive MD5 response:", elem.DataUTF8())
 			require.Equal(t, "ed076287532e86365e841e92bfc50d8c", elem.DataUTF8(), "bad md5")
 		}).
-		Subscribe(context.Background())
+		Block(context.Background())
+	require.NoError(t, err, "request failed")
 }

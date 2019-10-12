@@ -14,11 +14,13 @@ import (
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
 	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/internal/transport"
+	"github.com/rsocket/rsocket-go/lease"
 	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
+	"go.uber.org/atomic"
 )
 
 const outsSize = 64
@@ -41,14 +43,16 @@ type DuplexRSocket struct {
 	sids            streamIDs
 	mtu             int
 	fragments       *u32map // key=streamID, value=Joiner
-	once            sync.Once
+	closed          *atomic.Bool
 	done            chan struct{}
 	keepaliver      *keepaliver
 	cond            *sync.Cond
 	singleScheduler scheduler.Scheduler
 	e               error
+	leases          lease.Leases
 }
 
+// SetError sets error for current socket.
 func (p *DuplexRSocket) SetError(e error) {
 	p.e = e
 }
@@ -70,48 +74,49 @@ func (p *DuplexRSocket) nextStreamID() (sid uint32) {
 
 // Close close current socket.
 func (p *DuplexRSocket) Close() error {
-	p.once.Do(func() {
-		if p.keepaliver != nil {
-			p.keepaliver.Stop()
+	if !p.closed.CAS(false, true) {
+		return nil
+	}
+	if p.keepaliver != nil {
+		p.keepaliver.Stop()
+	}
+	_ = p.singleScheduler.(io.Closer).Close()
+	close(p.outs)
+	p.cond.L.Lock()
+	p.cond.Broadcast()
+	p.cond.L.Unlock()
+
+	_ = p.fragments.Close()
+	<-p.done
+
+	if p.tp != nil {
+		if p.e == nil {
+			p.e = p.tp.Close()
+		} else {
+			_ = p.tp.Close()
 		}
-		_ = p.singleScheduler.(io.Closer).Close()
-		close(p.outs)
-		p.cond.L.Lock()
-		p.cond.Broadcast()
-		p.cond.L.Unlock()
+	}
 
-		_ = p.fragments.Close()
-		<-p.done
-
-		if p.tp != nil {
-			if p.e == nil {
-				p.e = p.tp.Close()
-			} else {
-				_ = p.tp.Close()
-			}
-		}
-
-		p.fragments.Range(func(key uint32, value interface{}) bool {
-			return true
-		})
-		_ = p.fragments.Close()
-
-		p.messages.Range(func(key uint32, value interface{}) bool {
-			if cc, ok := value.(closerWithError); ok {
-				if p.e == nil {
-					go func() {
-						cc.Close(errSocketClosed)
-					}()
-				} else {
-					go func(e error) {
-						cc.Close(e)
-					}(p.e)
-				}
-			}
-			return true
-		})
-		_ = p.messages.Close()
+	p.fragments.Range(func(key uint32, value interface{}) bool {
+		return true
 	})
+	_ = p.fragments.Close()
+
+	p.messages.Range(func(key uint32, value interface{}) bool {
+		if cc, ok := value.(closerWithError); ok {
+			if p.e == nil {
+				go func() {
+					cc.Close(errSocketClosed)
+				}()
+			} else {
+				go func(e error) {
+					cc.Close(e)
+				}(p.e)
+			}
+		}
+		return true
+	})
+	_ = p.messages.Close()
 	return p.e
 }
 
@@ -170,8 +175,6 @@ func (p *DuplexRSocket) RequestResponse(pl payload.Payload) (mo mono.Mono) {
 
 	p.singleScheduler.Worker().Do(func() {
 		// sending...
-		defer func() {
-		}()
 		size := framing.CalcPayloadFrameSize(data, metadata)
 		if !p.shouldSplit(size) {
 			p.sendFrame(framing.NewFrameRequestResponse(sid, data, metadata))
@@ -194,15 +197,6 @@ func (p *DuplexRSocket) RequestResponse(pl payload.Payload) (mo mono.Mono) {
 		})
 	})
 	return
-}
-
-func (p *DuplexRSocket) register(sid uint32, msg interface{}) {
-	p.messages.Store(sid, msg)
-}
-
-func (p *DuplexRSocket) unregister(sid uint32) {
-	p.messages.Delete(sid)
-	p.fragments.Delete(sid)
 }
 
 // RequestStream start a request of RequestStream.
@@ -652,7 +646,7 @@ func (p *DuplexRSocket) onFrameCancel(frame framing.Frame) (err error) {
 	case resRS:
 		vv.su.Cancel()
 	default:
-		panic(fmt.Errorf("illegal cancel target: %v\n", vv))
+		panic(fmt.Errorf("illegal cancel target: %v", vv))
 	}
 
 	if _, ok := p.fragments.Load(sid); ok {
@@ -680,7 +674,7 @@ func (p *DuplexRSocket) onFrameError(input framing.Frame) (err error) {
 	case reqRC:
 		vv.rcv.Error(f)
 	default:
-		panic(fmt.Errorf("illegal value for error: %v\n", vv))
+		panic(fmt.Errorf("illegal value for error: %v", vv))
 	}
 	return
 }
@@ -704,7 +698,7 @@ func (p *DuplexRSocket) onFrameRequestN(input framing.Frame) (err error) {
 	case resRC:
 		vv.snd.Request(n)
 	default:
-		panic(fmt.Errorf("illegal requestN for %+v\n", vv))
+		panic(fmt.Errorf("illegal requestN for %+v", vv))
 	}
 	return
 }
@@ -790,7 +784,7 @@ func (p *DuplexRSocket) onFramePayload(frame framing.Frame) error {
 			vv.rcv.Complete()
 		}
 	default:
-		panic(fmt.Errorf("illegal Payload for %v\n", vv))
+		panic(fmt.Errorf("illegal Payload for %v", vv))
 	}
 	return nil
 }
@@ -858,58 +852,104 @@ func (p *DuplexRSocket) sendPayload(
 	})
 }
 
-func (p *DuplexRSocket) drainWithKeepalive() (ok bool) {
+func (p *DuplexRSocket) drainWithKeepalive(leaseChan <-chan lease.Lease) (ok bool) {
 	if len(p.outs) > 0 {
-		p.drain()
+		p.drain(nil)
 	}
 	var out framing.Frame
-	select {
-	case <-p.keepaliver.C():
-		ok = true
-		out = framing.NewFrameKeepalive(p.counter.ReadBytes(), nil, true)
-		if p.tp != nil {
-			err := p.tp.Send(out, true)
-			if err != nil {
-				logger.Errorf("send keepalive frame failed: %s\n", err.Error())
+
+	if leaseChan == nil {
+		select {
+		case <-p.keepaliver.C():
+			ok = true
+			out = framing.NewFrameKeepalive(p.counter.ReadBytes(), nil, true)
+			if p.tp != nil {
+				err := p.tp.Send(out, true)
+				if err != nil {
+					logger.Errorf("send keepalive frame failed: %s\n", err.Error())
+				}
+			}
+		case out, ok = <-p.outs:
+			if !ok {
+				return
+			}
+			if p.tp == nil {
+				p.outsPriority = append(p.outsPriority, out)
+			} else if err := p.tp.Send(out, true); err != nil {
+				logger.Errorf("send frame failed: %s\n", err.Error())
+				p.outsPriority = append(p.outsPriority, out)
 			}
 		}
-	case out, ok = <-p.outs:
-		if !ok {
-			return
+	} else {
+		select {
+		case <-p.keepaliver.C():
+			ok = true
+			out = framing.NewFrameKeepalive(p.counter.ReadBytes(), nil, true)
+			if p.tp != nil {
+				err := p.tp.Send(out, true)
+				if err != nil {
+					logger.Errorf("send keepalive frame failed: %s\n", err.Error())
+				}
+			}
+		case ls, success := <-leaseChan:
+			ok = success
+			if !ok {
+				return
+			}
+			out = framing.NewFrameLease(ls.TimeToLive, ls.NumberOfRequests, ls.Metadata)
+			if p.tp == nil {
+				p.outsPriority = append(p.outsPriority, out)
+			} else if err := p.tp.Send(out, true); err != nil {
+				logger.Errorf("send frame failed: %s\n", err.Error())
+				p.outsPriority = append(p.outsPriority, out)
+			}
+		case out, ok = <-p.outs:
+			if !ok {
+				return
+			}
+			if p.tp == nil {
+				p.outsPriority = append(p.outsPriority, out)
+			} else if err := p.tp.Send(out, true); err != nil {
+				logger.Errorf("send frame failed: %s\n", err.Error())
+				p.outsPriority = append(p.outsPriority, out)
+			}
 		}
-		if p.tp == nil {
-			p.outsPriority = append(p.outsPriority, out)
-		} else if err := p.tp.Send(out, true); err != nil {
-			logger.Errorf("send frame failed: %s\n", err.Error())
-			p.outsPriority = append(p.outsPriority, out)
-		}
+
 	}
+
 	return
 }
 
-func (p *DuplexRSocket) drain() (ok bool) {
-	var out framing.Frame
+func (p *DuplexRSocket) drain(leaseChan <-chan lease.Lease) bool {
 	var flush bool
 	cycle := len(p.outs)
 	if cycle < 1 {
 		cycle = 1
 	}
 	for i := 0; i < cycle; i++ {
-		out, ok = <-p.outs
-		if !ok {
-			return
+		select {
+		case next, ok := <-leaseChan:
+			if !ok {
+				return false
+			}
+			if p.drainOne(framing.NewFrameLease(next.TimeToLive, next.NumberOfRequests, next.Metadata)) {
+				flush = true
+			}
+		case out, ok := <-p.outs:
+			if !ok {
+				return false
+			}
+			if p.drainOne(out) {
+				flush = true
+			}
 		}
-		if p.drainOne(out) {
-			flush = true
+	}
+	if flush {
+		if err := p.tp.Flush(); err != nil {
+			logger.Errorf("flush failed: %v\n", err)
 		}
 	}
-	if !flush {
-		return
-	}
-	if err := p.tp.Flush(); err != nil {
-		logger.Errorf("flush failed: %v\n", err)
-	}
-	return
+	return true
 }
 
 func (p *DuplexRSocket) drainOne(out framing.Frame) (wrote bool) {
@@ -951,7 +991,7 @@ func (p *DuplexRSocket) drainOutBack() {
 	}
 }
 
-func (p *DuplexRSocket) loopWriteWithKeepaliver(ctx context.Context) error {
+func (p *DuplexRSocket) loopWriteWithKeepaliver(ctx context.Context, leaseChan <-chan lease.Lease) error {
 	for {
 		if p.tp == nil {
 			p.cond.L.Lock()
@@ -964,6 +1004,7 @@ func (p *DuplexRSocket) loopWriteWithKeepaliver(ctx context.Context) error {
 			p.cleanOuts()
 			return ctx.Err()
 		default:
+			// ignore
 		}
 
 		select {
@@ -978,7 +1019,7 @@ func (p *DuplexRSocket) loopWriteWithKeepaliver(ctx context.Context) error {
 		default:
 		}
 		p.drainOutBack()
-		if !p.drainWithKeepalive() {
+		if !p.drainWithKeepalive(leaseChan) {
 			break
 		}
 	}
@@ -991,9 +1032,21 @@ func (p *DuplexRSocket) cleanOuts() {
 
 func (p *DuplexRSocket) loopWrite(ctx context.Context) error {
 	defer close(p.done)
+
+	var leaseChan chan lease.Lease
+	if p.leases != nil {
+		leaseCtx, cancel := context.WithCancel(ctx)
+		defer func() {
+			cancel()
+		}()
+		if c, ok := p.leases.Next(leaseCtx); ok {
+			leaseChan = c
+		}
+	}
+
 	if p.keepaliver != nil {
 		defer p.keepaliver.Stop()
-		return p.loopWriteWithKeepaliver(ctx)
+		return p.loopWriteWithKeepaliver(ctx, leaseChan)
 	}
 	for {
 		if p.tp == nil {
@@ -1010,7 +1063,7 @@ func (p *DuplexRSocket) loopWrite(ctx context.Context) error {
 		}
 
 		p.drainOutBack()
-		if !p.drain() {
+		if !p.drain(leaseChan) {
 			break
 		}
 	}
@@ -1029,9 +1082,20 @@ func (p *DuplexRSocket) shouldSplit(size int) bool {
 	return size > p.mtu
 }
 
+func (p *DuplexRSocket) register(sid uint32, msg interface{}) {
+	p.messages.Store(sid, msg)
+}
+
+func (p *DuplexRSocket) unregister(sid uint32) {
+	p.messages.Delete(sid)
+	p.fragments.Delete(sid)
+}
+
 // NewServerDuplexRSocket creates a new server-side DuplexRSocket.
-func NewServerDuplexRSocket(mtu int) *DuplexRSocket {
+func NewServerDuplexRSocket(mtu int, leases lease.Leases) *DuplexRSocket {
 	return &DuplexRSocket{
+		closed:          atomic.NewBool(false),
+		leases:          leases,
 		outs:            make(chan framing.Frame, outsSize),
 		mtu:             mtu,
 		messages:        newU32Map(),
@@ -1051,6 +1115,7 @@ func NewClientDuplexRSocket(
 ) (s *DuplexRSocket) {
 	ka := newKeepaliver(keepaliveInterval)
 	s = &DuplexRSocket{
+		closed:          atomic.NewBool(false),
 		outs:            make(chan framing.Frame, outsSize),
 		mtu:             mtu,
 		messages:        newU32Map(),

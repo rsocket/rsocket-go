@@ -2,8 +2,8 @@ package flux_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/pkg/errors"
 	"log"
 	"strconv"
 	"testing"
@@ -204,11 +204,7 @@ func TestCreateFromChannelAndEmitError(t *testing.T) {
 		err <- errors.New("boom")
 	}()
 
-	background := context.Background()
-	_, e := flux.
-		CreateFromChannel(payloads, err).
-		BlockLast(background)
-
+	_, e := flux.CreateFromChannel(payloads, err).BlockLast(context.Background())
 	if e == nil {
 		t.Fail()
 	}
@@ -249,7 +245,7 @@ func TestToChannel(t *testing.T) {
 
 	f := flux.CreateFromChannel(payloads, err)
 
-	channel, chanerrors := flux.ToChannel(f, context.Background())
+	channel, chanerrors := f.ToChan(context.Background(), 0)
 
 	var count int
 loop:
@@ -287,7 +283,7 @@ func TestToChannelEmitError(t *testing.T) {
 
 	f := flux.CreateFromChannel(payloads, err)
 
-	channel, chanerrors := flux.ToChannel(f, context.Background())
+	channel, chanerrors := f.ToChan(context.Background(), 0)
 
 loop:
 	for {

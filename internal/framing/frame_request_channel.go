@@ -63,7 +63,7 @@ func (p *FrameRequestChannel) DataUTF8() string {
 // NewFrameRequestChannel returns a new RequestChannel frame.
 func NewFrameRequestChannel(sid uint32, n uint32, data, metadata []byte, flags ...FrameFlag) *FrameRequestChannel {
 	fg := newFlags(flags...)
-	bf := common.New()
+	bf := common.NewByteBuff()
 	var b4 [4]byte
 	binary.BigEndian.PutUint32(b4[:], n)
 	if _, err := bf.Write(b4[:]); err != nil {

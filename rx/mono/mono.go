@@ -9,10 +9,6 @@ import (
 	"github.com/rsocket/rsocket-go/rx"
 )
 
-type RawPublisher interface {
-	SubscribeWith(context.Context, rx.Subscriber)
-}
-
 type Mono interface {
 	rx.Publisher
 	Filter(rx.FnPredicate) Mono
@@ -25,6 +21,9 @@ type Mono interface {
 	Block(context.Context) (payload.Payload, error)
 	SwitchIfEmpty(alternative Mono) Mono
 	Raw() mono.Mono
+	// ToChan subscribe Mono and puts items into a chan.
+	// It also puts errors into another chan.
+	ToChan(ctx context.Context) (c <-chan payload.Payload, e <-chan error)
 }
 
 type Sink interface {

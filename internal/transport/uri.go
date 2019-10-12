@@ -22,6 +22,7 @@ var tlsInsecure = &tls.Config{
 	InsecureSkipVerify: true,
 }
 
+// IsWebsocket returns true if current uri is websocket.
 func (p *URI) IsWebsocket() bool {
 	switch strings.ToLower(p.Scheme) {
 	case schemaWebsocket, schemaWebsocketSecure:

@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	//_ "net/http/pprof"
+	"net/http"
+	_ "net/http/pprof"
 	"strconv"
 	"strings"
 
@@ -23,9 +24,9 @@ const ListenAt = "tcp://127.0.0.1:7878"
 //const ListenAt = "ws://127.0.0.1:7878/echo"
 
 func main() {
-	//go func() {
-	//	log.Println(http.ListenAndServe(":4444", nil))
-	//}()
+	go func() {
+		log.Println(http.ListenAndServe(":4444", nil))
+	}()
 	//logger.SetLevel(logger.LevelDebug)
 	err := rsocket.Receive().
 		//Fragment(65535).

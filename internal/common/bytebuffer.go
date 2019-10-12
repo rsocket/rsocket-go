@@ -44,7 +44,7 @@ func (p *ByteBuff) Bytes() []byte {
 	return p.pp().Bytes()
 }
 
-// New borrows a ByteBuff from pool.
-func New() *ByteBuff {
+// NewByteBuff creates a new ByteBuff.
+func NewByteBuff() *ByteBuff {
 	return (*ByteBuff)(&bytes.Buffer{})
 }

@@ -31,7 +31,7 @@ func (p *FrameResumeOK) LastReceivedClientPosition() uint64 {
 func NewResumeOK(position uint64) *FrameResumeOK {
 	var b8 [8]byte
 	binary.BigEndian.PutUint64(b8[:], position)
-	bf := common.New()
+	bf := common.NewByteBuff()
 	_, err := bf.Write(b8[:])
 	if err != nil {
 		panic(err)

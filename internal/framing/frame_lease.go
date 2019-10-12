@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"time"
+
+	"github.com/rsocket/rsocket-go/internal/common"
 )
 
 const (
@@ -27,7 +29,7 @@ func (p *FrameLease) Validate() (err error) {
 }
 
 func (p *FrameLease) String() string {
-	return fmt.Sprintf("FrameLease{%s,timeToLive=%d,numberOfRequests=%d,metadata=%s}",
+	return fmt.Sprintf("FrameLease{%s,timeToLive=%s,numberOfRequests=%d,metadata=%s}",
 		p.header, p.TimeToLive(), p.NumberOfRequests(), string(p.Metadata()))
 }
 
@@ -48,4 +50,19 @@ func (p *FrameLease) Metadata() []byte {
 		return nil
 	}
 	return p.body.Bytes()[8:]
+}
+
+func NewFrameLease(ttl time.Duration, n uint32, metadata []byte) *FrameLease {
+	bf := common.NewByteBuff()
+	if err := binary.Write(bf, binary.BigEndian, uint32(ttl.Milliseconds())); err != nil {
+		panic(err)
+	}
+	if err := binary.Write(bf, binary.BigEndian, n); err != nil {
+		panic(err)
+	}
+	var fg FrameFlag
+	if len(metadata) > 0 {
+		fg |= FlagMetadata
+	}
+	return &FrameLease{NewBaseFrame(NewFrameHeader(0, FrameTypeLease, fg), bf)}
 }

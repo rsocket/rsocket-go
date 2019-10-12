@@ -155,9 +155,12 @@ type BaseFrame struct {
 	done   chan struct{}
 }
 
+// Done can be invoked when a frame has been been processed.
 func (p *BaseFrame) Done() {
 	close(p.done)
 }
+
+// DoneNotify notify when frame has been done.
 func (p *BaseFrame) DoneNotify() <-chan struct{} {
 	return p.done
 }

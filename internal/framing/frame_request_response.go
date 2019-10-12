@@ -48,7 +48,7 @@ func (p *FrameRequestResponse) DataUTF8() string {
 // NewFrameRequestResponse returns a new RequestResponse frame.
 func NewFrameRequestResponse(id uint32, data, metadata []byte, flags ...FrameFlag) *FrameRequestResponse {
 	fg := newFlags(flags...)
-	bf := common.New()
+	bf := common.NewByteBuff()
 	if len(metadata) > 0 {
 		fg |= FlagMetadata
 		if err := bf.WriteUint24(len(metadata)); err != nil {

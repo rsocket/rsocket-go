@@ -152,9 +152,10 @@ func NewFrameSetup(
 	mimeData []byte,
 	data []byte,
 	metadata []byte,
+	lease bool,
 ) *FrameSetup {
 	var fg FrameFlag
-	bf := common.New()
+	bf := common.NewByteBuff()
 	if _, err := bf.Write(version.Bytes()); err != nil {
 		panic(err)
 	}
@@ -166,6 +167,9 @@ func NewFrameSetup(
 	binary.BigEndian.PutUint32(b4[:], uint32(maxLifetime.Nanoseconds()/1e6))
 	if _, err := bf.Write(b4[:]); err != nil {
 		panic(err)
+	}
+	if lease {
+		fg |= FlagLease
 	}
 	if len(token) > 0 {
 		fg |= FlagResume

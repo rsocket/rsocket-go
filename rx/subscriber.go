@@ -1,25 +1,31 @@
 package rx
 
 import (
-	"github.com/jjeffcaii/reactor-go"
+	reactor "github.com/jjeffcaii/reactor-go"
 	"github.com/rsocket/rsocket-go/payload"
 )
 
-var EmptySubscriber Subscriber
-var EmptyRawSubscriber rs.Subscriber
-
-func init() {
-	EmptySubscriber = &subscriber{}
-	EmptyRawSubscriber = rs.NewSubscriber(rs.OnNext(func(v interface{}) {
+var (
+	// EmptySubscriber is a blank Subscriber.
+	EmptySubscriber Subscriber = &subscriber{}
+	// EmptyRawSubscriber is a blank native Subscriber in reactor-go.
+	EmptyRawSubscriber = reactor.NewSubscriber(reactor.OnNext(func(v interface{}) {
 	}))
-}
+)
 
-type Subscription rs.Subscription
+// Subscription represents a one-to-one lifecycle of a Subscriber subscribing to a Publisher.
+type Subscription reactor.Subscription
 
+// Subscriber will receive call to OnSubscribe(Subscription) once after passing an instance of Subscriber to Publisher#SubscribeWith
 type Subscriber interface {
+	// OnNext represents data notification sent by the Publisher in response to requests to Subscription#Request.
 	OnNext(payload payload.Payload)
+	// OnError represents failed terminal state.
 	OnError(error)
+	// OnComplete represents successful terminal state.
 	OnComplete()
+	// OnSubscribe invoked after Publisher subscribed.
+	// No data will start flowing until Subscription#Request is invoked.
 	OnSubscribe(Subscription)
 }
 
@@ -56,32 +62,39 @@ func (s *subscriber) OnSubscribe(su Subscription) {
 	}
 }
 
+// SubscriberOption is option of subscriber.
+// You can call OnNext, OnComplete, OnError or OnSubscribe.
 type SubscriberOption func(*subscriber)
 
+// OnNext returns s SubscriberOption handling Next event.
 func OnNext(onNext FnOnNext) SubscriberOption {
 	return func(s *subscriber) {
 		s.fnOnNext = onNext
 	}
 }
 
+// OnComplete returns s SubscriberOption handling Complete event.
 func OnComplete(onComplete FnOnComplete) SubscriberOption {
 	return func(s *subscriber) {
 		s.fnOnComplete = onComplete
 	}
 }
 
+// OnError returns s SubscriberOption handling Error event.
 func OnError(onError FnOnError) SubscriberOption {
 	return func(i *subscriber) {
 		i.fnOnError = onError
 	}
 }
 
+// OnSubscribe returns s SubscriberOption handling Subscribe event.
 func OnSubscribe(onSubscribe FnOnSubscribe) SubscriberOption {
 	return func(i *subscriber) {
 		i.fnOnSubscribe = onSubscribe
 	}
 }
 
+// NewSubscriber create a new Subscriber with custom options.
 func NewSubscriber(opts ...SubscriberOption) Subscriber {
 	if len(opts) < 1 {
 		return EmptySubscriber

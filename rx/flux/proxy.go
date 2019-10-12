@@ -3,7 +3,7 @@ package flux
 import (
 	"context"
 
-	rs "github.com/jjeffcaii/reactor-go"
+	reactor "github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/flux"
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
@@ -79,7 +79,7 @@ func (p proxy) ToChan(ctx context.Context, cap int) (c <-chan payload.Payload, e
 	p.
 		DoFinally(func(s rx.SignalType) {
 			if s == rx.SignalCancel {
-				err <- rs.ErrSubscribeCancelled
+				err <- reactor.ErrSubscribeCancelled
 			}
 			close(ch)
 			close(err)
@@ -104,7 +104,9 @@ func (p proxy) BlockFirst(ctx context.Context) (first payload.Payload, err error
 	if err != nil {
 		return
 	}
-	first = v.(payload.Payload)
+	if v != nil {
+		first = v.(payload.Payload)
+	}
 	return
 }
 
@@ -113,12 +115,14 @@ func (p proxy) BlockLast(ctx context.Context) (last payload.Payload, err error) 
 	if err != nil {
 		return
 	}
-	last = v.(payload.Payload)
+	if v != nil {
+		last = v.(payload.Payload)
+	}
 	return
 }
 
 func (p proxy) DoOnSubscribe(fn rx.FnOnSubscribe) Flux {
-	return newProxy(p.Flux.DoOnSubscribe(func(su rs.Subscription) {
+	return newProxy(p.Flux.DoOnSubscribe(func(su reactor.Subscription) {
 		fn(su)
 	}))
 }
@@ -128,7 +132,7 @@ func (p proxy) DoOnRequest(fn rx.FnOnRequest) Flux {
 }
 
 func (p proxy) DoFinally(fn rx.FnFinally) Flux {
-	return newProxy(p.Flux.DoFinally(func(s rs.SignalType) {
+	return newProxy(p.Flux.DoFinally(func(s reactor.SignalType) {
 		fn(rx.SignalType(s))
 	}))
 }
@@ -148,21 +152,21 @@ func (p proxy) Subscribe(ctx context.Context, options ...rx.SubscriberOption) {
 }
 
 func (p proxy) SubscribeWith(ctx context.Context, s rx.Subscriber) {
-	var sub rs.Subscriber
+	var sub reactor.Subscriber
 	if s == rx.EmptySubscriber {
 		sub = rx.EmptyRawSubscriber
 	} else {
-		sub = rs.NewSubscriber(
-			rs.OnNext(func(v interface{}) {
+		sub = reactor.NewSubscriber(
+			reactor.OnNext(func(v interface{}) {
 				s.OnNext(v.(payload.Payload))
 			}),
-			rs.OnError(func(e error) {
+			reactor.OnError(func(e error) {
 				s.OnError(e)
 			}),
-			rs.OnComplete(func() {
+			reactor.OnComplete(func() {
 				s.OnComplete()
 			}),
-			rs.OnSubscribe(func(su rs.Subscription) {
+			reactor.OnSubscribe(func(su reactor.Subscription) {
 				s.OnSubscribe(su)
 			}),
 		)

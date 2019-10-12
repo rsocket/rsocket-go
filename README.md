@@ -1,13 +1,12 @@
 # rsocket-go
 ![logo](./logo.jpg)
 
-[![Travis (.org)](https://img.shields.io/travis/rsocket/rsocket-go.svg)](https://travis-ci.com/rsocket/rsocket-go)
+[![Build Status](https://travis-ci.com/rsocket/rsocket-go.svg?branch=master)](https://travis-ci.com/rsocket/rsocket-go)
 [![Slack](https://img.shields.io/badge/slack-rsocket--go-blue.svg)](https://rsocket.slack.com/messages/C9VGZ5MV3)
 [![GoDoc](https://godoc.org/github.com/rsocket/rsocket-go?status.svg)](https://godoc.org/github.com/rsocket/rsocket-go)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rsocket/rsocket-go)](https://goreportcard.com/report/github.com/rsocket/rsocket-go)
 [![License](https://img.shields.io/github/license/rsocket/rsocket-go.svg)](https://github.com/rsocket/rsocket-go/blob/master/LICENSE)
 [![GitHub Release](https://img.shields.io/github/release-pre/rsocket/rsocket-go.svg)](https://github.com/rsocket/rsocket-go/releases)
-
 
 > rsocket-go is an implementation of the [RSocket](http://rsocket.io/) protocol in Go.
 <br>🚧🚧🚧 ***IT IS UNDER ACTIVE DEVELOPMENT, APIs are unstable and maybe change at any time until release of v1.0.0.***
@@ -87,7 +86,7 @@ func main() {
 }
 ```
 
-> NOTICE: more server examples are [Here](cmd/echo/echo.go)
+> NOTICE: more server examples are [Here](examples/echo/echo.go)
 
 ## Advanced
 
@@ -249,9 +248,31 @@ func main() {
 
 ```
 
+#### Logging
+
+We do not use a specific log implementation. You can register your own log implementation. For example:
+
+```go
+package main
+
+import (
+	"log"
+
+	"github.com/rsocket/rsocket-go/logger"
+)
+
+func init() {
+	logger.SetFunc(logger.LevelDebug|logger.LevelInfo|logger.LevelWarn|logger.LevelError, func(template string, args ...interface{}) {
+		// Implement your own logger here...
+		log.Printf(template, args...)
+	})
+	logger.SetLevel(logger.LevelInfo)
+}
+
+``` 
+
 #### Dependencies
  - [reactor-go](https://github.com/jjeffcaii/reactor-go)
- - [bytebufferpool](https://github.com/valyala/bytebufferpool)
  - [testify](https://github.com/stretchr/testify)
  - [websocket](https://github.com/gorilla/websocket)
 

@@ -49,7 +49,7 @@ func (p *FrameMetadataPush) DataUTF8() (data string) {
 
 // NewFrameMetadataPush returns a new metadata push frame.
 func NewFrameMetadataPush(metadata []byte) *FrameMetadataPush {
-	bf := common.New()
+	bf := common.NewByteBuff()
 	if _, err := bf.Write(metadata); err != nil {
 		panic(err)
 	}
