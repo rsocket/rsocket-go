@@ -1,12 +1,13 @@
-package mono
+package mono_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx/flux"
+	"github.com/rsocket/rsocket-go/rx/mono"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestCreateFromChannel(t *testing.T) {
@@ -22,8 +23,8 @@ func TestCreateFromChannel(t *testing.T) {
 
 	background := context.Background()
 	last, e :=
-		CreateFromChannel(payloads, err).
-		Block(background)
+		mono.CreateFromChannel(payloads, err).
+			Block(background)
 	if e != nil {
 		t.Error(e)
 	}
@@ -43,15 +44,8 @@ func TestCreateFromChannelAndEmitError(t *testing.T) {
 		defer close(err)
 		err <- errors.New("boom")
 	}()
-
-	background := context.Background()
-	_, e :=
-		CreateFromChannel(payloads, err).
-			Block(background)
-
-	if e == nil {
-		t.Fail()
-	}
+	_, e := mono.CreateFromChannel(payloads, err).Block(context.Background())
+	assert.Error(t, e, "should emit error")
 }
 
 func TestCreateFromChannelWithNoEmitsOrErrors(t *testing.T) {
@@ -62,15 +56,9 @@ func TestCreateFromChannelWithNoEmitsOrErrors(t *testing.T) {
 		defer close(payloads)
 		defer close(err)
 	}()
-
-	background := context.Background()
-	_, e :=
-		CreateFromChannel(payloads, err).
-			Block(background)
-
-	if e != nil {
-		t.Fail()
-	}
+	p, e := mono.CreateFromChannel(payloads, err).Block(context.Background())
+	assert.Nil(t, p, "should be nil payload")
+	assert.NoError(t, e, "should never emit error")
 }
 
 func TestToChannel(t *testing.T) {
@@ -84,26 +72,23 @@ func TestToChannel(t *testing.T) {
 		payloads <- p
 	}()
 
-	f := flux.CreateFromChannel(payloads, err)
-
-	channel, chanerrors := flux.ToChannel(f, context.Background())
+	channel, chanerrors := mono.CreateFromChannel(payloads, err).ToChan(context.Background())
 
 loop:
 	for {
 		select {
-		case p, o := <-channel:
-			if o {
-				assert.Equal(t, "data", p.DataUTF8())
-				md, _ := p.MetadataUTF8()
-				assert.Equal(t, "metadata", md)
-			} else {
+		case p, ok := <-channel:
+			if !ok {
 				break loop
 			}
+			assert.Equal(t, "data", p.DataUTF8())
+			md, _ := p.MetadataUTF8()
+			assert.Equal(t, "metadata", md)
 		case err := <-chanerrors:
 			if err != nil {
-				t.Error(err)
-				break loop
+				assert.NoError(t, err)
 			}
+			break loop
 		}
 	}
 
@@ -122,25 +107,21 @@ func TestToChannelEmitError(t *testing.T) {
 		}
 	}()
 
-	f := flux.CreateFromChannel(payloads, err)
-
-	channel, chanerrors := flux.ToChannel(f, context.Background())
+	channel, chanerrors := mono.CreateFromChannel(payloads, err).ToChan(context.Background())
 
 loop:
 	for {
 		select {
-		case _, o := <-channel:
-			if o {
-				t.Fail()
-			} else {
+		case _, ok := <-channel:
+			if !ok {
 				break loop
 			}
+			assert.Fail(t, "should never receive anything")
 		case err := <-chanerrors:
 			if err != nil {
 				break loop
-			} else {
-				t.Fail()
 			}
+			assert.Fail(t, "should receive an error")
 		}
 	}
 

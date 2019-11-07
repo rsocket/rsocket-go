@@ -23,9 +23,9 @@ func (p *Manager) Len() (n int) {
 // Push push a new session.
 func (p *Manager) Push(session *Session) {
 	p.locker.Lock()
+	defer p.locker.Unlock()
 	heap.Push(p.h, session)
 	p.m[(string)(session.Token())] = session
-	p.locker.Unlock()
 }
 
 // Load returns session with custom token.

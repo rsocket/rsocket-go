@@ -40,7 +40,7 @@ func (p *wsConnection) Read() (f framing.Frame, err error) {
 		return
 	}
 	header := framing.ParseFrameHeader(raw)
-	bf := common.New()
+	bf := common.NewByteBuff()
 	_, err = bf.Write(raw[framing.HeaderLen:])
 	if err != nil {
 		err = errors.Wrap(err, "read frame failed")

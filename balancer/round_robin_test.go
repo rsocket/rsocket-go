@@ -11,8 +11,8 @@ import (
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	. "github.com/rsocket/rsocket-go"
 	. "github.com/rsocket/rsocket-go/balancer"
-	. "github.com/rsocket/rsocket-go/payload"
-	. "github.com/rsocket/rsocket-go/rx"
+	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
 )
 
 func TestRoundRobin(t *testing.T) {
@@ -31,12 +31,12 @@ func TestRoundRobin(t *testing.T) {
 	for i := 0; i < x; i++ {
 		go func(n int) {
 			for j := 0; j < y; j++ {
-				b.Next().RequestResponse(NewString(fmt.Sprintf("GO_%04d_%04d", n, j), "go")).
-					DoOnSuccess(func(elem Payload) {
+				b.Next().RequestResponse(payload.NewString(fmt.Sprintf("GO_%04d_%04d", n, j), "go")).
+					DoOnSuccess(func(elem payload.Payload) {
 						m, _ := elem.MetadataUTF8()
 						log.Println("elem:", elem.DataUTF8(), m)
 					}).
-					DoFinally(func(st SignalType) {
+					DoFinally(func(st rx.SignalType) {
 						wg.Done()
 					}).
 					SubscribeOn(scheduler.Elastic()).
@@ -48,7 +48,7 @@ func TestRoundRobin(t *testing.T) {
 	for _, port := range []int{17878, 8000, 8001, 8002} {
 		go func(uri string) {
 			c, err := Connect().
-				SetupPayload(NewString(uri, "hello")).
+				SetupPayload(payload.NewString(uri, "hello")).
 				Transport(uri).
 				Start(context.Background())
 			if err == nil {

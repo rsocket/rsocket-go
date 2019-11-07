@@ -41,7 +41,9 @@ func (p *u32map) Load(key uint32) (v interface{}, ok bool) {
 
 func (p *u32map) Store(key uint32, value interface{}) {
 	p.k.Lock()
-	p.m[key] = value
+	if p.m != nil {
+		p.m[key] = value
+	}
 	p.k.Unlock()
 }
 
@@ -59,6 +61,7 @@ func newU32Map() *u32map {
 
 // SetupInfo represents basic info of setup.
 type SetupInfo struct {
+	Lease             bool
 	Version           common.Version
 	KeepaliveInterval time.Duration
 	KeepaliveLifetime time.Duration
@@ -69,8 +72,7 @@ type SetupInfo struct {
 	Metadata          []byte
 }
 
-// ToFrame converts current SetupInfo to a frame of Setup.
-func (p *SetupInfo) ToFrame() *framing.FrameSetup {
+func (p *SetupInfo) toFrame() *framing.FrameSetup {
 	return framing.NewFrameSetup(
 		p.Version,
 		p.KeepaliveInterval,
@@ -80,6 +82,7 @@ func (p *SetupInfo) ToFrame() *framing.FrameSetup {
 		p.DataMimeType,
 		p.Data,
 		p.Metadata,
+		p.Lease,
 	)
 }
 

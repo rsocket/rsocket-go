@@ -63,28 +63,22 @@ func NewFrameResume(version common.Version, token []byte, firstAvailableClientPo
 	if n > math.MaxUint16 {
 		panic(errResumeTokenTooLarge)
 	}
-
-	bf := common.New()
-	_, err := bf.Write(version.Bytes())
-	if err != nil {
+	bf := common.NewByteBuff()
+	if _, err := bf.Write(version.Bytes()); err != nil {
 		panic(err)
 	}
-	var b8 [8]byte
-	binary.BigEndian.PutUint16(b8[:2], uint16(n))
-	if _, err := bf.Write(b8[:2]); err != nil {
+	if err := binary.Write(bf, binary.BigEndian, uint16(n)); err != nil {
 		panic(err)
 	}
 	if n > 0 {
-		if _, err = bf.Write(token); err != nil {
+		if _, err := bf.Write(token); err != nil {
 			panic(err)
 		}
 	}
-	binary.BigEndian.PutUint64(b8[:], lastReceivedServerPosition)
-	if _, err = bf.Write(b8[:]); err != nil {
+	if err := binary.Write(bf, binary.BigEndian, lastReceivedServerPosition); err != nil {
 		panic(err)
 	}
-	binary.BigEndian.PutUint64(b8[:], firstAvailableClientPosition)
-	if _, err = bf.Write(b8[:]); err != nil {
+	if err := binary.Write(bf, binary.BigEndian, firstAvailableClientPosition); err != nil {
 		panic(err)
 	}
 	return &FrameResume{

@@ -10,4 +10,3 @@ const (
 	// DefaultKeepaliveMaxLifetime is default keepalive max lifetime.
 	DefaultKeepaliveMaxLifetime = 90 * time.Second
 )
-

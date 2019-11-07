@@ -37,7 +37,7 @@ func (p *FrameRequestN) N() uint32 {
 // NewFrameRequestN returns a new RequestN frame.
 func NewFrameRequestN(sid, n uint32, flags ...FrameFlag) *FrameRequestN {
 	fg := newFlags(flags...)
-	bf := common.New()
+	bf := common.NewByteBuff()
 
 	var b4 [4]byte
 	binary.BigEndian.PutUint32(b4[:], n)

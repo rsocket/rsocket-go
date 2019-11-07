@@ -39,6 +39,7 @@ type Transport struct {
 
 	hSetup           FrameHandler
 	hResume          FrameHandler
+	hLease           FrameHandler
 	hResumeOK        FrameHandler
 	hFireAndForget   FrameHandler
 	hMetadataPush    FrameHandler
@@ -53,8 +54,11 @@ type Transport struct {
 	hKeepalive       FrameHandler
 }
 
-// HandleError0 registers handler when receiving frame of Error with zero StreamID.
-func (p *Transport) HandleError0(handler FrameHandler) {
+func (p *Transport) SetRcvLease(ttl time.Duration, n uint32) {
+}
+
+// HandleDisaster registers handler when receiving frame of DISASTER Error with zero StreamID.
+func (p *Transport) HandleDisaster(handler FrameHandler) {
 	p.hError0 = handler
 }
 
@@ -86,6 +90,7 @@ func (p *Transport) Send(frame framing.Frame, flush bool) error {
 	return nil
 }
 
+// Flush flush all bytes in current connection.
 func (p *Transport) Flush() error {
 	if err := p.conn.Flush(); err != nil {
 		return errors.Wrap(err, "flush failed")
@@ -158,6 +163,10 @@ func (p *Transport) HandleSetup(handler FrameHandler) {
 // HandleResume registers handler when receiving a frame of Resume.
 func (p *Transport) HandleResume(handler FrameHandler) {
 	p.hResume = handler
+}
+
+func (p *Transport) HandleLease(handler FrameHandler) {
+	p.hLease = handler
 }
 
 // HandleResumeOK registers handler when receiving a frame of ResumeOK.
@@ -266,6 +275,8 @@ func (p *Transport) DeliveryFrame(ctx context.Context, frame framing.Frame) (err
 		ka := frame.(*framing.FrameKeepalive)
 		p.lastRcvPos = ka.LastReceivedPosition()
 		handler = p.hKeepalive
+	case framing.FrameTypeLease:
+		handler = p.hLease
 	}
 
 	// Set deadline.

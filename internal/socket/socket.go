@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/internal/transport"
@@ -119,12 +120,25 @@ func (p AbstractRSocket) RequestChannel(msgs rx.Publisher) flux.Flux {
 }
 
 type baseSocket struct {
-	socket  *DuplexRSocket
-	closers []func(error)
-	once    sync.Once
+	socket   *DuplexRSocket
+	closers  []func(error)
+	once     sync.Once
+	reqLease *leaser
+}
+
+func (p *baseSocket) refreshLease(ttl time.Duration, n int64) {
+	deadline := time.Now().Add(ttl)
+	if p.reqLease == nil {
+		p.reqLease = newLeaser(deadline, n)
+	} else {
+		p.reqLease.refresh(deadline, n)
+	}
 }
 
 func (p *baseSocket) FireAndForget(msg payload.Payload) {
+	if err := p.reqLease.allow(); err != nil {
+		logger.Warnf("request FireAndForget failed: %v\n", err)
+	}
 	p.socket.FireAndForget(msg)
 }
 
@@ -133,14 +147,23 @@ func (p *baseSocket) MetadataPush(msg payload.Payload) {
 }
 
 func (p *baseSocket) RequestResponse(msg payload.Payload) mono.Mono {
+	if err := p.reqLease.allow(); err != nil {
+		return mono.Error(err)
+	}
 	return p.socket.RequestResponse(msg)
 }
 
 func (p *baseSocket) RequestStream(msg payload.Payload) flux.Flux {
+	if err := p.reqLease.allow(); err != nil {
+		return flux.Error(err)
+	}
 	return p.socket.RequestStream(msg)
 }
 
 func (p *baseSocket) RequestChannel(msgs rx.Publisher) flux.Flux {
+	if err := p.reqLease.allow(); err != nil {
+		return flux.Error(err)
+	}
 	return p.socket.RequestChannel(msgs)
 }
 

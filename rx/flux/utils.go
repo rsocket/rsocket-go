@@ -4,21 +4,24 @@ import (
 	"context"
 
 	"github.com/jjeffcaii/reactor-go/flux"
-	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
 
 var empty = newProxy(flux.Empty())
 
+// Raw creates a RSocket Flux from a native Flux in reactor-go.
+// Don't use this API unless you know what you are doing.
 func Raw(input flux.Flux) Flux {
 	return newProxy(input)
 }
 
+// Empty returns a blank Flux.
 func Empty() Flux {
 	return empty
 }
 
+// Just returns a Flux with some payloads.
 func Just(payloads ...payload.Payload) Flux {
 	totals := len(payloads)
 	if totals < 1 {
@@ -31,23 +34,25 @@ func Just(payloads ...payload.Payload) Flux {
 	return newProxy(flux.Just(values...))
 }
 
+// Error returns a Flux with a custom error.
 func Error(err error) Flux {
-	return Create(func(ctx context.Context, s Sink) {
-		s.Error(err)
-	})
+	return newProxy(flux.Error(err))
 }
 
+// Create creates a Flux by a generator func.
 func Create(gen func(ctx context.Context, s Sink)) Flux {
 	return newProxy(flux.Create(func(ctx context.Context, sink flux.Sink) {
 		gen(ctx, newProxySink(sink))
 	}))
 }
 
+// CreateProcessor creates a new Processor.
 func CreateProcessor() Processor {
 	proc := flux.NewUnicastProcessor()
 	return newProxy(proc)
 }
 
+// Clone clones a Publisher to a Flux.
 func Clone(source rx.Publisher) Flux {
 	return Create(func(ctx context.Context, s Sink) {
 		source.Subscribe(ctx, rx.OnNext(func(input payload.Payload) {
@@ -61,15 +66,18 @@ func Clone(source rx.Publisher) Flux {
 
 }
 
+// CreateFromChannel creates a Flux from channels.
 func CreateFromChannel(payloads <-chan payload.Payload, err <-chan error) Flux {
-	flux := Create(func(ctx context.Context, s Sink) {
-		worker := scheduler.Parallel().Worker()
-		worker.Do(func() {
+	return Create(func(ctx context.Context, s Sink) {
+		go func() {
 		loop:
 			for {
 				select {
-				case p, o := <-payloads:
-					if o {
+				case <-ctx.Done():
+					s.Error(ctx.Err())
+					break loop
+				case p, ok := <-payloads:
+					if ok {
 						s.Next(p)
 					} else {
 						s.Complete()
@@ -82,41 +90,6 @@ func CreateFromChannel(payloads <-chan payload.Payload, err <-chan error) Flux {
 					}
 				}
 			}
-		})
+		}()
 	})
-
-	return flux
-}
-
-func ToChannel(input Flux, ctx context.Context) (<-chan payload.Payload, <-chan error) {
-	return ToChannelOnSchedulerWithSize(input, ctx, scheduler.Parallel(), 256)
-}
-
-func ToChannelWithSize(input Flux, ctx context.Context, size int32) (<-chan payload.Payload, <-chan error) {
-	return ToChannelOnSchedulerWithSize(input, ctx, scheduler.Parallel(), size)
-}
-
-func ToChannelOnScheduler(input Flux, ctx context.Context, scheduler scheduler.Scheduler) (<-chan payload.Payload, <-chan error) {
-	return ToChannelOnSchedulerWithSize(input, ctx, scheduler, 256)
-}
-
-func ToChannelOnSchedulerWithSize(input Flux, ctx context.Context, scheduler scheduler.Scheduler, size int32) (<-chan payload.Payload, <-chan error) {
-	errorChannel := make(chan error, 1)
-	payloadChannel := make(chan payload.Payload, size)
-
-	input.
-		SubscribeOn(scheduler).
-		DoFinally(func(s rx.SignalType) {
-			close(payloadChannel)
-			close(errorChannel)
-		}).
-		Subscribe(ctx,
-			rx.OnNext(
-				func(input payload.Payload) {
-					payloadChannel <- input
-				}), rx.OnError(func(e error) {
-				errorChannel <- e
-			}))
-
-	return payloadChannel, errorChannel
 }

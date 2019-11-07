@@ -27,7 +27,7 @@ func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame func(idx
 		var idx, cursor1, cursor2 int
 		var follow bool
 		for {
-			bf = common.New()
+			bf = common.NewByteBuff()
 			var wroteM int
 			left := mtu - framing.HeaderLen
 			if idx == 0 && skip > 0 {

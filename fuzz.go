@@ -28,9 +28,13 @@ func Fuzz(data []byte) int {
 
 func handleRaw(raw []byte) (err error) {
 	h := framing.ParseFrameHeader(raw)
-	bf := common.New()
+	bf := common.NewByteBuff()
 	var frame framing.Frame
 	frame, err = framing.NewFromBase(framing.NewBaseFrame(h, bf))
+	if err != nil {
+		return
+	}
+	err = frame.Validate()
 	if err != nil {
 		return
 	}

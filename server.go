@@ -11,6 +11,7 @@ import (
 	"github.com/rsocket/rsocket-go/internal/session"
 	"github.com/rsocket/rsocket-go/internal/socket"
 	"github.com/rsocket/rsocket-go/internal/transport"
+	"github.com/rsocket/rsocket-go/lease"
 	"github.com/rsocket/rsocket-go/logger"
 )
 
@@ -21,6 +22,7 @@ const (
 
 var (
 	errUnavailableResume    = []byte("resume not supported")
+	errUnavailableLease     = []byte("lease not supported")
 	errDuplicatedSetupToken = []byte("duplicated setup token")
 )
 
@@ -31,6 +33,8 @@ type (
 	ServerBuilder interface {
 		// Fragment set fragmentation size which default is 16_777_215(16MB).
 		Fragment(mtu int) ServerBuilder
+		// Lease enable feature of Lease.
+		Lease(leases lease.Leases) ServerBuilder
 		// Resume enable resume for current server.
 		Resume(opts ...OpServerResume) ServerBuilder
 		// Acceptor register server acceptor which is used to handle incoming RSockets.
@@ -102,6 +106,12 @@ type server struct {
 	sm         *session.Manager
 	done       chan struct{}
 	onServe    []func()
+	leases     lease.Leases
+}
+
+func (p *server) Lease(leases lease.Leases) ServerBuilder {
+	p.leases = leases
+	return p
 }
 
 func (p *server) OnStart(onStart func()) ServerBuilder {
@@ -207,7 +217,9 @@ func (p *server) serve(ctx context.Context, tc *tls.Config) error {
 				return
 			}
 			go func(ctx context.Context, sendingSocket socket.ServerSocket) {
-				_ = sendingSocket.Start(ctx)
+				if err := sendingSocket.Start(ctx); err != nil && logger.IsDebugEnabled() {
+					logger.Debugf("sending socket exit: %w\n", err)
+				}
 			}(ctx, sendingSocket)
 		default:
 			err := framing.NewFrameError(0, common.ErrorCodeConnectionError, []byte("first frame must be setup or resume"))
@@ -235,6 +247,11 @@ func (p *server) doSetup(
 	tp *transport.Transport,
 	socketChan chan<- socket.ServerSocket,
 ) (sendingSocket socket.ServerSocket, err *framing.FrameError) {
+	if frame.Header().Flag().Check(framing.FlagLease) && p.leases == nil {
+		err = framing.NewFrameError(0, common.ErrorCodeUnsupportedSetup, errUnavailableLease)
+		return
+	}
+
 	isResume := frame.Header().Flag().Check(framing.FlagResume)
 
 	// 1. receive a token but server doesn't support resume.
@@ -243,7 +260,7 @@ func (p *server) doSetup(
 		return
 	}
 
-	rawSocket := socket.NewServerDuplexRSocket(p.fragment)
+	rawSocket := socket.NewServerDuplexRSocket(p.fragment, p.leases)
 
 	// 2. no resume
 	if !isResume {

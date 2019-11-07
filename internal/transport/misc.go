@@ -17,8 +17,3 @@ func isClosedErr(err error) bool {
 	}
 	return false
 }
-
-type TLS struct {
-	KeyFile  string
-	CertFile string
-}

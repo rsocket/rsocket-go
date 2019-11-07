@@ -26,7 +26,17 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 
 	p.socket.SetTransport(tp)
 
-	tp.HandleError0(func(frame framing.Frame) (err error) {
+	if setup.Lease {
+		p.refreshLease(0, 0)
+		tp.HandleLease(func(frame framing.Frame) (err error) {
+			lease := frame.(*framing.FrameLease)
+			p.refreshLease(lease.TimeToLive(), int64(lease.NumberOfRequests()))
+			logger.Infof(">>>>> refresh lease: %v\n", lease)
+			return
+		})
+	}
+
+	tp.HandleDisaster(func(frame framing.Frame) (err error) {
 		p.socket.SetError(frame.(*framing.FrameError))
 		return
 	})
@@ -41,7 +51,7 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 	go func(ctx context.Context) {
 		_ = p.socket.loopWrite(ctx)
 	}(ctx)
-	setupFrame := setup.ToFrame()
+	setupFrame := setup.toFrame()
 	err = p.socket.tp.Send(setupFrame, true)
 	return
 }
