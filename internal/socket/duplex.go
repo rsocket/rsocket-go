@@ -478,7 +478,7 @@ func (p *DuplexRSocket) respondRequestChannel(pl fragmentation.HeaderAndPayload)
 
 	sub := rx.NewSubscriber(
 		rx.OnError(func(e error) {
-			p.writeError(sid, err)
+			p.writeError(sid, e)
 		}),
 		rx.OnComplete(func() {
 			complete := framing.NewFramePayload(sid, nil, nil, framing.FlagComplete)
@@ -610,6 +610,10 @@ func (p *DuplexRSocket) respondRequestStream(receiving fragmentation.HeaderAndPa
 }
 
 func (p *DuplexRSocket) writeError(sid uint32, e error) {
+	// ignore sening error because current socket has been closed.
+	if e == errSocketClosed {
+		return
+	}
 	if v, ok := e.(*framing.FrameError); ok {
 		p.sendFrame(v)
 	} else {
