@@ -19,6 +19,8 @@ type (
 	ServerTransportAcceptor = func(ctx context.Context, tp *Transport)
 )
 
+var errTransportClosed = errors.New("transport closed")
+
 // ServerTransport is server-side RSocket transport.
 type ServerTransport interface {
 	io.Closer
@@ -76,26 +78,36 @@ func (p *Transport) SetLifetime(lifetime time.Duration) {
 }
 
 // Send send a frame.
-func (p *Transport) Send(frame framing.Frame, flush bool) error {
-	defer frame.Done()
-	if err := p.conn.Write(frame); err != nil {
-		return errors.Wrap(err, "send failed")
+func (p *Transport) Send(frame framing.Frame, flush bool) (err error) {
+	defer func() {
+		// ensure frame done when send success.
+		if err == nil {
+			frame.Done()
+		}
+	}()
+	if p == nil || p.conn == nil {
+		err = errTransportClosed
+		return
+	}
+	err = p.conn.Write(frame)
+	if err != nil {
+		return
 	}
 	if !flush {
-		return nil
+		return
 	}
-	if err := p.conn.Flush(); err != nil {
-		return errors.Wrap(err, "flush failed")
-	}
-	return nil
+	err = p.conn.Flush()
+	return
 }
 
 // Flush flush all bytes in current connection.
-func (p *Transport) Flush() error {
-	if err := p.conn.Flush(); err != nil {
-		return errors.Wrap(err, "flush failed")
+func (p *Transport) Flush() (err error) {
+	if p == nil || p.conn == nil {
+		err = errTransportClosed
+		return
 	}
-	return nil
+	err = p.conn.Flush()
+	return
 }
 
 // Close close current transport.

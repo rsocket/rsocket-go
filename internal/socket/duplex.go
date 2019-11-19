@@ -984,10 +984,9 @@ func (p *DuplexRSocket) drainOutBack() {
 	var out framing.Frame
 	for i := range p.outsPriority {
 		out = p.outsPriority[i]
-		if p.tp != nil {
-			if err := p.tp.Send(out, false); err != nil {
-				logger.Errorf("send frame failed: %v\n", err)
-			}
+		if err := p.tp.Send(out, false); err != nil {
+			out.Done()
+			logger.Errorf("send frame failed: %v\n", err)
 		}
 	}
 	if err := p.tp.Flush(); err != nil {

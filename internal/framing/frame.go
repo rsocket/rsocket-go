@@ -143,7 +143,7 @@ type Frame interface {
 	// IsResumable returns true if frame supports resume.
 	IsResumable() bool
 	// Done marks current frame has been sent.
-	Done()
+	Done() (closed bool)
 	// DoneNotify notifies when frame done.
 	DoneNotify() <-chan struct{}
 }
@@ -156,8 +156,14 @@ type BaseFrame struct {
 }
 
 // Done can be invoked when a frame has been been processed.
-func (p *BaseFrame) Done() {
+func (p *BaseFrame) Done() (closed bool) {
+	defer func() {
+		if e := recover(); e != nil {
+			closed = true
+		}
+	}()
 	close(p.done)
+	return
 }
 
 // DoneNotify notify when frame has been done.
