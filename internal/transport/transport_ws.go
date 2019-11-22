@@ -6,6 +6,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,9 +18,21 @@ import (
 
 const defaultWebsocketPath = "/"
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
+var upgrader websocket.Upgrader
+
+func init() {
+	cors := false
+	if v, ok := os.LookupEnv("RSOCKET_WS_CORS"); ok {
+		v = strings.TrimSpace(strings.ToLower(v))
+		cors = v == "on" || v == "1" || v == "true"
+	}
+	upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			return cors
+		},
+	}
 }
 
 type wsServerTransport struct {
