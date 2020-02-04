@@ -17,13 +17,14 @@ import (
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
+	"github.com/urfave/cli/v2"
 )
 
 var errConflictHeadersAndMetadata = errors.New("can't specify headers and metadata")
 
 type Runner struct {
-	Headers          []string
-	TransportHeaders []string
+	Headers          cli.StringSlice
+	TransportHeaders cli.StringSlice
 	Stream           bool
 	Request          bool
 	FNF              bool
@@ -49,12 +50,15 @@ func (p *Runner) preflight() (err error) {
 	if p.Debug {
 		logger.SetLevel(logger.LevelDebug)
 	}
-	if len(p.Headers) > 0 && len(p.Metadata) > 0 {
+
+	headers := p.Headers.Value()
+
+	if len(headers) > 0 && len(p.Metadata) > 0 {
 		return errConflictHeadersAndMetadata
 	}
-	if len(p.Headers) > 0 {
+	if len(headers) > 0 {
 		headers := make(map[string]string)
-		for _, it := range p.Headers {
+		for _, it := range headers {
 			idx := strings.Index(it, ":")
 			if idx < 0 {
 				return fmt.Errorf("invalid header: %s", it)
@@ -67,9 +71,10 @@ func (p *Runner) preflight() (err error) {
 		p.Metadata = string(bs)
 	}
 
-	if len(p.TransportHeaders) > 0 {
+	tpHeaders := p.TransportHeaders.Value()
+	if len(tpHeaders) > 0 {
 		headers := make(map[string][]string)
-		for _, it := range p.TransportHeaders {
+		for _, it := range tpHeaders {
 			idx := strings.Index(it, ":")
 			if idx < 0 {
 				return fmt.Errorf("invalid transport header: %s", it)
