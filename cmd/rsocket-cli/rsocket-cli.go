@@ -30,7 +30,7 @@ func main() {
 	app.UsageText = "rsocket-cli [global options] [URI]"
 	app.Name = "rsocket-cli"
 	app.Usage = "CLI for RSocket."
-	app.Version = "v0.5.4"
+	app.Version = "v0.5.5"
 	app.Flags = newFlags(conf)
 	app.ArgsUsage = "[URI]"
 	app.Action = func(c *cli.Context) (err error) {
@@ -49,102 +49,102 @@ func main() {
 
 func newFlags(args *Runner) []cli.Flag {
 	return []cli.Flag{
-		cli.StringSliceFlag{
+		&cli.StringSliceFlag{
 			Name:  "header,H",
 			Usage: "Custom header to pass to server",
 			Value: (*cli.StringSlice)(&args.Headers),
 		},
-		cli.StringSliceFlag{
+		&cli.StringSliceFlag{
 			Name:  "transport-header,T",
 			Usage: "Custom header to pass to the transport",
 			Value: (*cli.StringSlice)(&args.TransportHeaders),
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:        "stream",
 			Usage:       "Request Stream",
 			Destination: &(args.Stream),
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:        "request",
 			Usage:       "Request Response",
 			Destination: &(args.Request),
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:        "fnf",
 			Usage:       "Fire And Forget",
 			Destination: &(args.FNF),
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:        "channel",
 			Usage:       "Channel",
 			Destination: &(args.Channel),
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:        "metadataPush",
 			Usage:       "Metadata Push",
 			Destination: &(args.MetadataPush),
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:        "server,s",
 			Usage:       "Start server instead of client",
 			Destination: &(args.ServerMode),
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:        "input,i",
 			Usage:       "String input, '-' (STDIN) or @path/to/file",
 			Destination: &(args.Input),
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:        "metadata, m",
 			Usage:       "Metadata input string input or @path/to/file",
 			Destination: &(args.Metadata),
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:        "metadataFormat",
 			Usage:       "Metadata Format",
 			Value:       extension.ApplicationJSON.String(),
 			Destination: &(args.MetadataFormat),
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:        "dataFormat",
 			Usage:       "Data Format",
 			Value:       "application/binary",
 			Destination: &(args.DataFormat),
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:        "setup",
 			Usage:       "String input or @path/to/file for setup metadata",
 			Destination: &(args.Setup),
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:        "debug,d",
 			Usage:       "Debug Output",
 			Destination: &(args.Debug),
 		},
-		cli.IntFlag{
+		&cli.IntFlag{
 			Name:        "ops",
 			Usage:       "Operation Count",
 			Value:       1,
 			Destination: &(args.Ops),
 		},
-		cli.DurationFlag{
+		&cli.DurationFlag{
 			Name:        "timeout",
 			Usage:       "Timeout in seconds",
 			Destination: &(args.Timeout),
 		},
-		cli.DurationFlag{
+		&cli.DurationFlag{
 			Name:        "keepalive,k",
 			Usage:       "Keepalive period",
 			Value:       20 * time.Second,
 			Destination: &(args.Keepalive),
 		},
-		cli.IntFlag{
+		&cli.IntFlag{
 			Name:        "requestn, r",
 			Usage:       "Request N credits",
 			Value:       rx.RequestMax,
 			Destination: &(args.N),
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:        "resume",
 			Usage:       "resume enabled",
 			Destination: &(args.Resume),
