@@ -21,10 +21,11 @@ const defaultWebsocketPath = "/"
 var upgrader websocket.Upgrader
 
 func init() {
-	cors := false
+	// Default allow CORS.
+	cors := true
 	if v, ok := os.LookupEnv("RSOCKET_WS_CORS"); ok {
 		v = strings.TrimSpace(strings.ToLower(v))
-		cors = v == "on" || v == "1" || v == "true"
+		cors = v == "yes" || v == "on" || v == "1" || v == "true"
 	}
 	upgrader = websocket.Upgrader{
 		ReadBufferSize:  1024,

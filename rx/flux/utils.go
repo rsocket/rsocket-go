@@ -21,11 +21,16 @@ func Empty() Flux {
 	return empty
 }
 
+// FromSlice creates a Flux from a Payload slice.
+func FromSlice(payloads []payload.Payload) Flux {
+	return Just(payloads...)
+}
+
 // Just returns a Flux with some payloads.
 func Just(payloads ...payload.Payload) Flux {
 	totals := len(payloads)
 	if totals < 1 {
-		return newProxy(flux.Just())
+		return newProxy(flux.Empty())
 	}
 	values := make([]interface{}, totals)
 	for i := 0; i < totals; i++ {
