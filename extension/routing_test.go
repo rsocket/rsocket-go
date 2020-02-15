@@ -1,23 +1,15 @@
 package extension
 
 import (
-	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestParseRoutingTags(t *testing.T) {
-	bf := &bytes.Buffer{}
-	bf.WriteByte(4)
-	bf.WriteString("/foo")
-	bf.WriteByte(4)
-	bf.WriteString("/bar")
-	bf.WriteByte(8)
-	bf.WriteString("/foo/bar")
-
-	bs := bf.Bytes()
-	tags, err := ParseRoutingTags(bs)
+	raw, err := EncodeRouting("/foo", "/bar", "/foo/bar")
+	assert.NoError(t, err, "encode routing failed")
+	tags, err := ParseRoutingTags(raw)
 	if err != nil {
 		t.Error(err)
 	}

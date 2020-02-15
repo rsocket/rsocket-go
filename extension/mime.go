@@ -65,6 +65,9 @@ const (
 	Hessian
 	JavaObject
 	CloudEventsJSON
+	MessageMimeType          MIME = 0x7A
+	MessageAcceptMimeTypes   MIME = 0x7B
+	MessageAuthentication    MIME = 0x7C
 	MessageZipkin            MIME = 0x7D
 	MessageRouting           MIME = 0x7E
 	MessageCompositeMetadata MIME = 0x7F
@@ -113,6 +116,9 @@ func init() {
 		Hessian:                  "application/x-hessian",
 		JavaObject:               "application/x-java-object",
 		CloudEventsJSON:          "application/cloudevents+json",
+		MessageMimeType:          "message/x.rsocket.mime-type.v0",
+		MessageAcceptMimeTypes:   "message/x.rsocket.accept-mime-types.v0",
+		MessageAuthentication:    "message/x.rsocket.authentication.v0",
 		MessageZipkin:            "message/x.rsocket.tracing-zipkin.v0",
 		MessageRouting:           "message/x.rsocket.routing.v0",
 		MessageCompositeMetadata: "message/x.rsocket.composite-metadata.v0",
