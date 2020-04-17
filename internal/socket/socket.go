@@ -88,7 +88,7 @@ func (p AbstractRSocket) MetadataPush(msg payload.Payload) {
 
 // FireAndForget starts a request of FireAndForget.
 func (p AbstractRSocket) FireAndForget(msg payload.Payload) {
-	if p.MP == nil {
+	if p.FF == nil {
 		logger.Errorf("%s\n", errUnsupportedFireAndForget)
 		return
 	}
