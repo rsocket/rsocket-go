@@ -4,40 +4,20 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDecodeCompositeMetadata(t *testing.T) {
-	const mod = 3
-	bf := common.NewByteBuff()
-	for i := 0; i < 10; i++ {
-		var cm CompositeMetadata
-		if i%mod == 0 {
-			cm = NewCompositeMetadata("application/notWell", []byte(fmt.Sprintf("notWell_%d", i)))
-		} else {
-			cm = NewCompositeMetadata("text/plain", []byte(fmt.Sprintf("text_%d", i)))
-		}
-		bs, err := cm.encode()
-		if err != nil {
-			assert.Error(t, err, "encode composite metadata failed")
-		}
-		_, _ = bf.Write(bs)
+func TestCompositeMetadataBuilder_Build(t *testing.T) {
+	cm, err := NewCompositeMetadataBuilder().
+		PushString("application/custom", fmt.Sprintf("not well")).
+		PushString("text/plain", "text").
+		PushWellKnownString(ApplicationJSON, `{"hello":"world"}`).
+		Build()
+	assert.NoError(t, err, "build composite metadata failed")
+	scanner := cm.Scanner()
+	for scanner.Scan() {
+		mimeType, metadata, err := scanner.Metadata()
+		assert.NoError(t, err, "scan metadata failed")
+		fmt.Println("mimeType:", mimeType, "metadata:", string(metadata))
 	}
-	bs := bf.Bytes()
-	cms, err := DecodeCompositeMetadata(bs)
-	if err != nil {
-		assert.Error(t, err, "decode composite metadata failed")
-	}
-
-	for k, v := range cms {
-		if k%mod == 0 {
-			assert.Equal(t, "application/notWell", v.MIME(), "bad MIME")
-			assert.Equal(t, fmt.Sprintf("notWell_%d", k), string(v.Payload()), "bad payload")
-		} else {
-			assert.Equal(t, "text/plain", v.MIME(), "bad MIME")
-			assert.Equal(t, fmt.Sprintf("text_%d", k), string(v.Payload()), "bad payload")
-		}
-	}
-
 }
