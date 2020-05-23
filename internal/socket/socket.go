@@ -33,15 +33,15 @@ type Closeable interface {
 // Responder is a contract providing different interaction models for RSocket protocol.
 type Responder interface {
 	// FireAndForget is a single one-way message.
-	FireAndForget(msg payload.Payload)
+	FireAndForget(message payload.Payload)
 	// MetadataPush sends asynchronous Metadata frame.
-	MetadataPush(msg payload.Payload)
+	MetadataPush(message payload.Payload)
 	// RequestResponse request single response.
-	RequestResponse(msg payload.Payload) mono.Mono
+	RequestResponse(message payload.Payload) mono.Mono
 	// RequestStream request a completable stream.
-	RequestStream(msg payload.Payload) flux.Flux
+	RequestStream(message payload.Payload) flux.Flux
 	// RequestChannel request a completable stream in both directions.
-	RequestChannel(msgs rx.Publisher) flux.Flux
+	RequestChannel(messages rx.Publisher) flux.Flux
 }
 
 // ClientSocket represents a client-side socket.
@@ -78,45 +78,45 @@ type AbstractRSocket struct {
 }
 
 // MetadataPush starts a request of MetadataPush.
-func (p AbstractRSocket) MetadataPush(msg payload.Payload) {
+func (p AbstractRSocket) MetadataPush(message payload.Payload) {
 	if p.MP == nil {
 		logger.Errorf("%s\n", errUnsupportedMetadataPush)
 		return
 	}
-	p.MP(msg)
+	p.MP(message)
 }
 
 // FireAndForget starts a request of FireAndForget.
-func (p AbstractRSocket) FireAndForget(msg payload.Payload) {
+func (p AbstractRSocket) FireAndForget(message payload.Payload) {
 	if p.FF == nil {
 		logger.Errorf("%s\n", errUnsupportedFireAndForget)
 		return
 	}
-	p.FF(msg)
+	p.FF(message)
 }
 
 // RequestResponse starts a request of RequestResponse.
-func (p AbstractRSocket) RequestResponse(msg payload.Payload) mono.Mono {
+func (p AbstractRSocket) RequestResponse(message payload.Payload) mono.Mono {
 	if p.RR == nil {
 		return mono.Error(errUnsupportedRequestResponse)
 	}
-	return p.RR(msg)
+	return p.RR(message)
 }
 
 // RequestStream starts a request of RequestStream.
-func (p AbstractRSocket) RequestStream(msg payload.Payload) flux.Flux {
+func (p AbstractRSocket) RequestStream(message payload.Payload) flux.Flux {
 	if p.RS == nil {
 		return flux.Error(errUnsupportedRequestStream)
 	}
-	return p.RS(msg)
+	return p.RS(message)
 }
 
 // RequestChannel starts a request of RequestChannel.
-func (p AbstractRSocket) RequestChannel(msgs rx.Publisher) flux.Flux {
+func (p AbstractRSocket) RequestChannel(messages rx.Publisher) flux.Flux {
 	if p.RC == nil {
 		return flux.Error(errUnsupportedRequestChannel)
 	}
-	return p.RC(msgs)
+	return p.RC(messages)
 }
 
 type baseSocket struct {
@@ -135,36 +135,36 @@ func (p *baseSocket) refreshLease(ttl time.Duration, n int64) {
 	}
 }
 
-func (p *baseSocket) FireAndForget(msg payload.Payload) {
+func (p *baseSocket) FireAndForget(message payload.Payload) {
 	if err := p.reqLease.allow(); err != nil {
 		logger.Warnf("request FireAndForget failed: %v\n", err)
 	}
-	p.socket.FireAndForget(msg)
+	p.socket.FireAndForget(message)
 }
 
-func (p *baseSocket) MetadataPush(msg payload.Payload) {
-	p.socket.MetadataPush(msg)
+func (p *baseSocket) MetadataPush(message payload.Payload) {
+	p.socket.MetadataPush(message)
 }
 
-func (p *baseSocket) RequestResponse(msg payload.Payload) mono.Mono {
+func (p *baseSocket) RequestResponse(message payload.Payload) mono.Mono {
 	if err := p.reqLease.allow(); err != nil {
 		return mono.Error(err)
 	}
-	return p.socket.RequestResponse(msg)
+	return p.socket.RequestResponse(message)
 }
 
-func (p *baseSocket) RequestStream(msg payload.Payload) flux.Flux {
+func (p *baseSocket) RequestStream(message payload.Payload) flux.Flux {
 	if err := p.reqLease.allow(); err != nil {
 		return flux.Error(err)
 	}
-	return p.socket.RequestStream(msg)
+	return p.socket.RequestStream(message)
 }
 
-func (p *baseSocket) RequestChannel(msgs rx.Publisher) flux.Flux {
+func (p *baseSocket) RequestChannel(messages rx.Publisher) flux.Flux {
 	if err := p.reqLease.allow(); err != nil {
 		return flux.Error(err)
 	}
-	return p.socket.RequestChannel(msgs)
+	return p.socket.RequestChannel(messages)
 }
 
 func (p *baseSocket) OnClose(fn func(error)) {

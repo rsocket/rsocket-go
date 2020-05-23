@@ -856,71 +856,74 @@ func (p *DuplexRSocket) sendPayload(
 	})
 }
 
-func (p *DuplexRSocket) drainWithKeepalive(leaseChan <-chan lease.Lease) (ok bool) {
+func (p *DuplexRSocket) drainWithKeepaliveAndLease(leaseChan <-chan lease.Lease) (ok bool) {
+	if len(p.outs) > 0 {
+		p.drain(nil)
+	}
+	var out framing.Frame
+	select {
+	case <-p.keepaliver.C():
+		ok = true
+		out = framing.NewFrameKeepalive(p.counter.ReadBytes(), nil, true)
+		if p.tp != nil {
+			err := p.tp.Send(out, true)
+			if err != nil {
+				logger.Errorf("send keepalive frame failed: %s\n", err.Error())
+			}
+		}
+	case ls, success := <-leaseChan:
+		ok = success
+		if !ok {
+			return
+		}
+		out = framing.NewFrameLease(ls.TimeToLive, ls.NumberOfRequests, ls.Metadata)
+		if p.tp == nil {
+			p.outsPriority = append(p.outsPriority, out)
+		} else if err := p.tp.Send(out, true); err != nil {
+			logger.Errorf("send frame failed: %s\n", err.Error())
+			p.outsPriority = append(p.outsPriority, out)
+		}
+	case out, ok = <-p.outs:
+		if !ok {
+			return
+		}
+		if p.tp == nil {
+			p.outsPriority = append(p.outsPriority, out)
+		} else if err := p.tp.Send(out, true); err != nil {
+			logger.Errorf("send frame failed: %s\n", err.Error())
+			p.outsPriority = append(p.outsPriority, out)
+		}
+	}
+	return
+}
+
+func (p *DuplexRSocket) drainWithKeepalive() (ok bool) {
 	if len(p.outs) > 0 {
 		p.drain(nil)
 	}
 	var out framing.Frame
 
-	if leaseChan == nil {
-		select {
-		case <-p.keepaliver.C():
-			ok = true
-			out = framing.NewFrameKeepalive(p.counter.ReadBytes(), nil, true)
-			if p.tp != nil {
-				err := p.tp.Send(out, true)
-				if err != nil {
-					logger.Errorf("send keepalive frame failed: %s\n", err.Error())
-				}
-			}
-		case out, ok = <-p.outs:
-			if !ok {
-				return
-			}
-			if p.tp == nil {
-				p.outsPriority = append(p.outsPriority, out)
-			} else if err := p.tp.Send(out, true); err != nil {
-				logger.Errorf("send frame failed: %s\n", err.Error())
-				p.outsPriority = append(p.outsPriority, out)
+	select {
+	case <-p.keepaliver.C():
+		ok = true
+		out = framing.NewFrameKeepalive(p.counter.ReadBytes(), nil, true)
+		if p.tp != nil {
+			err := p.tp.Send(out, true)
+			if err != nil {
+				logger.Errorf("send keepalive frame failed: %s\n", err.Error())
 			}
 		}
-	} else {
-		select {
-		case <-p.keepaliver.C():
-			ok = true
-			out = framing.NewFrameKeepalive(p.counter.ReadBytes(), nil, true)
-			if p.tp != nil {
-				err := p.tp.Send(out, true)
-				if err != nil {
-					logger.Errorf("send keepalive frame failed: %s\n", err.Error())
-				}
-			}
-		case ls, success := <-leaseChan:
-			ok = success
-			if !ok {
-				return
-			}
-			out = framing.NewFrameLease(ls.TimeToLive, ls.NumberOfRequests, ls.Metadata)
-			if p.tp == nil {
-				p.outsPriority = append(p.outsPriority, out)
-			} else if err := p.tp.Send(out, true); err != nil {
-				logger.Errorf("send frame failed: %s\n", err.Error())
-				p.outsPriority = append(p.outsPriority, out)
-			}
-		case out, ok = <-p.outs:
-			if !ok {
-				return
-			}
-			if p.tp == nil {
-				p.outsPriority = append(p.outsPriority, out)
-			} else if err := p.tp.Send(out, true); err != nil {
-				logger.Errorf("send frame failed: %s\n", err.Error())
-				p.outsPriority = append(p.outsPriority, out)
-			}
+	case out, ok = <-p.outs:
+		if !ok {
+			return
 		}
-
+		if p.tp == nil {
+			p.outsPriority = append(p.outsPriority, out)
+		} else if err := p.tp.Send(out, true); err != nil {
+			logger.Errorf("send frame failed: %s\n", err.Error())
+			p.outsPriority = append(p.outsPriority, out)
+		}
 	}
-
 	return
 }
 
@@ -1021,8 +1024,12 @@ func (p *DuplexRSocket) loopWriteWithKeepaliver(ctx context.Context, leaseChan <
 			}
 		default:
 		}
+
 		p.drainOutBack()
-		if !p.drainWithKeepalive(leaseChan) {
+		if leaseChan == nil && !p.drainWithKeepalive() {
+			break
+		}
+		if leaseChan != nil && !p.drainWithKeepaliveAndLease(leaseChan) {
 			break
 		}
 	}

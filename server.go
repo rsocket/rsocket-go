@@ -348,11 +348,11 @@ L:
 
 func (p *server) destroySessions() {
 	for p.sm.Len() > 0 {
-		session := p.sm.Pop()
-		if err := session.Close(); err != nil {
+		nextSession := p.sm.Pop()
+		if err := nextSession.Close(); err != nil {
 			logger.Warnf("kill session failed: %s\n", err)
 		} else if logger.IsDebugEnabled() {
-			logger.Debugf("kill session success: %s\n", session)
+			logger.Debugf("kill session success: %s\n", nextSession)
 		}
 	}
 }

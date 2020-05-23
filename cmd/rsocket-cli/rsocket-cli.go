@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/rsocket/rsocket-go/extension"
 	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/urfave/cli/v2"
@@ -108,7 +107,7 @@ func newFlags(args *Runner) []cli.Flag {
 		&cli.StringFlag{
 			Name:        "metadataFormat",
 			Usage:       "Metadata Format",
-			Value:       extension.ApplicationJSON.String(),
+			Value:       "application/json",
 			Destination: &args.MetadataFormat,
 		},
 		&cli.StringFlag{

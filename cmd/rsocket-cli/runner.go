@@ -111,7 +111,7 @@ func (p *Runner) runClientMode(ctx context.Context) (err error) {
 		return
 	}
 	setupPayload := payload.New(setupData, nil)
-	sendings := p.createPayload()
+	sendingPayloads := p.createPayload()
 	c, err := cb.
 		DataMimeType(p.DataFormat).
 		MetadataMimeType(p.MetadataFormat).
@@ -131,7 +131,7 @@ func (p *Runner) runClientMode(ctx context.Context) (err error) {
 		}
 		var first payload.Payload
 		if !p.Channel {
-			first, err = sendings.BlockFirst(ctx)
+			first, err = sendingPayloads.BlockFirst(ctx)
 			if err != nil {
 				return
 			}
@@ -144,7 +144,7 @@ func (p *Runner) runClientMode(ctx context.Context) (err error) {
 		} else if p.Stream {
 			err = p.execRequestStream(ctx, c, first)
 		} else if p.Channel {
-			err = p.execRequestChannel(ctx, c, sendings)
+			err = p.execRequestChannel(ctx, c, sendingPayloads)
 		} else if p.MetadataPush {
 			err = p.execMetadataPush(ctx, c, first)
 		} else {
@@ -166,24 +166,24 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 	}
 	ch := make(chan error)
 	go func() {
-		sendings := p.createPayload()
+		sendingPayloads := p.createPayload()
 		ch <- sb.
 			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 				var options []rsocket.OptAbstractSocket
-				options = append(options, rsocket.RequestStream(func(msg payload.Payload) flux.Flux {
-					p.showPayload(msg)
-					return sendings
+				options = append(options, rsocket.RequestStream(func(message payload.Payload) flux.Flux {
+					p.showPayload(message)
+					return sendingPayloads
 				}))
-				options = append(options, rsocket.RequestChannel(func(msgs rx.Publisher) flux.Flux {
-					msgs.Subscribe(ctx, rx.OnNext(func(input payload.Payload) {
+				options = append(options, rsocket.RequestChannel(func(messages rx.Publisher) flux.Flux {
+					messages.Subscribe(ctx, rx.OnNext(func(input payload.Payload) {
 						p.showPayload(input)
 					}))
-					return sendings
+					return sendingPayloads
 				}))
 				options = append(options, rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
 					p.showPayload(msg)
 					return mono.Create(func(i context.Context, sink mono.Sink) {
-						first, err := sendings.BlockFirst(i)
+						first, err := sendingPayloads.BlockFirst(i)
 						if err != nil {
 							sink.Error(err)
 							return
@@ -207,14 +207,14 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 	return <-ch
 }
 
-func (p *Runner) execMetadataPush(ctx context.Context, c rsocket.Client, send payload.Payload) (err error) {
+func (p *Runner) execMetadataPush(_ context.Context, c rsocket.Client, send payload.Payload) (err error) {
 	c.MetadataPush(send)
 	m, _ := send.MetadataUTF8()
 	logger.Infof("%s\n", m)
 	return
 }
 
-func (p *Runner) execFireAndForget(ctx context.Context, c rsocket.Client, send payload.Payload) (err error) {
+func (p *Runner) execFireAndForget(_ context.Context, c rsocket.Client, send payload.Payload) (err error) {
 	c.FireAndForget(send)
 	return
 }

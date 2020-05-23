@@ -5,24 +5,31 @@ import "errors"
 // ErrorCode is code for RSocket error.
 type ErrorCode uint32
 
-var errorCodeMap = map[ErrorCode]string{
-	ErrorCodeInvalidSetup:     "INVALID_SETUP",
-	ErrorCodeUnsupportedSetup: "UNSUPPORTED_SETUP",
-	ErrorCodeRejectedSetup:    "REJECTED_SETUP",
-	ErrorCodeRejectedResume:   "REJECTED_RESUME",
-	ErrorCodeConnectionError:  "CONNECTION_ERROR",
-	ErrorCodeConnectionClose:  "CONNECTION_CLOSE",
-	ErrorCodeApplicationError: "APPLICATION_ERROR",
-	ErrorCodeRejected:         "REJECTED",
-	ErrorCodeCanceled:         "CANCELED",
-	ErrorCodeInvalid:          "INVALID",
-}
-
 func (p ErrorCode) String() string {
-	if s, ok := errorCodeMap[p]; ok {
-		return s
+	switch p {
+	case ErrorCodeInvalidSetup:
+		return "INVALID_SETUP"
+	case ErrorCodeUnsupportedSetup:
+		return "UNSUPPORTED_SETUP"
+	case ErrorCodeRejectedSetup:
+		return "REJECTED_SETUP"
+	case ErrorCodeRejectedResume:
+		return "REJECTED_RESUME"
+	case ErrorCodeConnectionError:
+		return "CONNECTION_ERROR"
+	case ErrorCodeConnectionClose:
+		return "CONNECTION_CLOSE"
+	case ErrorCodeApplicationError:
+		return "APPLICATION_ERROR"
+	case ErrorCodeRejected:
+		return "REJECTED"
+	case ErrorCodeCanceled:
+		return "CANCELED"
+	case ErrorCodeInvalid:
+		return "INVALID"
+	default:
+		return "UNKNOWN"
 	}
-	return "UNKNOWN"
 }
 
 const (

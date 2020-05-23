@@ -56,9 +56,6 @@ type Transport struct {
 	hKeepalive       FrameHandler
 }
 
-func (p *Transport) SetRcvLease(ttl time.Duration, n uint32) {
-}
-
 // HandleDisaster registers handler when receiving frame of DISASTER Error with zero StreamID.
 func (p *Transport) HandleDisaster(handler FrameHandler) {
 	p.hError0 = handler
@@ -237,7 +234,7 @@ func (p *Transport) HandleKeepalive(handler FrameHandler) {
 }
 
 // DeliveryFrame delivery incoming frames.
-func (p *Transport) DeliveryFrame(ctx context.Context, frame framing.Frame) (err error) {
+func (p *Transport) DeliveryFrame(_ context.Context, frame framing.Frame) (err error) {
 	header := frame.Header()
 	t := header.Type()
 	sid := header.StreamID()

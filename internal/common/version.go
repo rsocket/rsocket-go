@@ -10,7 +10,7 @@ import (
 var DefaultVersion Version = [2]uint16{1, 0}
 
 // Version define the version of protocol.
-// It inclues major and minor version.
+// It includes major and minor version.
 type Version [2]uint16
 
 // Bytes returns raw bytes of current version.

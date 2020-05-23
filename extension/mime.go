@@ -1,26 +1,13 @@
 package extension
 
+var (
+	_mimeTypes        map[MIME]string
+	_mimeTypesReverse map[string]MIME
+)
+
 // MIME is MIME types in number.
 // Please see: https://github.com/rsocket/rsocket/blob/master/Extensions/WellKnownMimeTypes.md
 type MIME int8
-
-func (p MIME) String() string {
-	return mimeTypes[p]
-}
-
-var (
-	mimeTypes  map[MIME]string
-	mimeTypesR map[string]MIME
-)
-
-// ParseMIME parse a string to MIME.
-func ParseMIME(str string) (mime MIME, ok bool) {
-	mime, ok = mimeTypesR[str]
-	if !ok {
-		mime = -1
-	}
-	return
-}
 
 // All MIMEs
 const (
@@ -74,7 +61,7 @@ const (
 )
 
 func init() {
-	mimeTypes = map[MIME]string{
+	_mimeTypes = map[MIME]string{
 		ApplicationAvro:          "application/avro",
 		ApplicationCBOR:          "application/cbor",
 		ApplicationGraphql:       "application/graphql",
@@ -123,8 +110,21 @@ func init() {
 		MessageRouting:           "message/x.rsocket.routing.v0",
 		MessageCompositeMetadata: "message/x.rsocket.composite-metadata.v0",
 	}
-	mimeTypesR = make(map[string]MIME, len(mimeTypes))
-	for k, v := range mimeTypes {
-		mimeTypesR[v] = k
+	_mimeTypesReverse = make(map[string]MIME, len(_mimeTypes))
+	for k, v := range _mimeTypes {
+		_mimeTypesReverse[v] = k
 	}
+}
+
+func (p MIME) String() string {
+	return _mimeTypes[p]
+}
+
+// ParseMIME parse a string to MIME.
+func ParseMIME(str string) (mime MIME, ok bool) {
+	mime, ok = _mimeTypesReverse[str]
+	if !ok {
+		mime = -1
+	}
+	return
 }

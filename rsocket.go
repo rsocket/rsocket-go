@@ -1,6 +1,7 @@
 package rsocket
 
 import (
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/socket"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
@@ -8,22 +9,59 @@ import (
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
+const (
+	// ErrorCodeInvalidSetup means the setup frame is invalid for the server.
+	ErrorCodeInvalidSetup = common.ErrorCodeInvalidSetup
+	// ErrorCodeUnsupportedSetup means some (or all) of the parameters specified by the client are unsupported by the server.
+	ErrorCodeUnsupportedSetup = common.ErrorCodeUnsupportedSetup
+	// ErrorCodeRejectedSetup means server rejected the setup, it can specify the reason in the payload.
+	ErrorCodeRejectedSetup = common.ErrorCodeRejectedSetup
+	// ErrorCodeRejectedResume means server rejected the resume, it can specify the reason in the payload.
+	ErrorCodeRejectedResume = common.ErrorCodeRejectedResume
+	// ErrorCodeConnectionError means the connection is being terminated.
+	ErrorCodeConnectionError = common.ErrorCodeConnectionError
+	// ErrorCodeConnectionClose means the connection is being terminated.
+	ErrorCodeConnectionClose = common.ErrorCodeConnectionClose
+	// ErrorCodeApplicationError means application layer logic generating a Reactive Streams onError event.
+	ErrorCodeApplicationError = common.ErrorCodeApplicationError
+	// ErrorCodeRejected means Responder reject it.
+	ErrorCodeRejected = common.ErrorCodeRejected
+	// ErrorCodeCanceled means the Responder canceled the request but may have started processing it (similar to REJECTED but doesn't guarantee lack of side-effects).
+	ErrorCodeCanceled = common.ErrorCodeCanceled
+	// ErrorCodeInvalid means the request is invalid.
+	ErrorCodeInvalid = common.ErrorCodeInvalid
+)
+
 type (
-	// ServerAcceptor is alias for server accepter.
+	// ErrorCode is code for RSocket error.
+	ErrorCode = common.ErrorCode
+
+	// Error provides a method of accessing code and data.
+	Error interface {
+		error
+		// ErrorCode returns error code.
+		ErrorCode() ErrorCode
+		// ErrorData returns error data bytes.
+		ErrorData() []byte
+	}
+)
+
+type (
+	// ServerAcceptor is alias for server acceptor.
 	ServerAcceptor = func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error)
 
 	// RSocket is a contract providing different interaction models for RSocket protocol.
 	RSocket interface {
 		// FireAndForget is a single one-way message.
-		FireAndForget(msg payload.Payload)
+		FireAndForget(message payload.Payload)
 		// MetadataPush sends asynchronous Metadata frame.
-		MetadataPush(msg payload.Payload)
+		MetadataPush(message payload.Payload)
 		// RequestResponse request single response.
-		RequestResponse(msg payload.Payload) mono.Mono
+		RequestResponse(message payload.Payload) mono.Mono
 		// RequestStream request a completable stream.
-		RequestStream(msg payload.Payload) flux.Flux
+		RequestStream(message payload.Payload) flux.Flux
 		// RequestChannel request a completable stream in both directions.
-		RequestChannel(msgs rx.Publisher) flux.Flux
+		RequestChannel(messages rx.Publisher) flux.Flux
 	}
 
 	// CloseableRSocket is a RSocket which support more events.

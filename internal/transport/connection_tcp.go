@@ -44,7 +44,7 @@ func (p *tcpConn) Read() (f framing.Frame, err error) {
 		return
 	}
 	base := framing.NewBaseFrame(h, bf)
-	if p.counter != nil && base.IsResumable() {
+	if p.counter != nil && base.CanResume() {
 		p.counter.incrReadBytes(base.Len())
 	}
 	f, err = framing.NewFromBase(base)
@@ -73,7 +73,7 @@ func (p *tcpConn) Flush() (err error) {
 
 func (p *tcpConn) Write(frame framing.Frame) (err error) {
 	size := frame.Len()
-	if p.counter != nil && frame.IsResumable() {
+	if p.counter != nil && frame.CanResume() {
 		p.counter.incrWriteBytes(size)
 	}
 	_, err = common.NewUint24(size).WriteTo(p.writer)

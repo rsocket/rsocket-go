@@ -21,11 +21,11 @@ func (p proxy) Raw() flux.Flux {
 }
 
 func (p proxy) mustProcessor() flux.Processor {
-	proc, ok := p.Flux.(flux.Processor)
+	processor, ok := p.Flux.(flux.Processor)
 	if !ok {
 		panic(errors.New("require flux.Processor"))
 	}
-	return proc
+	return processor
 }
 
 func (p proxy) Next(v payload.Payload) {
