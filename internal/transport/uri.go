@@ -86,10 +86,10 @@ func (p *URI) pp() *url.URL {
 }
 
 // ParseURI parse URI string and returns a URI.
-func ParseURI(rawurl string) (*URI, error) {
-	u, err := url.Parse(rawurl)
+func ParseURI(rawUrl string) (*URI, error) {
+	u, err := url.Parse(rawUrl)
 	if err != nil {
-		return nil, errors.Wrapf(err, "parse url failed: %s", rawurl)
+		return nil, errors.Wrapf(err, "parse url failed: %s", rawUrl)
 	}
 	return (*URI)(u), nil
 }

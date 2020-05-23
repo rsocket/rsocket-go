@@ -38,9 +38,9 @@ type (
 		Start(ctx context.Context) (Client, error)
 		// Start start a client socket with TLS.
 		// Here's an example:
-		// tc:=&tls.Config{
+		// tc := &tls.Config {
 		//	InsecureSkipVerify: true,
-		//}
+		// }
 		StartTLS(ctx context.Context, tc *tls.Config) (Client, error)
 	}
 
@@ -87,7 +87,7 @@ func Connect() ClientBuilder {
 		fragment: fragmentation.MaxFragment,
 		setup: &socket.SetupInfo{
 			Version:           common.DefaultVersion,
-			KeepaliveInterval: common.DefaultKeepaliveInteval,
+			KeepaliveInterval: common.DefaultKeepaliveInterval,
 			KeepaliveLifetime: common.DefaultKeepaliveMaxLifetime,
 			DataMimeType:      defaultMimeType,
 			MetadataMimeType:  defaultMimeType,

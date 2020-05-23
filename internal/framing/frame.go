@@ -140,8 +140,8 @@ type Frame interface {
 	SetBody(body *common.ByteBuff)
 	// Bytes encodes and returns frame in bytes.
 	Bytes() []byte
-	// IsResumable returns true if frame supports resume.
-	IsResumable() bool
+	// CanResume returns true if frame supports resume.
+	CanResume() bool
 	// Done marks current frame has been sent.
 	Done() (closed bool)
 	// DoneNotify notifies when frame done.
@@ -171,8 +171,8 @@ func (p *BaseFrame) DoneNotify() <-chan struct{} {
 	return p.done
 }
 
-// IsResumable returns true if frame supports resume.
-func (p *BaseFrame) IsResumable() bool {
+// CanResume returns true if frame supports resume.
+func (p *BaseFrame) CanResume() bool {
 	switch p.header.Type() {
 	case FrameTypeRequestChannel, FrameTypeRequestStream, FrameTypeRequestResponse, FrameTypeRequestFNF, FrameTypeRequestN, FrameTypeCancel, FrameTypeError, FrameTypePayload:
 		return true

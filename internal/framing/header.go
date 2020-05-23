@@ -11,7 +11,7 @@ const (
 	HeaderLen = 6
 )
 
-// FrameHeader is the header fo a RSocke frame.
+// FrameHeader is the header fo a RSocket frame.
 // RSocket frames begin with a RSocket Frame Header.
 // It includes StreamID, FrameType and Flags.
 type FrameHeader [HeaderLen]byte

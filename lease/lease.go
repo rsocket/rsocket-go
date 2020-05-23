@@ -8,9 +8,9 @@ import (
 )
 
 var (
-	ErrLeaseNotRcv         = errors.New("lease was not received yet")
-	ErrLeaseExpired        = errors.New("lease expired")
-	ErrLeaseNoMoreRequests = errors.New("no more lease")
+	ErrLeaseNotRcv         = errors.New("rsocket: lease was not received yet")
+	ErrLeaseExpired        = errors.New("rsocket: lease expired")
+	ErrLeaseNoMoreRequests = errors.New("rsocket: no more lease")
 )
 
 type Leases interface {

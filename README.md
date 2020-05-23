@@ -269,7 +269,7 @@ func init() {
 	logger.SetLevel(logger.LevelInfo)
 }
 
-``` 
+```
 
 #### Dependencies
  - [reactor-go](https://github.com/jjeffcaii/reactor-go)
@@ -297,5 +297,5 @@ func init() {
  - [x] Cancel
  - [x] Error
  - [x] Flow Control: RequestN
- - [ ] Flow Control: Lease
+ - [x] Flow Control: Lease
  - [x] Load Balance

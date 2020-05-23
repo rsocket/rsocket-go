@@ -31,7 +31,7 @@ func (p *wsConnection) Read() (f framing.Frame, err error) {
 		return
 	}
 	if t != websocket.BinaryMessage {
-		logger.Warnf("omit non-binary messsage %d\n", t)
+		logger.Warnf("omit non-binary message %d\n", t)
 		return p.Read()
 	}
 	// validate min length
