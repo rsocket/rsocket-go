@@ -9,7 +9,7 @@ import (
 
 func TestCompositeMetadataBuilder_Build(t *testing.T) {
 	cm, err := NewCompositeMetadataBuilder().
-		PushString("application/custom", fmt.Sprintf("not well")).
+		PushString("application/custom", "not well").
 		PushString("text/plain", "text").
 		PushWellKnownString(ApplicationJSON, `{"hello":"world"}`).
 		Build()

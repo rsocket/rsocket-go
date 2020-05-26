@@ -5,6 +5,15 @@ import "errors"
 // ErrorCode is code for RSocket error.
 type ErrorCode uint32
 
+// CustomError provides a method of accessing code and data.
+type CustomError interface {
+	error
+	// ErrorCode returns error code.
+	ErrorCode() ErrorCode
+	// ErrorData returns error data bytes.
+	ErrorData() []byte
+}
+
 func (p ErrorCode) String() string {
 	switch p {
 	case ErrorCodeInvalidSetup:
