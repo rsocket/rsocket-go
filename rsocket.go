@@ -32,18 +32,12 @@ const (
 	ErrorCodeInvalid = common.ErrorCodeInvalid
 )
 
+// Aliases for Error defines.
 type (
 	// ErrorCode is code for RSocket error.
 	ErrorCode = common.ErrorCode
-
 	// Error provides a method of accessing code and data.
-	Error interface {
-		error
-		// ErrorCode returns error code.
-		ErrorCode() ErrorCode
-		// ErrorData returns error data bytes.
-		ErrorData() []byte
-	}
+	Error = common.CustomError
 )
 
 type (

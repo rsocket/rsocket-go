@@ -610,13 +610,16 @@ func (p *DuplexRSocket) respondRequestStream(receiving fragmentation.HeaderAndPa
 }
 
 func (p *DuplexRSocket) writeError(sid uint32, e error) {
-	// ignore sening error because current socket has been closed.
+	// ignore sending error because current socket has been closed.
 	if e == errSocketClosed {
 		return
 	}
-	if v, ok := e.(*framing.FrameError); ok {
-		p.sendFrame(v)
-	} else {
+	switch err := e.(type) {
+	case *framing.FrameError:
+		p.sendFrame(err)
+	case common.CustomError:
+		p.sendFrame(framing.NewFrameError(sid, err.ErrorCode(), err.ErrorData()))
+	default:
 		p.sendFrame(framing.NewFrameError(sid, common.ErrorCodeApplicationError, []byte(e.Error())))
 	}
 }
