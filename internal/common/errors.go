@@ -14,8 +14,8 @@ type CustomError interface {
 	ErrorData() []byte
 }
 
-func (p ErrorCode) String() string {
-	switch p {
+func (e ErrorCode) String() string {
+	switch e {
 	case ErrorCodeInvalidSetup:
 		return "INVALID_SETUP"
 	case ErrorCodeUnsupportedSetup:

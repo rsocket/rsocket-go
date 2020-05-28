@@ -70,7 +70,7 @@ func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame func(idx
 			}
 			if wroteM > 0 {
 				// set metadata length
-				x := common.NewUint24(wroteM)
+				x := common.MustNewUint24(wroteM)
 				for i := 0; i < len(x); i++ {
 					if idx == 0 {
 						bf.Bytes()[i+skip] = x[i]

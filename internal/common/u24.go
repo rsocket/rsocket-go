@@ -1,6 +1,7 @@
 package common
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
@@ -8,7 +9,20 @@ import (
 // MaxUint24 is the max value of Uint24.
 const MaxUint24 = 16777215
 
-var errMaxUint24 = fmt.Errorf("uint24 exceed max value: %d", MaxUint24)
+var (
+	errExceedMaxUint24 = fmt.Errorf("uint24 exceed max value: %d", MaxUint24)
+	errNegativeNumber  = errors.New("negative number is illegal")
+)
+
+// IsExceedMaximumUint24Error returns true if exceed maximum Uint24. (16777215)
+func IsExceedMaximumUint24Error(err error) bool {
+	return err == errExceedMaxUint24
+}
+
+// IsNegativeUint24Error returns true if number is negative.
+func IsNegativeUint24Error(err error) bool {
+	return err == errNegativeNumber
+}
 
 // Uint24 is 3 bytes unsigned integer.
 type Uint24 [3]byte
@@ -29,14 +43,27 @@ func (p Uint24) AsInt() int {
 	return int(p[0])<<16 + int(p[1])<<8 + int(p[2])
 }
 
-// NewUint24 returns a new uint24.
-func NewUint24(n int) (v Uint24) {
-	if n > MaxUint24 {
-		panic(errMaxUint24)
+// MustNewUint24 returns a new uint24.
+func MustNewUint24(n int) Uint24 {
+	v, err := NewUint24(n)
+	if err != nil {
+		panic(err)
 	}
-	v[0] = byte(n >> 16)
-	v[1] = byte(n >> 8)
-	v[2] = byte(n)
+	return v
+}
+
+// NewUint24 returns a new uint24.
+func NewUint24(v int) (n Uint24, err error) {
+	if v < 0 {
+		err = errNegativeNumber
+		return
+	}
+	if v > MaxUint24 {
+		err = errExceedMaxUint24
+	}
+	n[0] = byte(v >> 16)
+	n[1] = byte(v >> 8)
+	n[2] = byte(v)
 	return
 }
 

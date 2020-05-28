@@ -76,7 +76,7 @@ func (p *tcpConn) Write(frame framing.Frame) (err error) {
 	if p.counter != nil && frame.CanResume() {
 		p.counter.incrWriteBytes(size)
 	}
-	_, err = common.NewUint24(size).WriteTo(p.writer)
+	_, err = common.MustNewUint24(size).WriteTo(p.writer)
 	if err != nil {
 		err = errors.Wrap(err, "write frame failed")
 		return
