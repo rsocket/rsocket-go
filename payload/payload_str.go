@@ -1,6 +1,8 @@
 package payload
 
-import "fmt"
+import (
+	"strings"
+)
 
 type strPayload struct {
 	data     string
@@ -8,7 +10,13 @@ type strPayload struct {
 }
 
 func (p *strPayload) String() string {
-	return fmt.Sprintf("Payload{data=%s,metadata=%s}", p.data, p.metadata)
+	bu := strings.Builder{}
+	bu.WriteString("Payload{data=")
+	bu.WriteString(p.data)
+	bu.WriteString("metadata=")
+	bu.WriteString(p.metadata)
+	bu.WriteByte('}')
+	return bu.String()
 }
 
 func (p *strPayload) Metadata() (metadata []byte, ok bool) {

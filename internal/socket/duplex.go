@@ -32,6 +32,11 @@ var (
 	unsupportedRequestChannel  = []byte("Request-Channel not implemented.")
 )
 
+// IsSocketClosedError returns true if input error is for socket closed.
+func IsSocketClosedError(err error) bool {
+	return err == errSocketClosed
+}
+
 // DuplexRSocket represents a socket of RSocket which can be a requester or a responder.
 type DuplexRSocket struct {
 	counter         *transport.Counter
@@ -40,7 +45,7 @@ type DuplexRSocket struct {
 	outsPriority    []framing.Frame
 	responder       Responder
 	messages        *u32map
-	sids            streamIDs
+	sids            StreamID
 	mtu             int
 	fragments       *u32map // key=streamID, value=Joiner
 	closed          *atomic.Bool
@@ -60,8 +65,8 @@ func (p *DuplexRSocket) SetError(e error) {
 func (p *DuplexRSocket) nextStreamID() (sid uint32) {
 	var lap1st bool
 	for {
-		// There's no necessery to check StreamID conflicts.
-		sid, lap1st = p.sids.next()
+		// There's no required to check StreamID conflicts.
+		sid, lap1st = p.sids.Next()
 		if lap1st {
 			return
 		}
@@ -611,7 +616,7 @@ func (p *DuplexRSocket) respondRequestStream(receiving fragmentation.HeaderAndPa
 
 func (p *DuplexRSocket) writeError(sid uint32, e error) {
 	// ignore sending error because current socket has been closed.
-	if e == errSocketClosed {
+	if IsSocketClosedError(e) {
 		return
 	}
 	switch err := e.(type) {

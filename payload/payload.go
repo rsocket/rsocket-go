@@ -42,18 +42,39 @@ type (
 
 // Clone create a copy of original payload.
 func Clone(payload Payload) Payload {
-	ret := &rawPayload{}
-	if d := payload.Data(); len(d) > 0 {
-		clone := make([]byte, len(d))
-		copy(clone, d)
-		ret.data = clone
+	if payload == nil {
+		return nil
 	}
-	if m, ok := payload.Metadata(); ok && len(m) > 0 {
-		clone := make([]byte, len(m))
-		copy(clone, m)
-		ret.metadata = clone
+	switch v := payload.(type) {
+	case *rawPayload:
+		var data []byte
+		if v.data != nil {
+			data = make([]byte, len(v.data))
+			copy(data, v.data)
+		}
+		var metadata []byte
+		if v.metadata != nil {
+			metadata = make([]byte, len(v.metadata))
+			copy(metadata, v.metadata)
+		}
+		return &rawPayload{data: data, metadata: metadata}
+	case *strPayload:
+		return &strPayload{data: v.data, metadata: v.metadata}
+	default:
+		ret := &rawPayload{}
+		if d := payload.Data(); len(d) > 0 {
+			clone := make([]byte, len(d))
+			copy(clone, d)
+			ret.data = clone
+		}
+		if m, ok := payload.Metadata(); ok && len(m) > 0 {
+			clone := make([]byte, len(m))
+			copy(clone, m)
+			ret.metadata = clone
+		}
+		return ret
 	}
-	return ret
+
 }
 
 // New create a new payload with bytes.

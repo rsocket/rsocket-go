@@ -2,8 +2,9 @@ package common
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
+	"strconv"
+	"strings"
 )
 
 // DefaultVersion is default protocol version.
@@ -33,14 +34,29 @@ func (p Version) Minor() uint16 {
 
 // WriteTo write raw version bytes to a writer.
 func (p Version) WriteTo(w io.Writer) (n int64, err error) {
-	var wrote int
-	wrote, err = w.Write(p.Bytes())
-	if err == nil {
-		n += int64(wrote)
+	err = binary.Write(w, binary.BigEndian, p[0])
+	if err != nil {
+		return
 	}
+	err = binary.Write(w, binary.BigEndian, p[1])
+	if err != nil {
+		return
+	}
+	n = 4
 	return
 }
 
 func (p Version) String() string {
-	return fmt.Sprintf("%d.%d", p[0], p[1])
+	b := strings.Builder{}
+	b.WriteString(strconv.Itoa(int(p[0])))
+	b.WriteByte('.')
+	b.WriteString(strconv.Itoa(int(p[1])))
+	return b.String()
+}
+
+// NewVersion creates a new Version from major and minor.
+func NewVersion(major, minor uint16) Version {
+	return Version{
+		major, minor,
+	}
 }
