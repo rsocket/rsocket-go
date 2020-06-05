@@ -13,7 +13,10 @@ import (
 	"github.com/rsocket/rsocket-go/payload"
 )
 
-var defaultMimeType = []byte("application/binary")
+var (
+	_defaultMimeType = []byte("application/binary")
+	_noopSocket      = NewAbstractSocket()
+)
 
 type (
 	// ClientResumeOptions represents resume options for client.
@@ -22,11 +25,6 @@ type (
 	// Client is Client Side of a RSocket socket. Sends Frames to a RSocket Server.
 	Client interface {
 		CloseableRSocket
-	}
-
-	setupClientSocket interface {
-		Client
-		Setup(ctx context.Context, setup *socket.SetupInfo) error
 	}
 
 	// ClientSocketAcceptor is alias for RSocket handler function.
@@ -49,11 +47,11 @@ type (
 		ClientTransportBuilder
 		// Fragment set fragmentation size which default is 16_777_215(16MB).
 		Fragment(mtu int) ClientBuilder
-
 		// KeepAlive defines current client keepalive settings.
 		KeepAlive(tickPeriod, ackTimeout time.Duration, missedAcks int) ClientBuilder
-		// Resume enable resume for current RSocket.
+		// Resume enable the functionality of resume.
 		Resume(opts ...ClientResumeOptions) ClientBuilder
+		// Lease enable the functionality of lease.
 		Lease() ClientBuilder
 		// DataMimeType is used to set payload data MIME type.
 		// Default MIME type is `application/binary`.
@@ -79,6 +77,11 @@ type (
 		// "wss://127.0.0.1:8080/a/b/c" means a  Websocket RSocket transport with HTTPS.
 		Transport(uri string, opts ...TransportOpts) ClientStarter
 	}
+
+	setupClientSocket interface {
+		Client
+		Setup(ctx context.Context, setup *socket.SetupInfo) error
+	}
 )
 
 // Connect create a new RSocket client builder with default settings.
@@ -89,8 +92,8 @@ func Connect() ClientBuilder {
 			Version:           common.DefaultVersion,
 			KeepaliveInterval: common.DefaultKeepaliveInterval,
 			KeepaliveLifetime: common.DefaultKeepaliveMaxLifetime,
-			DataMimeType:      defaultMimeType,
-			MetadataMimeType:  defaultMimeType,
+			DataMimeType:      _defaultMimeType,
+			MetadataMimeType:  _defaultMimeType,
 		},
 	}
 }
@@ -229,6 +232,8 @@ func (p *implClientBuilder) start(ctx context.Context, tc *tls.Config) (client C
 	}
 	if p.acceptor != nil {
 		sk.SetResponder(p.acceptor(cs))
+	} else {
+		sk.SetResponder(_noopSocket)
 	}
 
 	// bind closers.
