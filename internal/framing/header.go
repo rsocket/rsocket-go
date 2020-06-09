@@ -2,8 +2,9 @@ package framing
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -17,7 +18,15 @@ const (
 type FrameHeader [HeaderLen]byte
 
 func (p FrameHeader) String() string {
-	return fmt.Sprintf("FrameHeader{id=%d,type=%s,flag=%s}", p.StreamID(), p.Type(), p.Flag())
+	bu := strings.Builder{}
+	bu.WriteString("FrameHeader{id=")
+	bu.WriteString(strconv.FormatUint(uint64(p.StreamID()), 10))
+	bu.WriteString(",type=")
+	bu.WriteString(p.Type().String())
+	bu.WriteString(",flag=")
+	bu.WriteString(p.Flag().String())
+	bu.WriteByte('}')
+	return bu.String()
 }
 
 // WriteTo writes frame header to a writer.

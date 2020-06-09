@@ -7,11 +7,6 @@ import (
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
-const (
-	reqNLen             = 4
-	minRequestNFrameLen = reqNLen
-)
-
 // FrameRequestN is RequestN frame.
 type FrameRequestN struct {
 	*BaseFrame
@@ -19,7 +14,7 @@ type FrameRequestN struct {
 
 // Validate returns error if frame is invalid.
 func (p *FrameRequestN) Validate() (err error) {
-	if p.body.Len() < minRequestNFrameLen {
+	if p.body.Len() != 4 {
 		err = errIncompleteFrame
 	}
 	return

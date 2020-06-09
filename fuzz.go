@@ -6,7 +6,6 @@ package rsocket
 import (
 	"bytes"
 	"errors"
-	"fmt"
 
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/framing"
@@ -20,10 +19,14 @@ func Fuzz(data []byte) int {
 	if err == nil {
 		err = handleRaw(raw)
 	}
-	if err == nil || err == common.ErrInvalidFrame || err == transport.ErrIncompleteHeader {
+	if err == nil || isExpectedError(err) {
 		return 0
 	}
 	return 1
+}
+
+func isExpectedError(err error) bool {
+	return err == common.ErrInvalidFrame || err == transport.ErrIncompleteHeader
 }
 
 func handleRaw(raw []byte) (err error) {
@@ -38,21 +41,9 @@ func handleRaw(raw []byte) (err error) {
 	if err != nil {
 		return
 	}
-
-	switch f := frame.(type) {
-	case fmt.Stringer:
-		s := f.String()
-		if len(s) > 0 {
-			return
-		}
-	case error:
-		e := f.Error()
-		if len(e) > 0 {
-			return
-		}
-	default:
-		panic("unreachable")
+	if frame.Len() >= framing.HeaderLen {
+		return
 	}
-
-	return errors.New("???")
+	err = errors.New("broken frame")
+	return
 }

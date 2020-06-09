@@ -3,6 +3,7 @@ package framing
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
 
 	"github.com/rsocket/rsocket-go/internal/common"
 )
@@ -24,14 +25,19 @@ func (p *FrameError) String() string {
 
 // Validate returns error if frame is invalid.
 func (p *FrameError) Validate() (err error) {
-	if p.Len() < minErrorFrameLen {
+	if p.body.Len() < minErrorFrameLen {
 		err = errIncompleteFrame
 	}
 	return
 }
 
 func (p *FrameError) Error() string {
-	return fmt.Sprintf("%s: %s", p.ErrorCode(), string(p.ErrorData()))
+	bu := strings.Builder{}
+	bu.WriteString(p.ErrorCode().String())
+	bu.WriteByte(':')
+	bu.WriteByte(' ')
+	bu.Write(p.ErrorData())
+	return bu.String()
 }
 
 // ErrorCode returns error code.

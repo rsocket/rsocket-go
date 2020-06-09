@@ -18,11 +18,15 @@ type FrameRequestChannel struct {
 }
 
 // Validate returns error if frame is invalid.
-func (p *FrameRequestChannel) Validate() (err error) {
-	if p.body.Len() < minRequestChannelFrameLen {
-		err = errIncompleteFrame
+func (p *FrameRequestChannel) Validate() error {
+	l := p.body.Len()
+	if l < minRequestChannelFrameLen {
+		return errIncompleteFrame
 	}
-	return
+	if p.header.Flag().Check(FlagMetadata) && l < minRequestChannelFrameLen+3 {
+		return errIncompleteFrame
+	}
+	return nil
 }
 
 func (p *FrameRequestChannel) String() string {

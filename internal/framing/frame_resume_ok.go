@@ -18,6 +18,10 @@ func (p *FrameResumeOK) String() string {
 
 // Validate validate current frame.
 func (p *FrameResumeOK) Validate() (err error) {
+	// Length of frame body should be 8
+	if p.body.Len() != 8 {
+		err = errIncompleteFrame
+	}
 	return
 }
 

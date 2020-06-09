@@ -11,6 +11,14 @@ import (
 
 var errResumeTokenTooLarge = errors.New("max length of resume token is 65535")
 
+const (
+	_lenVersion      = 4
+	_lenTokenLength  = 2
+	_lenLastRecvPos  = 8
+	_lenFirstPos     = 8
+	_minResumeLength = _lenVersion + _lenTokenLength + _lenLastRecvPos + _lenFirstPos
+)
+
 // FrameResume represents a frame of Resume.
 type FrameResume struct {
 	*BaseFrame
@@ -25,6 +33,9 @@ func (p *FrameResume) String() string {
 
 // Validate validate current frame.
 func (p *FrameResume) Validate() (err error) {
+	if p.body.Len() < _minResumeLength {
+		err = errIncompleteFrame
+	}
 	return
 }
 

@@ -1,7 +1,6 @@
 package socket
 
 import (
-	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -9,55 +8,6 @@ import (
 	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/rx"
 )
-
-type u32map struct {
-	k sync.RWMutex
-	m map[uint32]interface{}
-}
-
-func (p *u32map) Close() error {
-	p.k.Lock()
-	p.m = nil
-	p.k.Unlock()
-	return nil
-}
-
-func (p *u32map) Range(fn func(uint32, interface{}) bool) {
-	p.k.RLock()
-	for key, value := range p.m {
-		if !fn(key, value) {
-			break
-		}
-	}
-	p.k.RUnlock()
-}
-
-func (p *u32map) Load(key uint32) (v interface{}, ok bool) {
-	p.k.RLock()
-	v, ok = p.m[key]
-	p.k.RUnlock()
-	return
-}
-
-func (p *u32map) Store(key uint32, value interface{}) {
-	p.k.Lock()
-	if p.m != nil {
-		p.m[key] = value
-	}
-	p.k.Unlock()
-}
-
-func (p *u32map) Delete(key uint32) {
-	p.k.Lock()
-	delete(p.m, key)
-	p.k.Unlock()
-}
-
-func newU32Map() *u32map {
-	return &u32map{
-		m: make(map[uint32]interface{}),
-	}
-}
 
 // SetupInfo represents basic info of setup.
 type SetupInfo struct {

@@ -13,7 +13,7 @@ func BenchmarkVersion_String(b *testing.B) {
 	v := common.NewVersion(2, 3)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v.String()
+		_ = v.String()
 	}
 }
 

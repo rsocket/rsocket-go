@@ -1,20 +1,27 @@
-package framing
+package framing_test
 
 import (
-	"fmt"
+	"bytes"
+	"math"
 	"testing"
 
+	"github.com/rsocket/rsocket-go/internal/common"
+	. "github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestHeader_All(t *testing.T) {
-	h1 := NewFrameHeader(134, FrameTypePayload, FlagMetadata|FlagComplete|FlagNext)
-	h := ParseFrameHeader(h1[:])
-	assert.Equal(t, h1.StreamID(), h.StreamID())
-	assert.Equal(t, h1.Type(), h.Type())
-	assert.Equal(t, h1.Flag(), h.Flag())
-
-	fmt.Println("streamID:", h.StreamID())
-	fmt.Println("type:", h.Type())
-	fmt.Println("flag:", h.Flag())
+	id := uint32(common.RandIntn(math.MaxUint32))
+	h1 := NewFrameHeader(id, FrameTypePayload, FlagMetadata|FlagComplete|FlagNext)
+	assert.NotEmpty(t, h1.String())
+	h2 := ParseFrameHeader(h1[:])
+	assert.Equal(t, h1.StreamID(), h2.StreamID())
+	assert.Equal(t, h1.Type(), h2.Type())
+	assert.Equal(t, h1.Flag(), h2.Flag())
+	assert.Equal(t, FrameTypePayload, h1.Type())
+	assert.Equal(t, FlagMetadata|FlagComplete|FlagNext, h1.Flag())
+	bf := &bytes.Buffer{}
+	n, err := h2.WriteTo(bf)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(HeaderLen), n)
 }

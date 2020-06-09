@@ -44,10 +44,10 @@ type DuplexRSocket struct {
 	outs            chan framing.Frame
 	outsPriority    []framing.Frame
 	responder       Responder
-	messages        *u32map
+	messages        common.U32Map
 	sids            StreamID
 	mtu             int
-	fragments       *u32map // key=streamID, value=Joiner
+	fragments       common.U32Map // key=streamID, value=Joiner
 	closed          *atomic.Bool
 	done            chan struct{}
 	keepaliver      *keepaliver
@@ -91,7 +91,7 @@ func (p *DuplexRSocket) Close() error {
 	p.cond.Broadcast()
 	p.cond.L.Unlock()
 
-	_ = p.fragments.Close()
+	p.fragments.Clear()
 	<-p.done
 
 	if p.tp != nil {
@@ -105,7 +105,7 @@ func (p *DuplexRSocket) Close() error {
 	p.fragments.Range(func(key uint32, value interface{}) bool {
 		return true
 	})
-	_ = p.fragments.Close()
+	p.fragments.Clear()
 
 	p.messages.Range(func(key uint32, value interface{}) bool {
 		if cc, ok := value.(closerWithError); ok {
@@ -121,7 +121,7 @@ func (p *DuplexRSocket) Close() error {
 		}
 		return true
 	})
-	_ = p.messages.Close()
+	p.messages.Clear()
 	return p.e
 }
 
@@ -1116,9 +1116,9 @@ func NewServerDuplexRSocket(mtu int, leases lease.Leases) *DuplexRSocket {
 		leases:          leases,
 		outs:            make(chan framing.Frame, outsSize),
 		mtu:             mtu,
-		messages:        newU32Map(),
+		messages:        common.NewU32Map(),
 		sids:            &serverStreamIDs{},
-		fragments:       newU32Map(),
+		fragments:       common.NewU32Map(),
 		done:            make(chan struct{}),
 		cond:            sync.NewCond(&sync.Mutex{}),
 		counter:         transport.NewCounter(),
@@ -1136,9 +1136,9 @@ func NewClientDuplexRSocket(
 		closed:          atomic.NewBool(false),
 		outs:            make(chan framing.Frame, outsSize),
 		mtu:             mtu,
-		messages:        newU32Map(),
+		messages:        common.NewU32Map(),
 		sids:            &clientStreamIDs{},
-		fragments:       newU32Map(),
+		fragments:       common.NewU32Map(),
 		done:            make(chan struct{}),
 		cond:            sync.NewCond(&sync.Mutex{}),
 		counter:         transport.NewCounter(),

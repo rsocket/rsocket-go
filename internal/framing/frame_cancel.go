@@ -13,6 +13,10 @@ type FrameCancel struct {
 
 // Validate returns error if frame is invalid.
 func (p *FrameCancel) Validate() (err error) {
+	// Cancel frame doesn't need any binary body.
+	if p.body != nil && p.body.Len() > 0 {
+		err = errIncompleteFrame
+	}
 	return
 }
 

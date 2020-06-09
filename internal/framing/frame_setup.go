@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	versionLen       = 4
-	timeLen          = 4
-	tokenLen         = 2
-	metadataLen      = 1
-	dataLen          = 1
-	minSetupFrameLen = versionLen + timeLen*2 + tokenLen + metadataLen + dataLen
+	_versionLen       = 4
+	_timeLen          = 4
+	_tokenLen         = 2
+	_metadataLen      = 1
+	_dataLen          = 1
+	_minSetupFrameLen = _versionLen + _timeLen*2 + _tokenLen + _metadataLen + _dataLen
 )
 
 // FrameSetup is sent by client to initiate protocol processing.
@@ -24,7 +24,7 @@ type FrameSetup struct {
 
 // Validate returns error if frame is invalid.
 func (p *FrameSetup) Validate() (err error) {
-	if p.Len() < minSetupFrameLen {
+	if p.Len() < _minSetupFrameLen {
 		err = errIncompleteFrame
 	}
 	return

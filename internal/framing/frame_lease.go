@@ -63,6 +63,9 @@ func NewFrameLease(ttl time.Duration, n uint32, metadata []byte) *FrameLease {
 	var fg FrameFlag
 	if len(metadata) > 0 {
 		fg |= FlagMetadata
+		if _, err := bf.Write(metadata); err != nil {
+			panic(err)
+		}
 	}
 	return &FrameLease{NewBaseFrame(NewFrameHeader(0, FrameTypeLease, fg), bf)}
 }

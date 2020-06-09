@@ -17,11 +17,15 @@ type FrameRequestStream struct {
 }
 
 // Validate returns error if frame is invalid.
-func (p *FrameRequestStream) Validate() (err error) {
-	if p.body.Len() < minRequestStreamFrameLen {
-		err = errIncompleteFrame
+func (p *FrameRequestStream) Validate() error {
+	l := p.body.Len()
+	if l < minRequestStreamFrameLen {
+		return errIncompleteFrame
 	}
-	return
+	if p.header.Flag().Check(FlagMetadata) && l < minRequestStreamFrameLen+3 {
+		return errIncompleteFrame
+	}
+	return nil
 }
 
 func (p *FrameRequestStream) String() string {

@@ -13,6 +13,9 @@ type FrameFNF struct {
 
 // Validate returns error if frame is invalid.
 func (p *FrameFNF) Validate() (err error) {
+	if p.header.Flag().Check(FlagMetadata) && p.body.Len() < 3 {
+		err = errIncompleteFrame
+	}
 	return
 }
 

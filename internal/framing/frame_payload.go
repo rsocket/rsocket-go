@@ -13,6 +13,10 @@ type FramePayload struct {
 
 // Validate returns error if frame is invalid.
 func (p *FramePayload) Validate() (err error) {
+	// Minimal length should be 3 if metadata exists.
+	if p.header.Flag().Check(FlagMetadata) && p.body.Len() < 3 {
+		err = errIncompleteFrame
+	}
 	return
 }
 
