@@ -22,8 +22,8 @@ type SetupInfo struct {
 	Metadata          []byte
 }
 
-func (p *SetupInfo) toFrame() *framing.FrameSetup {
-	return framing.NewFrameSetup(
+func (p *SetupInfo) toFrame() framing.FrameSupport {
+	return framing.NewSetupFrameSupport(
 		p.Version,
 		p.KeepaliveInterval,
 		p.KeepaliveLifetime,

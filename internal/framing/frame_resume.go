@@ -3,7 +3,7 @@ package framing
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
+	"io"
 	"math"
 
 	"github.com/rsocket/rsocket-go/internal/common"
@@ -19,57 +19,123 @@ const (
 	_minResumeLength = _lenVersion + _lenTokenLength + _lenLastRecvPos + _lenFirstPos
 )
 
-// FrameResume represents a frame of Resume.
-type FrameResume struct {
-	*BaseFrame
-}
-
-func (p *FrameResume) String() string {
-	return fmt.Sprintf(
-		"FrameResume{%s,version=%s,token=0x%02x,lastReceivedServerPosition=%d,firstAvailableClientPosition=%d}",
-		p.header, p.Version(), p.Token(), p.LastReceivedServerPosition(), p.FirstAvailableClientPosition(),
-	)
+// ResumeFrame represents a frame of Resume.
+type ResumeFrame struct {
+	*RawFrame
 }
 
 // Validate validate current frame.
-func (p *FrameResume) Validate() (err error) {
-	if p.body.Len() < _minResumeLength {
+func (r *ResumeFrame) Validate() (err error) {
+	if r.body.Len() < _minResumeLength {
 		err = errIncompleteFrame
 	}
 	return
 }
 
 // Version returns version.
-func (p *FrameResume) Version() common.Version {
-	raw := p.body.Bytes()
+func (r *ResumeFrame) Version() common.Version {
+	raw := r.body.Bytes()
 	major := binary.BigEndian.Uint16(raw)
 	minor := binary.BigEndian.Uint16(raw[2:])
 	return [2]uint16{major, minor}
 }
 
 // Token returns resume token in bytes.
-func (p *FrameResume) Token() []byte {
-	raw := p.body.Bytes()
+func (r *ResumeFrame) Token() []byte {
+	raw := r.body.Bytes()
 	tokenLen := binary.BigEndian.Uint16(raw[4:6])
 	return raw[6 : 6+tokenLen]
 }
 
 // LastReceivedServerPosition returns last received server position.
-func (p *FrameResume) LastReceivedServerPosition() uint64 {
-	raw := p.body.Bytes()
+func (r *ResumeFrame) LastReceivedServerPosition() uint64 {
+	raw := r.body.Bytes()
 	offset := 6 + binary.BigEndian.Uint16(raw[4:6])
 	return binary.BigEndian.Uint64(raw[offset:])
 }
 
 // FirstAvailableClientPosition returns first available client position.
-func (p *FrameResume) FirstAvailableClientPosition() uint64 {
-	raw := p.body.Bytes()
+func (r *ResumeFrame) FirstAvailableClientPosition() uint64 {
+	raw := r.body.Bytes()
 	offset := 6 + binary.BigEndian.Uint16(raw[4:6]) + 8
 	return binary.BigEndian.Uint64(raw[offset:])
 }
 
-// NewFrameResume creates a new frame of Resume.
-func NewFrameResume(version common.Version, token []byte, firstAvailableClientPosition, lastReceivedServerPosition uint64) *FrameResume {
+type ResumeFrameSupport struct {
+	*tinyFrame
+	version  common.Version
+	token    []byte
+	posFirst [8]byte
+	posLast  [8]byte
+}
+
+func (r ResumeFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int64
+	wrote, err = r.header.WriteTo(w)
+	if err != nil {
+		return
+	}
+	n += wrote
+
+	var v int
+
+	v, err = w.Write(r.version.Bytes())
+	if err != nil {
+		return
+	}
+	n += int64(v)
+
+	lenToken := uint16(len(r.token))
+	err = binary.Write(w, binary.BigEndian, lenToken)
+	if err != nil {
+		return
+	}
+	n += 2
+
+	v, err = w.Write(r.token)
+	if err != nil {
+		return
+	}
+	n += int64(v)
+
+	v, err = w.Write(r.posLast[:])
+	if err != nil {
+		return
+	}
+	n += int64(v)
+
+	v, err = w.Write(r.posFirst[:])
+	if err != nil {
+		return
+	}
+	n += int64(v)
+
+	return
+}
+
+func (r ResumeFrameSupport) Len() int {
+	return HeaderLen + _lenTokenLength + _lenFirstPos + _lenLastRecvPos + _lenVersion + len(r.token)
+}
+
+// NewResumeFrameSupport creates a new frame support of Resume.
+func NewResumeFrameSupport(version common.Version, token []byte, firstAvailableClientPosition, lastReceivedServerPosition uint64) *ResumeFrameSupport {
+	h := NewFrameHeader(0, FrameTypeResume, 0)
+	t := newTinyFrame(h)
+	var a, b [8]byte
+	binary.BigEndian.PutUint64(a[:], firstAvailableClientPosition)
+	binary.BigEndian.PutUint64(b[:], lastReceivedServerPosition)
+
+	return &ResumeFrameSupport{
+		tinyFrame: t,
+		version:   version,
+		token:     token,
+		posFirst:  a,
+		posLast:   b,
+	}
+}
+
+// NewResumeFrame creates a new frame of Resume.
+func NewResumeFrame(version common.Version, token []byte, firstAvailableClientPosition, lastReceivedServerPosition uint64) *ResumeFrame {
 	n := len(token)
 	if n > math.MaxUint16 {
 		panic(errResumeTokenTooLarge)
@@ -92,7 +158,7 @@ func NewFrameResume(version common.Version, token []byte, firstAvailableClientPo
 	if err := binary.Write(bf, binary.BigEndian, firstAvailableClientPosition); err != nil {
 		panic(err)
 	}
-	return &FrameResume{
-		NewBaseFrame(NewFrameHeader(0, FrameTypeResume), bf),
+	return &ResumeFrame{
+		NewRawFrame(NewFrameHeader(0, FrameTypeResume, 0), bf),
 	}
 }

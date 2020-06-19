@@ -26,13 +26,13 @@ func split2joiner(mtu int, data, metadata []byte) (joiner Joiner, err error) {
 	fn := func(idx int, fg framing.FrameFlag, body *common.ByteBuff) {
 		if idx == 0 {
 			h := framing.NewFrameHeader(77778888, framing.FrameTypePayload, framing.FlagComplete|fg)
-			joiner = NewJoiner(&framing.FramePayload{
-				BaseFrame: framing.NewBaseFrame(h, body),
+			joiner = NewJoiner(&framing.PayloadFrame{
+				RawFrame: framing.NewRawFrame(h, body),
 			})
 		} else {
 			h := framing.NewFrameHeader(77778888, framing.FrameTypePayload, fg)
-			joiner.Push(&framing.FramePayload{
-				BaseFrame: framing.NewBaseFrame(h, body),
+			joiner.Push(&framing.PayloadFrame{
+				RawFrame: framing.NewRawFrame(h, body),
 			})
 		}
 	}

@@ -1,18 +1,24 @@
 package framing
 
 import (
-	"fmt"
+	"io"
 
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
-// FramePayload is payload frame.
-type FramePayload struct {
-	*BaseFrame
+// PayloadFrame is payload frame.
+type PayloadFrame struct {
+	*RawFrame
+}
+
+type PayloadFrameSupport struct {
+	*tinyFrame
+	metadata []byte
+	data     []byte
 }
 
 // Validate returns error if frame is invalid.
-func (p *FramePayload) Validate() (err error) {
+func (p *PayloadFrame) Validate() (err error) {
 	// Minimal length should be 3 if metadata exists.
 	if p.header.Flag().Check(FlagMetadata) && p.body.Len() < 3 {
 		err = errIncompleteFrame
@@ -20,23 +26,18 @@ func (p *FramePayload) Validate() (err error) {
 	return
 }
 
-func (p *FramePayload) String() string {
-	m, _ := p.MetadataUTF8()
-	return fmt.Sprintf("FramePayload{%s,data=%s,metadata=%s}", p.header, p.DataUTF8(), m)
-}
-
 // Metadata returns metadata bytes.
-func (p *FramePayload) Metadata() ([]byte, bool) {
+func (p *PayloadFrame) Metadata() ([]byte, bool) {
 	return p.trySliceMetadata(0)
 }
 
 // Data returns data bytes.
-func (p *FramePayload) Data() []byte {
+func (p *PayloadFrame) Data() []byte {
 	return p.trySliceData(0)
 }
 
 // MetadataUTF8 returns metadata as UTF8 string.
-func (p *FramePayload) MetadataUTF8() (metadata string, ok bool) {
+func (p *PayloadFrame) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := p.Metadata()
 	if ok {
 		metadata = string(raw)
@@ -44,17 +45,56 @@ func (p *FramePayload) MetadataUTF8() (metadata string, ok bool) {
 	return
 }
 
+func (p *PayloadFrame) MustMetadataUTF8() string {
+	s, ok := p.MetadataUTF8()
+	if !ok {
+		panic("cannot convert metadata to utf8")
+	}
+	return s
+}
+
 // DataUTF8 returns data as UTF8 string.
-func (p *FramePayload) DataUTF8() string {
+func (p *PayloadFrame) DataUTF8() string {
 	return string(p.Data())
 }
 
-// NewFramePayload returns a new payload frame.
-func NewFramePayload(id uint32, data, metadata []byte, flags ...FrameFlag) *FramePayload {
-	fg := newFlags(flags...)
+func (p PayloadFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int64
+	wrote, err = p.header.WriteTo(w)
+	if err != nil {
+		return
+	}
+	n += wrote
+	wrote, err = writePayload(w, p.data, p.metadata)
+	if err == nil {
+		n += wrote
+	}
+	return
+}
+
+func (p PayloadFrameSupport) Len() int {
+	return CalcPayloadFrameSize(p.data, p.metadata)
+}
+
+// NewPayloadFrameSupport returns a new payload frame.
+func NewPayloadFrameSupport(id uint32, data, metadata []byte, flag FrameFlag) *PayloadFrameSupport {
+	if len(metadata) > 0 {
+		flag |= FlagMetadata
+	}
+	h := NewFrameHeader(id, FrameTypePayload, flag)
+	t := newTinyFrame(h)
+	return &PayloadFrameSupport{
+		tinyFrame: t,
+		metadata:  metadata,
+		data:      data,
+	}
+}
+
+// NewPayloadFrame returns a new payload frame.
+func NewPayloadFrame(id uint32, data, metadata []byte, flag FrameFlag) *PayloadFrame {
 	bf := common.NewByteBuff()
 	if len(metadata) > 0 {
-		fg |= FlagMetadata
+		flag |= FlagMetadata
 		if err := bf.WriteUint24(len(metadata)); err != nil {
 			panic(err)
 		}
@@ -67,7 +107,7 @@ func NewFramePayload(id uint32, data, metadata []byte, flags ...FrameFlag) *Fram
 			panic(err)
 		}
 	}
-	return &FramePayload{
-		NewBaseFrame(NewFrameHeader(id, FrameTypePayload, fg), bf),
+	return &PayloadFrame{
+		NewRawFrame(NewFrameHeader(id, FrameTypePayload, flag), bf),
 	}
 }

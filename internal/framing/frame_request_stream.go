@@ -2,7 +2,7 @@ package framing
 
 import (
 	"encoding/binary"
-	"fmt"
+	"io"
 
 	"github.com/rsocket/rsocket-go/internal/common"
 )
@@ -11,47 +11,48 @@ const (
 	minRequestStreamFrameLen = initReqLen
 )
 
-// FrameRequestStream is frame for requesting a completable stream.
-type FrameRequestStream struct {
-	*BaseFrame
+// RequestStreamFrame is frame for requesting a completable stream.
+type RequestStreamFrame struct {
+	*RawFrame
+}
+
+type RequestStreamFrameSupport struct {
+	*tinyFrame
+	n        [4]byte
+	metadata []byte
+	data     []byte
 }
 
 // Validate returns error if frame is invalid.
-func (p *FrameRequestStream) Validate() error {
-	l := p.body.Len()
+func (r *RequestStreamFrame) Validate() error {
+	l := r.body.Len()
 	if l < minRequestStreamFrameLen {
 		return errIncompleteFrame
 	}
-	if p.header.Flag().Check(FlagMetadata) && l < minRequestStreamFrameLen+3 {
+	if r.header.Flag().Check(FlagMetadata) && l < minRequestStreamFrameLen+3 {
 		return errIncompleteFrame
 	}
 	return nil
 }
 
-func (p *FrameRequestStream) String() string {
-	m, _ := p.MetadataUTF8()
-	return fmt.Sprintf("FrameRequestStream{%s,data=%s,metadata=%s,initialRequestN=%d}",
-		p.header, p.DataUTF8(), m, p.InitialRequestN())
-}
-
 // InitialRequestN returns initial request N.
-func (p *FrameRequestStream) InitialRequestN() uint32 {
-	return binary.BigEndian.Uint32(p.body.Bytes())
+func (r *RequestStreamFrame) InitialRequestN() uint32 {
+	return binary.BigEndian.Uint32(r.body.Bytes())
 }
 
 // Metadata returns metadata bytes.
-func (p *FrameRequestStream) Metadata() ([]byte, bool) {
-	return p.trySliceMetadata(4)
+func (r *RequestStreamFrame) Metadata() ([]byte, bool) {
+	return r.trySliceMetadata(4)
 }
 
 // Data returns data bytes.
-func (p *FrameRequestStream) Data() []byte {
-	return p.trySliceData(4)
+func (r *RequestStreamFrame) Data() []byte {
+	return r.trySliceData(4)
 }
 
 // MetadataUTF8 returns metadata as UTF8 string.
-func (p *FrameRequestStream) MetadataUTF8() (metadata string, ok bool) {
-	raw, ok := p.Metadata()
+func (r *RequestStreamFrame) MetadataUTF8() (metadata string, ok bool) {
+	raw, ok := r.Metadata()
 	if ok {
 		metadata = string(raw)
 	}
@@ -59,21 +60,61 @@ func (p *FrameRequestStream) MetadataUTF8() (metadata string, ok bool) {
 }
 
 // DataUTF8 returns data as UTF8 string.
-func (p *FrameRequestStream) DataUTF8() string {
-	return string(p.Data())
+func (r *RequestStreamFrame) DataUTF8() string {
+	return string(r.Data())
 }
 
-// NewFrameRequestStream returns a new request stream frame.
-func NewFrameRequestStream(id uint32, n uint32, data, metadata []byte, flags ...FrameFlag) *FrameRequestStream {
-	fg := newFlags(flags...)
+func (r RequestStreamFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int64
+	wrote, err = r.header.WriteTo(w)
+	if err != nil {
+		return
+	}
+	n += wrote
+
+	var v int
+	v, err = w.Write(r.n[:])
+	if err != nil {
+		return
+	}
+	n += int64(v)
+
+	wrote, err = writePayload(w, r.data, r.metadata)
+	if err != nil {
+		return
+	}
+	n += wrote
+	return
+}
+
+func (r RequestStreamFrameSupport) Len() int {
+	return 4 + CalcPayloadFrameSize(r.data, r.metadata)
+}
+
+func NewRequestStreamFrameSupport(id uint32, n uint32, data, metadata []byte, flag FrameFlag) FrameSupport {
+	if len(metadata) > 0 {
+		flag |= FlagMetadata
+	}
+	var b [4]byte
+	binary.BigEndian.PutUint32(b[:], n)
+	h := NewFrameHeader(id, FrameTypeRequestStream, flag)
+	t := newTinyFrame(h)
+	return &RequestStreamFrameSupport{
+		tinyFrame: t,
+		n:         b,
+		metadata:  metadata,
+		data:      data,
+	}
+}
+
+// NewRequestStreamFrame returns a new request stream frame.
+func NewRequestStreamFrame(id uint32, n uint32, data, metadata []byte, flag FrameFlag) *RequestStreamFrame {
 	bf := common.NewByteBuff()
-	var b4 [4]byte
-	binary.BigEndian.PutUint32(b4[:], n)
-	if _, err := bf.Write(b4[:]); err != nil {
+	if err := binary.Write(bf, binary.BigEndian, n); err != nil {
 		panic(err)
 	}
 	if len(metadata) > 0 {
-		fg |= FlagMetadata
+		flag |= FlagMetadata
 		if err := bf.WriteUint24(len(metadata)); err != nil {
 			panic(err)
 		}
@@ -86,7 +127,7 @@ func NewFrameRequestStream(id uint32, n uint32, data, metadata []byte, flags ...
 			panic(err)
 		}
 	}
-	return &FrameRequestStream{
-		NewBaseFrame(NewFrameHeader(id, FrameTypeRequestStream, fg), bf),
+	return &RequestStreamFrame{
+		NewRawFrame(NewFrameHeader(id, FrameTypeRequestStream, flag), bf),
 	}
 }

@@ -18,7 +18,7 @@ type Conn interface {
 	// Read reads next frame from Conn.
 	Read() (framing.Frame, error)
 	// Write writes a frame to Conn.
-	Write(frames framing.Frame) error
+	Write(frames framing.FrameSupport) error
 	// Flush.
 	Flush() error
 }

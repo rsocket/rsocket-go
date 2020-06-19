@@ -1,32 +1,51 @@
 package framing
 
 import (
-	"fmt"
-
-	"github.com/rsocket/rsocket-go/internal/common"
+	"io"
 )
 
-// FrameCancel is frame of cancel.
-type FrameCancel struct {
-	*BaseFrame
+// CancelFrame is frame of cancel.
+type CancelFrame struct {
+	*RawFrame
+}
+
+type CancelFrameSupport struct {
+	*tinyFrame
+}
+
+func (c CancelFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int64
+	wrote, err = c.header.WriteTo(w)
+	if err != nil {
+		return
+	}
+	n += wrote
+	return
+}
+
+func (c CancelFrameSupport) Len() int {
+	return HeaderLen
 }
 
 // Validate returns error if frame is invalid.
-func (p *FrameCancel) Validate() (err error) {
+func (f *CancelFrame) Validate() (err error) {
 	// Cancel frame doesn't need any binary body.
-	if p.body != nil && p.body.Len() > 0 {
+	if f.body != nil && f.body.Len() > 0 {
 		err = errIncompleteFrame
 	}
 	return
 }
 
-func (p *FrameCancel) String() string {
-	return fmt.Sprintf("FrameCancel{%s}", p.header)
+func NewCancelFrameSupport(id uint32) *CancelFrameSupport {
+	h := NewFrameHeader(id, FrameTypeCancel, 0)
+	return &CancelFrameSupport{
+		tinyFrame: newTinyFrame(h),
+	}
 }
 
-// NewFrameCancel returns a new cancel frame.
-func NewFrameCancel(sid uint32) *FrameCancel {
-	return &FrameCancel{
-		NewBaseFrame(NewFrameHeader(sid, FrameTypeCancel), common.NewByteBuff()),
+// NewCancelFrame creates cancel frame.
+func NewCancelFrame(sid uint32) *CancelFrame {
+	return &CancelFrame{
+		NewRawFrame(NewFrameHeader(sid, FrameTypeCancel, 0), nil),
 	}
 }

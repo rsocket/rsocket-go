@@ -2,7 +2,7 @@ package framing
 
 import (
 	"encoding/binary"
-	"fmt"
+	"io"
 
 	"github.com/rsocket/rsocket-go/internal/common"
 )
@@ -12,47 +12,48 @@ const (
 	minRequestChannelFrameLen = initReqLen
 )
 
-// FrameRequestChannel is frame for RequestChannel.
-type FrameRequestChannel struct {
-	*BaseFrame
+// RequestChannelFrame is frame for RequestChannel.
+type RequestChannelFrame struct {
+	*RawFrame
+}
+
+type RequestChannelFrameSupport struct {
+	*tinyFrame
+	n        [4]byte
+	metadata []byte
+	data     []byte
 }
 
 // Validate returns error if frame is invalid.
-func (p *FrameRequestChannel) Validate() error {
-	l := p.body.Len()
+func (r *RequestChannelFrame) Validate() error {
+	l := r.body.Len()
 	if l < minRequestChannelFrameLen {
 		return errIncompleteFrame
 	}
-	if p.header.Flag().Check(FlagMetadata) && l < minRequestChannelFrameLen+3 {
+	if r.header.Flag().Check(FlagMetadata) && l < minRequestChannelFrameLen+3 {
 		return errIncompleteFrame
 	}
 	return nil
 }
 
-func (p *FrameRequestChannel) String() string {
-	m, _ := p.MetadataUTF8()
-	return fmt.Sprintf("FrameRequestChannel{%s,data=%s,metadata=%s,initialRequestN=%d}",
-		p.header, p.DataUTF8(), m, p.InitialRequestN())
-}
-
 // InitialRequestN returns initial N.
-func (p *FrameRequestChannel) InitialRequestN() uint32 {
-	return binary.BigEndian.Uint32(p.body.Bytes())
+func (r *RequestChannelFrame) InitialRequestN() uint32 {
+	return binary.BigEndian.Uint32(r.body.Bytes())
 }
 
 // Metadata returns metadata bytes.
-func (p *FrameRequestChannel) Metadata() ([]byte, bool) {
-	return p.trySliceMetadata(initReqLen)
+func (r *RequestChannelFrame) Metadata() ([]byte, bool) {
+	return r.trySliceMetadata(initReqLen)
 }
 
 // Data returns data bytes.
-func (p *FrameRequestChannel) Data() []byte {
-	return p.trySliceData(initReqLen)
+func (r *RequestChannelFrame) Data() []byte {
+	return r.trySliceData(initReqLen)
 }
 
 // MetadataUTF8 returns metadata as UTF8 string.
-func (p *FrameRequestChannel) MetadataUTF8() (metadata string, ok bool) {
-	raw, ok := p.Metadata()
+func (r *RequestChannelFrame) MetadataUTF8() (metadata string, ok bool) {
+	raw, ok := r.Metadata()
 	if ok {
 		metadata = string(raw)
 	}
@@ -60,13 +61,56 @@ func (p *FrameRequestChannel) MetadataUTF8() (metadata string, ok bool) {
 }
 
 // DataUTF8 returns data as UTF8 string.
-func (p *FrameRequestChannel) DataUTF8() string {
-	return string(p.Data())
+func (r *RequestChannelFrame) DataUTF8() string {
+	return string(r.Data())
 }
 
-// NewFrameRequestChannel returns a new RequestChannel frame.
-func NewFrameRequestChannel(sid uint32, n uint32, data, metadata []byte, flags ...FrameFlag) *FrameRequestChannel {
-	fg := newFlags(flags...)
+func (r RequestChannelFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int64
+	wrote, err = r.header.WriteTo(w)
+	if err != nil {
+		return
+	}
+	n += wrote
+
+	var v int
+	v, err = w.Write(r.n[:])
+	if err != nil {
+		return
+	}
+	n += int64(v)
+
+	wrote, err = writePayload(w, r.data, r.metadata)
+	if err != nil {
+		return
+	}
+	n += wrote
+
+	return
+}
+
+func (r RequestChannelFrameSupport) Len() int {
+	return CalcPayloadFrameSize(r.data, r.metadata) + 4
+}
+
+func NewRequestChannelFrameSupport(sid uint32, n uint32, data, metadata []byte, flag FrameFlag) *RequestChannelFrameSupport {
+	var b [4]byte
+	binary.BigEndian.PutUint32(b[:], n)
+	if len(metadata) > 0 {
+		flag |= FlagMetadata
+	}
+	h := NewFrameHeader(sid, FrameTypeRequestChannel, flag)
+	t := newTinyFrame(h)
+	return &RequestChannelFrameSupport{
+		tinyFrame: t,
+		n:         b,
+		metadata:  metadata,
+		data:      data,
+	}
+}
+
+// NewRequestChannelFrame returns a new RequestChannel frame.
+func NewRequestChannelFrame(sid uint32, n uint32, data, metadata []byte, flag FrameFlag) *RequestChannelFrame {
 	bf := common.NewByteBuff()
 	var b4 [4]byte
 	binary.BigEndian.PutUint32(b4[:], n)
@@ -74,7 +118,7 @@ func NewFrameRequestChannel(sid uint32, n uint32, data, metadata []byte, flags .
 		panic(err)
 	}
 	if len(metadata) > 0 {
-		fg |= FlagMetadata
+		flag |= FlagMetadata
 		if err := bf.WriteUint24(len(metadata)); err != nil {
 			panic(err)
 		}
@@ -87,7 +131,7 @@ func NewFrameRequestChannel(sid uint32, n uint32, data, metadata []byte, flags .
 			panic(err)
 		}
 	}
-	return &FrameRequestChannel{
-		NewBaseFrame(NewFrameHeader(sid, FrameTypeRequestChannel, fg), bf),
+	return &RequestChannelFrame{
+		NewRawFrame(NewFrameHeader(sid, FrameTypeRequestChannel, flag), bf),
 	}
 }

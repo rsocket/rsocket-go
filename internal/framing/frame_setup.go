@@ -2,7 +2,7 @@ package framing
 
 import (
 	"encoding/binary"
-	"fmt"
+	"io"
 	"time"
 
 	"github.com/rsocket/rsocket-go/internal/common"
@@ -11,60 +11,43 @@ import (
 const (
 	_versionLen       = 4
 	_timeLen          = 4
-	_tokenLen         = 2
 	_metadataLen      = 1
 	_dataLen          = 1
-	_minSetupFrameLen = _versionLen + _timeLen*2 + _tokenLen + _metadataLen + _dataLen
+	_minSetupFrameLen = _versionLen + _timeLen*2 + _metadataLen + _dataLen
 )
 
-// FrameSetup is sent by client to initiate protocol processing.
-type FrameSetup struct {
-	*BaseFrame
+// SetupFrame is sent by client to initiate protocol processing.
+type SetupFrame struct {
+	*RawFrame
 }
 
 // Validate returns error if frame is invalid.
-func (p *FrameSetup) Validate() (err error) {
+func (p *SetupFrame) Validate() (err error) {
 	if p.Len() < _minSetupFrameLen {
 		err = errIncompleteFrame
 	}
 	return
 }
 
-func (p *FrameSetup) String() string {
-	m, _ := p.MetadataUTF8()
-	return fmt.Sprintf(
-		"FrameSetup{%s,version=%s,keepaliveInterval=%s,keepaliveMaxLifetime=%s,token=0x%02x,dataMimeType=%s,metadataMimeType=%s,data=%s,metadata=%s}",
-		p.header,
-		p.Version(),
-		p.TimeBetweenKeepalive(),
-		p.MaxLifetime(),
-		p.Token(),
-		p.DataMimeType(),
-		p.MetadataMimeType(),
-		p.DataUTF8(),
-		m,
-	)
-}
-
 // Version returns version.
-func (p *FrameSetup) Version() common.Version {
+func (p *SetupFrame) Version() common.Version {
 	major := binary.BigEndian.Uint16(p.body.Bytes())
 	minor := binary.BigEndian.Uint16(p.body.Bytes()[2:])
 	return [2]uint16{major, minor}
 }
 
 // TimeBetweenKeepalive returns keepalive interval duration.
-func (p *FrameSetup) TimeBetweenKeepalive() time.Duration {
+func (p *SetupFrame) TimeBetweenKeepalive() time.Duration {
 	return time.Millisecond * time.Duration(binary.BigEndian.Uint32(p.body.Bytes()[4:]))
 }
 
 // MaxLifetime returns keepalive max lifetime.
-func (p *FrameSetup) MaxLifetime() time.Duration {
+func (p *SetupFrame) MaxLifetime() time.Duration {
 	return time.Millisecond * time.Duration(binary.BigEndian.Uint32(p.body.Bytes()[8:]))
 }
 
 // Token returns token of setup.
-func (p *FrameSetup) Token() []byte {
+func (p *SetupFrame) Token() []byte {
 	if !p.header.Flag().Check(FlagResume) {
 		return nil
 	}
@@ -74,19 +57,19 @@ func (p *FrameSetup) Token() []byte {
 }
 
 // DataMimeType returns MIME of data.
-func (p *FrameSetup) DataMimeType() (mime string) {
+func (p *SetupFrame) DataMimeType() (mime string) {
 	_, b := p.mime()
 	return string(b)
 }
 
 // MetadataMimeType returns MIME of metadata.
-func (p *FrameSetup) MetadataMimeType() string {
+func (p *SetupFrame) MetadataMimeType() string {
 	a, _ := p.mime()
 	return string(a)
 }
 
 // Metadata returns metadata bytes.
-func (p *FrameSetup) Metadata() ([]byte, bool) {
+func (p *SetupFrame) Metadata() ([]byte, bool) {
 	if !p.header.Flag().Check(FlagMetadata) {
 		return nil, false
 	}
@@ -97,7 +80,7 @@ func (p *FrameSetup) Metadata() ([]byte, bool) {
 }
 
 // Data returns data bytes.
-func (p *FrameSetup) Data() []byte {
+func (p *SetupFrame) Data() []byte {
 	offset := p.seekMIME()
 	m1, m2 := p.mime()
 	offset += 2 + len(m1) + len(m2)
@@ -108,7 +91,7 @@ func (p *FrameSetup) Data() []byte {
 }
 
 // MetadataUTF8 returns metadata as UTF8 string
-func (p *FrameSetup) MetadataUTF8() (metadata string, ok bool) {
+func (p *SetupFrame) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := p.Metadata()
 	if ok {
 		metadata = string(raw)
@@ -117,11 +100,11 @@ func (p *FrameSetup) MetadataUTF8() (metadata string, ok bool) {
 }
 
 // DataUTF8 returns data as UTF8 string.
-func (p *FrameSetup) DataUTF8() string {
+func (p *SetupFrame) DataUTF8() string {
 	return string(p.Data())
 }
 
-func (p *FrameSetup) mime() (metadata []byte, data []byte) {
+func (p *SetupFrame) mime() (metadata []byte, data []byte) {
 	offset := p.seekMIME()
 	raw := p.body.Bytes()
 	l1 := int(raw[offset])
@@ -134,7 +117,7 @@ func (p *FrameSetup) mime() (metadata []byte, data []byte) {
 	return m1, m2
 }
 
-func (p *FrameSetup) seekMIME() int {
+func (p *SetupFrame) seekMIME() int {
 	if !p.header.Flag().Check(FlagResume) {
 		return 12
 	}
@@ -142,8 +125,101 @@ func (p *FrameSetup) seekMIME() int {
 	return 14 + int(l)
 }
 
-// NewFrameSetup returns a new setup frame.
-func NewFrameSetup(
+type SetupFrameSupport struct {
+	*tinyFrame
+	version      common.Version
+	keepalive    [4]byte
+	lifetime     [4]byte
+	token        []byte
+	mimeMetadata []byte
+	mimeData     []byte
+	metadata     []byte
+	data         []byte
+}
+
+func (s SetupFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int64
+	wrote, err = s.header.WriteTo(w)
+	if err != nil {
+		return
+	}
+	n += wrote
+
+	wrote, err = s.version.WriteTo(w)
+	if err != nil {
+		return
+	}
+	n += wrote
+
+	var v int
+	v, err = w.Write(s.keepalive[:])
+	if err != nil {
+		return
+	}
+	n += int64(v)
+
+	v, err = w.Write(s.lifetime[:])
+	if err != nil {
+		return
+	}
+	n += int64(v)
+
+	if s.header.Flag().Check(FlagResume) {
+		tokenLen := len(s.token)
+		err = binary.Write(w, binary.BigEndian, uint16(tokenLen))
+		if err != nil {
+			return
+		}
+		n += 2
+		v, err = w.Write(s.token)
+		if err != nil {
+			return
+		}
+		n += int64(v)
+	}
+
+	lenMimeMetadata := len(s.mimeMetadata)
+	v, err = w.Write([]byte{byte(lenMimeMetadata)})
+	if err != nil {
+		return
+	}
+	n += int64(v)
+	v, err = w.Write(s.mimeMetadata)
+	if err != nil {
+		return
+	}
+	n += int64(v)
+
+	lenMimeData := len(s.mimeData)
+	v, err = w.Write([]byte{byte(lenMimeData)})
+	if err != nil {
+		return
+	}
+	n += int64(v)
+	v, err = w.Write(s.mimeData)
+	if err != nil {
+		return
+	}
+	n += int64(v)
+
+	wrote, err = writePayload(w, s.data, s.metadata)
+	if err != nil {
+		return
+	}
+	n += wrote
+	return
+}
+
+func (s SetupFrameSupport) Len() int {
+	n := _minSetupFrameLen + CalcPayloadFrameSize(s.data, s.metadata)
+	n += len(s.mimeData) + len(s.mimeMetadata)
+	if l := len(s.token); l > 0 {
+		n += 2 + len(s.token)
+	}
+	return n
+}
+
+func NewSetupFrameSupport(
 	version common.Version,
 	timeBetweenKeepalive,
 	maxLifetime time.Duration,
@@ -153,7 +229,48 @@ func NewFrameSetup(
 	data []byte,
 	metadata []byte,
 	lease bool,
-) *FrameSetup {
+) *SetupFrameSupport {
+	var flag FrameFlag
+	if l := len(token); l > 0 {
+		flag |= FlagResume
+	}
+	if lease {
+		flag |= FlagLease
+	}
+	if l := len(metadata); l > 0 {
+		flag |= FlagMetadata
+	}
+	h := NewFrameHeader(0, FrameTypeSetup, flag)
+	t := newTinyFrame(h)
+
+	var a, b [4]byte
+	binary.BigEndian.PutUint32(a[:], uint32(timeBetweenKeepalive.Nanoseconds()/1e6))
+	binary.BigEndian.PutUint32(b[:], uint32(maxLifetime.Nanoseconds()/1e6))
+	return &SetupFrameSupport{
+		tinyFrame:    t,
+		version:      version,
+		keepalive:    a,
+		lifetime:     b,
+		token:        token,
+		mimeMetadata: mimeMetadata,
+		mimeData:     mimeData,
+		metadata:     metadata,
+		data:         data,
+	}
+}
+
+// NewSetupFrame returns a new setup frame.
+func NewSetupFrame(
+	version common.Version,
+	timeBetweenKeepalive,
+	maxLifetime time.Duration,
+	token []byte,
+	mimeMetadata []byte,
+	mimeData []byte,
+	data []byte,
+	metadata []byte,
+	lease bool,
+) *SetupFrame {
 	var fg FrameFlag
 	bf := common.NewByteBuff()
 	if _, err := bf.Write(version.Bytes()); err != nil {
@@ -207,7 +324,7 @@ func NewFrameSetup(
 			panic(err)
 		}
 	}
-	return &FrameSetup{
-		NewBaseFrame(NewFrameHeader(0, FrameTypeSetup, fg), bf),
+	return &SetupFrame{
+		NewRawFrame(NewFrameHeader(0, FrameTypeSetup, fg), bf),
 	}
 }

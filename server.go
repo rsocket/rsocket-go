@@ -207,9 +207,9 @@ func (p *server) serve(ctx context.Context, tc *tls.Config) error {
 		}
 
 		switch frame := first.(type) {
-		case *framing.FrameResume:
+		case *framing.ResumeFrame:
 			p.doResume(frame, tp, socketChan)
-		case *framing.FrameSetup:
+		case *framing.SetupFrame:
 			sendingSocket, err := p.doSetup(frame, tp, socketChan)
 			if err != nil {
 				_ = tp.Send(err, true)
@@ -222,7 +222,7 @@ func (p *server) serve(ctx context.Context, tc *tls.Config) error {
 				}
 			}(ctx, sendingSocket)
 		default:
-			err := framing.NewFrameError(0, common.ErrorCodeConnectionError, []byte("first frame must be setup or resume"))
+			err := framing.NewErrorFrameSupport(0, common.ErrorCodeConnectionError, []byte("first frame must be setup or resume"))
 			_ = tp.Send(err, true)
 			_ = tp.Close()
 			return
@@ -242,13 +242,10 @@ func (p *server) serve(ctx context.Context, tc *tls.Config) error {
 	return t.Listen(ctx, serveNotifier)
 }
 
-func (p *server) doSetup(
-	frame *framing.FrameSetup,
-	tp *transport.Transport,
-	socketChan chan<- socket.ServerSocket,
-) (sendingSocket socket.ServerSocket, err *framing.FrameError) {
+func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.ErrorFrameSupport) {
+
 	if frame.Header().Flag().Check(framing.FlagLease) && p.leases == nil {
-		err = framing.NewFrameError(0, common.ErrorCodeUnsupportedSetup, errUnavailableLease)
+		err = framing.NewErrorFrameSupport(0, common.ErrorCodeUnsupportedSetup, errUnavailableLease)
 		return
 	}
 
@@ -256,7 +253,7 @@ func (p *server) doSetup(
 
 	// 1. receive a token but server doesn't support resume.
 	if isResume && !p.resumeOpts.enable {
-		err = framing.NewFrameError(0, common.ErrorCodeUnsupportedSetup, errUnavailableResume)
+		err = framing.NewErrorFrameSupport(0, common.ErrorCodeUnsupportedSetup, errUnavailableResume)
 		return
 	}
 
@@ -266,7 +263,7 @@ func (p *server) doSetup(
 	if !isResume {
 		sendingSocket = socket.NewServer(rawSocket)
 		if responder, e := p.acc(frame, sendingSocket); e != nil {
-			err = framing.NewFrameError(0, common.ErrorCodeRejectedSetup, []byte(e.Error()))
+			err = framing.NewErrorFrameSupport(0, common.ErrorCodeRejectedSetup, []byte(e.Error()))
 		} else {
 			sendingSocket.SetResponder(responder)
 			sendingSocket.SetTransport(tp)
@@ -279,7 +276,7 @@ func (p *server) doSetup(
 
 	// 3. resume reject because of duplicated token.
 	if _, ok := p.sm.Load(token); ok {
-		err = framing.NewFrameError(0, common.ErrorCodeRejectedSetup, errDuplicatedSetupToken)
+		err = framing.NewErrorFrameSupport(0, common.ErrorCodeRejectedSetup, errDuplicatedSetupToken)
 		return
 	}
 
@@ -288,10 +285,10 @@ func (p *server) doSetup(
 	sendingSocket = socket.NewServerResume(rawSocket, token)
 	if responder, e := p.acc(frame, sendingSocket); e != nil {
 		switch vv := e.(type) {
-		case *framing.FrameError:
-			err = framing.NewFrameError(0, vv.ErrorCode(), vv.ErrorData())
+		case *framing.ErrorFrame:
+			err = framing.NewErrorFrameSupport(0, vv.ErrorCode(), vv.ErrorData())
 		default:
-			err = framing.NewFrameError(0, common.ErrorCodeInvalidSetup, []byte(e.Error()))
+			err = framing.NewErrorFrameSupport(0, common.ErrorCodeInvalidSetup, []byte(e.Error()))
 		}
 	} else {
 		sendingSocket.SetResponder(responder)
@@ -301,19 +298,19 @@ func (p *server) doSetup(
 	return
 }
 
-func (p *server) doResume(frame *framing.FrameResume, tp *transport.Transport, socketChan chan<- socket.ServerSocket) {
-	var sending framing.Frame
+func (p *server) doResume(frame *framing.ResumeFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) {
+	var sending framing.FrameSupport
 	if !p.resumeOpts.enable {
-		sending = framing.NewFrameError(0, common.ErrorCodeRejectedResume, errUnavailableResume)
+		sending = framing.NewErrorFrameSupport(0, common.ErrorCodeRejectedResume, errUnavailableResume)
 	} else if s, ok := p.sm.Load(frame.Token()); ok {
-		sending = framing.NewResumeOK(0)
+		sending = framing.NewResumeOKFrameSupport(0)
 		s.Socket().SetTransport(tp)
 		socketChan <- s.Socket()
 		if logger.IsDebugEnabled() {
 			logger.Debugf("recover session: %s\n", s)
 		}
 	} else {
-		sending = framing.NewFrameError(
+		sending = framing.NewErrorFrameSupport(
 			0,
 			common.ErrorCodeRejectedResume,
 			[]byte("no such session"),

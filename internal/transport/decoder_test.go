@@ -24,7 +24,7 @@ func TestDecoder(t *testing.T) {
 		h := framing.ParseFrameHeader(raw)
 		bf := common.NewByteBuff()
 		_, _ = bf.Write(raw[framing.HeaderLen:])
-		f, err := framing.NewFromBase(framing.NewBaseFrame(h, bf))
+		f, err := framing.FromRawFrame(framing.NewRawFrame(h, bf))
 		if err != nil {
 			panic(err)
 		}

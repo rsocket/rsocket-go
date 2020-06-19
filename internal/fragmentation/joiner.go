@@ -22,7 +22,7 @@ func (p *implJoiner) First() framing.Frame {
 	return first.Value.(framing.Frame)
 }
 
-func (p *implJoiner) Header() framing.FrameHeader {
+func (p *implJoiner) Header() framing.Header {
 	return p.First().Header()
 }
 

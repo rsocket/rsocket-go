@@ -43,11 +43,11 @@ func (p *tcpConn) Read() (f framing.Frame, err error) {
 		err = errors.Wrap(err, "read frame failed")
 		return
 	}
-	base := framing.NewBaseFrame(h, bf)
-	if p.counter != nil && base.CanResume() {
+	base := framing.NewRawFrame(h, bf)
+	if p.counter != nil && base.Header().Resumable() {
 		p.counter.incrReadBytes(base.Len())
 	}
-	f, err = framing.NewFromBase(base)
+	f, err = framing.FromRawFrame(base)
 	if err != nil {
 		err = errors.Wrap(err, "read frame failed")
 		return
@@ -71,9 +71,9 @@ func (p *tcpConn) Flush() (err error) {
 	return
 }
 
-func (p *tcpConn) Write(frame framing.Frame) (err error) {
+func (p *tcpConn) Write(frame framing.FrameSupport) (err error) {
 	size := frame.Len()
-	if p.counter != nil && frame.CanResume() {
+	if p.counter != nil && frame.Header().Resumable() {
 		p.counter.incrWriteBytes(size)
 	}
 	_, err = common.MustNewUint24(size).WriteTo(p.writer)
@@ -83,7 +83,7 @@ func (p *tcpConn) Write(frame framing.Frame) (err error) {
 	}
 	var debugStr string
 	if logger.IsDebugEnabled() {
-		debugStr = frame.String()
+		debugStr = framing.PrintFrame(frame)
 	}
 	_, err = frame.WriteTo(p.writer)
 	if err != nil {

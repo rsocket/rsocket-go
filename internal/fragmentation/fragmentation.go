@@ -18,11 +18,11 @@ const (
 
 var errInvalidFragmentLen = fmt.Errorf("invalid fragment: [%d,%d]", MinFragment, MaxFragment)
 
-// HeaderAndPayload is Payload which having a FrameHeader.
+// HeaderAndPayload is Payload which having a Header.
 type HeaderAndPayload interface {
 	payload.Payload
 	// Header returns a header of frame.
-	Header() framing.FrameHeader
+	Header() framing.Header
 }
 
 // Joiner is used to join frames to a payload.

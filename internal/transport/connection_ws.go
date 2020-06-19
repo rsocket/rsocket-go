@@ -1,7 +1,9 @@
 package transport
 
 import (
+	"bytes"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -11,20 +13,24 @@ import (
 	"github.com/rsocket/rsocket-go/logger"
 )
 
-type wsConnection struct {
+var _buffPool = sync.Pool{
+	New: func() interface{} { return &bytes.Buffer{} },
+}
+
+type wsConn struct {
 	c       *websocket.Conn
 	counter *Counter
 }
 
-func (p *wsConnection) SetCounter(c *Counter) {
+func (p *wsConn) SetCounter(c *Counter) {
 	p.counter = c
 }
 
-func (p *wsConnection) SetDeadline(deadline time.Time) error {
+func (p *wsConn) SetDeadline(deadline time.Time) error {
 	return p.c.SetReadDeadline(deadline)
 }
 
-func (p *wsConnection) Read() (f framing.Frame, err error) {
+func (p *wsConn) Read() (f framing.Frame, err error) {
 	t, raw, err := p.c.ReadMessage()
 	if err != nil {
 		err = errors.Wrap(err, "read frame failed")
@@ -46,8 +52,8 @@ func (p *wsConnection) Read() (f framing.Frame, err error) {
 		err = errors.Wrap(err, "read frame failed")
 		return
 	}
-	base := framing.NewBaseFrame(header, bf)
-	f, err = framing.NewFromBase(base)
+	base := framing.NewRawFrame(header, bf)
+	f, err = framing.FromRawFrame(base)
 	if err != nil {
 		err = errors.Wrap(err, "read frame failed")
 		return
@@ -63,12 +69,21 @@ func (p *wsConnection) Read() (f framing.Frame, err error) {
 	return
 }
 
-func (p *wsConnection) Flush() (err error) {
+func (p *wsConn) Flush() (err error) {
 	return
 }
 
-func (p *wsConnection) Write(frame framing.Frame) (err error) {
-	err = p.c.WriteMessage(websocket.BinaryMessage, frame.Bytes())
+func (p *wsConn) Write(frame framing.FrameSupport) (err error) {
+	bf := _buffPool.Get().(*bytes.Buffer)
+	defer func() {
+		bf.Reset()
+		_buffPool.Put(bf)
+	}()
+	_, err = frame.WriteTo(bf)
+	if err != nil {
+		return
+	}
+	err = p.c.WriteMessage(websocket.BinaryMessage, bf.Bytes())
 	if err == io.EOF {
 		return
 	}
@@ -82,12 +97,12 @@ func (p *wsConnection) Write(frame framing.Frame) (err error) {
 	return
 }
 
-func (p *wsConnection) Close() error {
+func (p *wsConn) Close() error {
 	return p.c.Close()
 }
 
-func newWebsocketConnection(rawConn *websocket.Conn) *wsConnection {
-	return &wsConnection{
+func newWebsocketConnection(rawConn *websocket.Conn) *wsConn {
+	return &wsConn{
 		c: rawConn,
 	}
 }

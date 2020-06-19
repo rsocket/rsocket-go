@@ -33,7 +33,7 @@ func handleRaw(raw []byte) (err error) {
 	h := framing.ParseFrameHeader(raw)
 	bf := common.NewByteBuff()
 	var frame framing.Frame
-	frame, err = framing.NewFromBase(framing.NewBaseFrame(h, bf))
+	frame, err = framing.FromRawFrame(framing.NewRawFrame(h, bf))
 	if err != nil {
 		return
 	}

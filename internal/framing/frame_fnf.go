@@ -1,42 +1,63 @@
 package framing
 
 import (
-	"fmt"
+	"io"
 
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
-// FrameFNF is fire and forget frame.
-type FrameFNF struct {
-	*BaseFrame
+// FireAndForgetFrame is fire and forget frame.
+type FireAndForgetFrame struct {
+	*RawFrame
+}
+
+type FireAndForgetFrameSupport struct {
+	*tinyFrame
+	metadata []byte
+	data     []byte
+}
+
+func (f FireAndForgetFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int64
+	wrote, err = f.header.WriteTo(w)
+	if err != nil {
+		return
+	}
+	n += wrote
+
+	wrote, err = writePayload(w, f.data, f.metadata)
+	if err != nil {
+		return
+	}
+	n += wrote
+	return
+}
+
+func (f FireAndForgetFrameSupport) Len() int {
+	return CalcPayloadFrameSize(f.data, f.metadata)
 }
 
 // Validate returns error if frame is invalid.
-func (p *FrameFNF) Validate() (err error) {
-	if p.header.Flag().Check(FlagMetadata) && p.body.Len() < 3 {
+func (f *FireAndForgetFrame) Validate() (err error) {
+	if f.header.Flag().Check(FlagMetadata) && f.body.Len() < 3 {
 		err = errIncompleteFrame
 	}
 	return
 }
 
-func (p *FrameFNF) String() string {
-	m, _ := p.MetadataUTF8()
-	return fmt.Sprintf("FrameFNF{%s,data=%s,metadata=%s}", p.header, p.DataUTF8(), m)
-}
-
 // Metadata returns metadata bytes.
-func (p *FrameFNF) Metadata() ([]byte, bool) {
-	return p.trySliceMetadata(0)
+func (f *FireAndForgetFrame) Metadata() ([]byte, bool) {
+	return f.trySliceMetadata(0)
 }
 
 // Data returns data bytes.
-func (p *FrameFNF) Data() []byte {
-	return p.trySliceData(0)
+func (f *FireAndForgetFrame) Data() []byte {
+	return f.trySliceData(0)
 }
 
 // MetadataUTF8 returns metadata as UTF8 string.
-func (p *FrameFNF) MetadataUTF8() (metadata string, ok bool) {
-	raw, ok := p.Metadata()
+func (f *FireAndForgetFrame) MetadataUTF8() (metadata string, ok bool) {
+	raw, ok := f.Metadata()
 	if ok {
 		metadata = string(raw)
 	}
@@ -44,16 +65,28 @@ func (p *FrameFNF) MetadataUTF8() (metadata string, ok bool) {
 }
 
 // DataUTF8 returns data as UTF8 string.
-func (p *FrameFNF) DataUTF8() string {
-	return string(p.Data())
+func (f *FireAndForgetFrame) DataUTF8() string {
+	return string(f.Data())
 }
 
-// NewFrameFNF returns a new fire and forget frame.
-func NewFrameFNF(sid uint32, data, metadata []byte, flags ...FrameFlag) *FrameFNF {
-	fg := newFlags(flags...)
+func NewFireAndForgetFrameSupport(sid uint32, data, metadata []byte, flag FrameFlag) *FireAndForgetFrameSupport {
+	if len(metadata) > 0 {
+		flag |= FlagMetadata
+	}
+	h := NewFrameHeader(sid, FrameTypeRequestFNF, flag)
+	t := newTinyFrame(h)
+	return &FireAndForgetFrameSupport{
+		tinyFrame: t,
+		metadata:  metadata,
+		data:      data,
+	}
+}
+
+// NewFireAndForgetFrame returns a new fire and forget frame.
+func NewFireAndForgetFrame(sid uint32, data, metadata []byte, flag FrameFlag) *FireAndForgetFrame {
 	bf := common.NewByteBuff()
 	if len(metadata) > 0 {
-		fg |= FlagMetadata
+		flag |= FlagMetadata
 		if err := bf.WriteUint24(len(metadata)); err != nil {
 			panic(err)
 		}
@@ -64,7 +97,7 @@ func NewFrameFNF(sid uint32, data, metadata []byte, flags ...FrameFlag) *FrameFN
 	if _, err := bf.Write(data); err != nil {
 		panic(err)
 	}
-	return &FrameFNF{
-		NewBaseFrame(NewFrameHeader(sid, FrameTypeRequestFNF, fg), bf),
+	return &FireAndForgetFrame{
+		NewRawFrame(NewFrameHeader(sid, FrameTypeRequestFNF, flag), bf),
 	}
 }

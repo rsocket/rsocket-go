@@ -15,7 +15,7 @@ func TestDecodeFrameSetup(t *testing.T) {
 	data := []byte("world")
 	mimeMetadata, mimeData := []byte("text/plain"), []byte("application/json")
 	token := []byte(common.RandAlphanumeric(16))
-	setup := NewFrameSetup(
+	setup := NewSetupFrame(
 		common.DefaultVersion,
 		30*time.Second,
 		90*time.Second,

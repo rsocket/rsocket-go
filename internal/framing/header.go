@@ -12,51 +12,64 @@ const (
 	HeaderLen = 6
 )
 
-// FrameHeader is the header fo a RSocket frame.
+// Header is the header fo a RSocket frame.
 // RSocket frames begin with a RSocket Frame Header.
 // It includes StreamID, FrameType and Flags.
-type FrameHeader [HeaderLen]byte
+type Header [HeaderLen]byte
 
-func (p FrameHeader) String() string {
+func (h Header) String() string {
 	bu := strings.Builder{}
-	bu.WriteString("FrameHeader{id=")
-	bu.WriteString(strconv.FormatUint(uint64(p.StreamID()), 10))
+	bu.WriteString("Header{id=")
+	bu.WriteString(strconv.FormatUint(uint64(h.StreamID()), 10))
 	bu.WriteString(",type=")
-	bu.WriteString(p.Type().String())
+	bu.WriteString(h.Type().String())
 	bu.WriteString(",flag=")
-	bu.WriteString(p.Flag().String())
+	bu.WriteString(h.Flag().String())
 	bu.WriteByte('}')
 	return bu.String()
 }
 
+// Resumable returns true if frame supports resume.
+func (h Header) Resumable() bool {
+	switch h.Type() {
+	case FrameTypeRequestChannel, FrameTypeRequestStream, FrameTypeRequestResponse, FrameTypeRequestFNF, FrameTypeRequestN, FrameTypeCancel, FrameTypeError, FrameTypePayload:
+		return true
+	default:
+		return false
+	}
+}
+
 // WriteTo writes frame header to a writer.
-func (p FrameHeader) WriteTo(w io.Writer) (int64, error) {
-	n, err := w.Write(p[:])
+func (h Header) WriteTo(w io.Writer) (int64, error) {
+	n, err := w.Write(h[:])
 	return int64(n), err
 }
 
 // StreamID returns StreamID.
-func (p FrameHeader) StreamID() uint32 {
-	return binary.BigEndian.Uint32(p[:4])
+func (h Header) StreamID() uint32 {
+	return binary.BigEndian.Uint32(h[:4])
 }
 
 // Type returns frame type.
-func (p FrameHeader) Type() FrameType {
-	return FrameType((p.n() & 0xFC00) >> 10)
+func (h Header) Type() FrameType {
+	return FrameType((h.n() & 0xFC00) >> 10)
 }
 
 // Flag returns flag of a frame.
-func (p FrameHeader) Flag() FrameFlag {
-	return FrameFlag(p.n() & 0x03FF)
+func (h Header) Flag() FrameFlag {
+	return FrameFlag(h.n() & 0x03FF)
 }
 
-func (p FrameHeader) n() uint16 {
-	return binary.BigEndian.Uint16(p[4:])
+func (h Header) Bytes() []byte {
+	return h[:]
+}
+
+func (h Header) n() uint16 {
+	return binary.BigEndian.Uint16(h[4:])
 }
 
 // NewFrameHeader returns a new frame header.
-func NewFrameHeader(streamID uint32, frameType FrameType, flags ...FrameFlag) FrameHeader {
-	fg := newFlags(flags...)
+func NewFrameHeader(streamID uint32, frameType FrameType, fg FrameFlag) Header {
 	var h [HeaderLen]byte
 	binary.BigEndian.PutUint32(h[:], streamID)
 	binary.BigEndian.PutUint16(h[4:], uint16(frameType)<<10|uint16(fg))
@@ -65,7 +78,7 @@ func NewFrameHeader(streamID uint32, frameType FrameType, flags ...FrameFlag) Fr
 }
 
 // ParseFrameHeader parse a header from bytes.
-func ParseFrameHeader(bs []byte) FrameHeader {
+func ParseFrameHeader(bs []byte) Header {
 	_ = bs[HeaderLen-1]
 	var bb [HeaderLen]byte
 	copy(bb[:], bs[:HeaderLen])

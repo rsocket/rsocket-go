@@ -1,59 +1,87 @@
 package framing
 
 import (
-	"fmt"
+	"io"
 
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
-var defaultFrameMetadataPushHeader = NewFrameHeader(0, FrameTypeMetadataPush, FlagMetadata)
+var _metadataPushHeader = NewFrameHeader(0, FrameTypeMetadataPush, FlagMetadata)
 
-// FrameMetadataPush is metadata push frame.
-type FrameMetadataPush struct {
-	*BaseFrame
+// MetadataPushFrame is metadata push frame.
+type MetadataPushFrame struct {
+	*RawFrame
+}
+type MetadataPushFrameSupport struct {
+	*tinyFrame
+	metadata []byte
 }
 
 // Validate returns error if frame is invalid.
-func (p *FrameMetadataPush) Validate() (err error) {
+func (m *MetadataPushFrame) Validate() (err error) {
 	return
 }
 
-func (p *FrameMetadataPush) String() string {
-	m, _ := p.MetadataUTF8()
-	return fmt.Sprintf("FrameMetadataPush{%s,metadata=%s}", p.header, m)
-}
-
 // Metadata returns metadata bytes.
-func (p *FrameMetadataPush) Metadata() ([]byte, bool) {
-	return p.body.Bytes(), true
+func (m *MetadataPushFrame) Metadata() ([]byte, bool) {
+	return m.body.Bytes(), true
 }
 
 // Data returns data bytes.
-func (p *FrameMetadataPush) Data() []byte {
+func (m *MetadataPushFrame) Data() []byte {
 	return nil
 }
 
 // MetadataUTF8 returns metadata as UTF8 string.
-func (p *FrameMetadataPush) MetadataUTF8() (metadata string, ok bool) {
-	raw, ok := p.Metadata()
+func (m *MetadataPushFrame) MetadataUTF8() (metadata string, ok bool) {
+	raw, ok := m.Metadata()
 	if ok {
 		metadata = string(raw)
 	}
 	return
 }
 
-// DataUTF8 returns data as UTF8 string.
-func (p *FrameMetadataPush) DataUTF8() (data string) {
+func (m MetadataPushFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int64
+	wrote, err = m.header.WriteTo(w)
+	if err != nil {
+		return
+	}
+	n += wrote
+
+	var v int
+	v, err = w.Write(m.metadata)
+	if err != nil {
+		return
+	}
+	n += int64(v)
 	return
 }
 
-// NewFrameMetadataPush returns a new metadata push frame.
-func NewFrameMetadataPush(metadata []byte) *FrameMetadataPush {
+func (m MetadataPushFrameSupport) Len() int {
+	return HeaderLen + len(m.metadata)
+}
+
+// DataUTF8 returns data as UTF8 string.
+func (m *MetadataPushFrame) DataUTF8() (data string) {
+	return
+}
+
+func NewMetadataPushFrameSupport(metadata []byte) *MetadataPushFrameSupport {
+	t := newTinyFrame(_metadataPushHeader)
+	return &MetadataPushFrameSupport{
+		tinyFrame: t,
+		metadata:  metadata,
+	}
+}
+
+// NewMetadataPushFrame returns a new metadata push frame.
+func NewMetadataPushFrame(metadata []byte) *MetadataPushFrame {
 	bf := common.NewByteBuff()
 	if _, err := bf.Write(metadata); err != nil {
 		panic(err)
 	}
-	return &FrameMetadataPush{
-		NewBaseFrame(defaultFrameMetadataPushHeader, bf),
+	return &MetadataPushFrame{
+		NewRawFrame(_metadataPushHeader, bf),
 	}
 }

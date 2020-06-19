@@ -75,7 +75,7 @@ func (p *Transport) SetLifetime(lifetime time.Duration) {
 }
 
 // Send send a frame.
-func (p *Transport) Send(frame framing.Frame, flush bool) (err error) {
+func (p *Transport) Send(frame framing.FrameSupport, flush bool) (err error) {
 	defer func() {
 		// ensure frame done when send success.
 		if err == nil {
@@ -148,7 +148,7 @@ L:
 			if err != nil {
 				break L
 			}
-			err = p.DeliveryFrame(ctx, f)
+			err = p.DispatchFrame(ctx, f)
 			if err != nil {
 				break L
 			}
@@ -233,8 +233,8 @@ func (p *Transport) HandleKeepalive(handler FrameHandler) {
 	p.hKeepalive = handler
 }
 
-// DeliveryFrame delivery incoming frames.
-func (p *Transport) DeliveryFrame(_ context.Context, frame framing.Frame) (err error) {
+// DispatchFrame delivery incoming frames.
+func (p *Transport) DispatchFrame(_ context.Context, frame framing.Frame) (err error) {
 	header := frame.Header()
 	t := header.Type()
 	sid := header.StreamID()
@@ -243,12 +243,12 @@ func (p *Transport) DeliveryFrame(_ context.Context, frame framing.Frame) (err e
 
 	switch t {
 	case framing.FrameTypeSetup:
-		p.maxLifetime = frame.(*framing.FrameSetup).MaxLifetime()
+		p.maxLifetime = frame.(*framing.SetupFrame).MaxLifetime()
 		handler = p.hSetup
 	case framing.FrameTypeResume:
 		handler = p.hResume
 	case framing.FrameTypeResumeOK:
-		p.lastRcvPos = frame.(*framing.FrameResumeOK).LastReceivedClientPosition()
+		p.lastRcvPos = frame.(*framing.ResumeOKFrame).LastReceivedClientPosition()
 		handler = p.hResumeOK
 	case framing.FrameTypeRequestFNF:
 		handler = p.hFireAndForget
@@ -271,7 +271,7 @@ func (p *Transport) DeliveryFrame(_ context.Context, frame framing.Frame) (err e
 		handler = p.hRequestN
 	case framing.FrameTypeError:
 		if sid == 0 {
-			err = errors.New(frame.(*framing.FrameError).Error())
+			err = errors.New(frame.(*framing.ErrorFrame).Error())
 			if p.hError0 != nil {
 				_ = p.hError0(frame)
 			}
@@ -281,7 +281,7 @@ func (p *Transport) DeliveryFrame(_ context.Context, frame framing.Frame) (err e
 	case framing.FrameTypeCancel:
 		handler = p.hCancel
 	case framing.FrameTypeKeepalive:
-		ka := frame.(*framing.FrameKeepalive)
+		ka := frame.(*framing.KeepaliveFrame)
 		p.lastRcvPos = ka.LastReceivedPosition()
 		handler = p.hKeepalive
 	case framing.FrameTypeLease:

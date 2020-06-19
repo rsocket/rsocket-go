@@ -2,7 +2,6 @@ package framing
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 
@@ -122,99 +121,79 @@ func newFlags(flags ...FrameFlag) FrameFlag {
 	return fg
 }
 
-// Frame is a single message containing a request, response, or protocol processing.
-type Frame interface {
-	fmt.Stringer
+type FrameSupport interface {
 	io.WriterTo
-	// Header returns frame FrameHeader.
-	Header() FrameHeader
-	// Body returns body of frame.
-	Body() *common.ByteBuff
+	// Header returns frame Header.
+	Header() Header
 	// Len returns length of frame.
 	Len() int
-	// Validate returns error if frame is invalid.
-	Validate() error
-	// SetHeader set frame header.
-	SetHeader(h FrameHeader)
-	// SetBody set frame body.
-	SetBody(body *common.ByteBuff)
-	// Bytes encodes and returns frame in bytes.
-	Bytes() []byte
-	// CanResume returns true if frame supports resume.
-	CanResume() bool
 	// Done marks current frame has been sent.
 	Done() (closed bool)
 	// DoneNotify notifies when frame done.
 	DoneNotify() <-chan struct{}
 }
 
-// BaseFrame is basic frame implementation.
-type BaseFrame struct {
-	header FrameHeader
-	body   *common.ByteBuff
+func PrintFrame(f FrameSupport) string {
+	return "// TODO: print frame"
+}
+
+// Frame is a single message containing a request, response, or protocol processing.
+type Frame interface {
+	FrameSupport
+	// Validate returns error if frame is invalid.
+	Validate() error
+}
+
+type tinyFrame struct {
+	header Header
 	done   chan struct{}
 }
 
+func (t *tinyFrame) Header() Header {
+	return t.header
+}
+
 // Done can be invoked when a frame has been been processed.
-func (p *BaseFrame) Done() (closed bool) {
+func (t *tinyFrame) Done() (closed bool) {
 	defer func() {
 		if e := recover(); e != nil {
 			closed = true
 		}
 	}()
-	close(p.done)
+	close(t.done)
 	return
 }
 
 // DoneNotify notify when frame has been done.
-func (p *BaseFrame) DoneNotify() <-chan struct{} {
-	return p.done
+func (t *tinyFrame) DoneNotify() <-chan struct{} {
+	return t.done
 }
 
-// CanResume returns true if frame supports resume.
-func (p *BaseFrame) CanResume() bool {
-	switch p.header.Type() {
-	case FrameTypeRequestChannel, FrameTypeRequestStream, FrameTypeRequestResponse, FrameTypeRequestFNF, FrameTypeRequestN, FrameTypeCancel, FrameTypeError, FrameTypePayload:
-		return true
-	default:
-		return false
-	}
-}
-
-// SetBody set frame body.
-func (p *BaseFrame) SetBody(body *common.ByteBuff) {
-	p.body = body
+// RawFrame is basic frame implementation.
+type RawFrame struct {
+	*tinyFrame
+	body *common.ByteBuff
 }
 
 // Body returns frame body.
-func (p *BaseFrame) Body() *common.ByteBuff {
-	return p.body
-}
-
-// Header returns frame header.
-func (p *BaseFrame) Header() FrameHeader {
-	return p.header
-}
-
-// SetHeader set frame header.
-func (p *BaseFrame) SetHeader(h FrameHeader) {
-	p.header = h
+func (f *RawFrame) Body() *common.ByteBuff {
+	return f.body
 }
 
 // Len returns length of frame.
-func (p *BaseFrame) Len() int {
-	return HeaderLen + p.body.Len()
+func (f *RawFrame) Len() int {
+	return HeaderLen + f.body.Len()
 }
 
 // WriteTo write frame to writer.
-func (p *BaseFrame) WriteTo(w io.Writer) (n int64, err error) {
+func (f *RawFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
-	wrote, err = p.header.WriteTo(w)
+	wrote, err = f.header.WriteTo(w)
 	if err != nil {
 		return
 	}
 	n += wrote
-	wrote, err = p.body.WriteTo(w)
+	wrote, err = f.body.WriteTo(w)
 	if err != nil {
 		return
 	}
@@ -223,29 +202,19 @@ func (p *BaseFrame) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 // Bytes returns frame in bytes.
-func (p *BaseFrame) Bytes() []byte {
-	ret := make([]byte, HeaderLen+p.body.Len())
-	copy(ret[:HeaderLen], p.header[:])
-	copy(ret[HeaderLen:], p.body.Bytes())
+func (f *RawFrame) Bytes() []byte {
+	ret := make([]byte, HeaderLen+f.body.Len())
+	copy(ret[:HeaderLen], f.header.Bytes())
+	copy(ret[HeaderLen:], f.body.Bytes())
 	return ret
 }
 
-// NewBaseFrame returns a new BaseFrame.
-func NewBaseFrame(h FrameHeader, body *common.ByteBuff) (f *BaseFrame) {
-	f = &BaseFrame{
-		header: h,
-		body:   body,
-		done:   make(chan struct{}),
-	}
-	return
-}
-
-func (p *BaseFrame) trySeekMetadataLen(offset int) (n int, hasMetadata bool) {
-	raw := p.body.Bytes()
+func (f *RawFrame) trySeekMetadataLen(offset int) (n int, hasMetadata bool) {
+	raw := f.body.Bytes()
 	if offset > 0 {
 		raw = raw[offset:]
 	}
-	hasMetadata = p.header.Flag().Check(FlagMetadata)
+	hasMetadata = f.header.Flag().Check(FlagMetadata)
 	if !hasMetadata {
 		return
 	}
@@ -257,21 +226,36 @@ func (p *BaseFrame) trySeekMetadataLen(offset int) (n int, hasMetadata bool) {
 	return
 }
 
-func (p *BaseFrame) trySliceMetadata(offset int) ([]byte, bool) {
-	n, ok := p.trySeekMetadataLen(offset)
+func (f *RawFrame) trySliceMetadata(offset int) ([]byte, bool) {
+	n, ok := f.trySeekMetadataLen(offset)
 	if !ok || n < 0 {
 		return nil, false
 	}
-	return p.body.Bytes()[offset+3 : offset+3+n], true
+	return f.body.Bytes()[offset+3 : offset+3+n], true
 }
 
-func (p *BaseFrame) trySliceData(offset int) []byte {
-	n, ok := p.trySeekMetadataLen(offset)
+func (f *RawFrame) trySliceData(offset int) []byte {
+	n, ok := f.trySeekMetadataLen(offset)
 	if !ok {
-		return p.body.Bytes()[offset:]
+		return f.body.Bytes()[offset:]
 	}
 	if n < 0 {
 		return nil
 	}
-	return p.body.Bytes()[offset+n+3:]
+	return f.body.Bytes()[offset+n+3:]
+}
+
+func newTinyFrame(header Header) *tinyFrame {
+	return &tinyFrame{
+		header: header,
+		done:   make(chan struct{}),
+	}
+}
+
+// NewRawFrame returns a new RawFrame.
+func NewRawFrame(header Header, body *common.ByteBuff) *RawFrame {
+	return &RawFrame{
+		tinyFrame: newTinyFrame(header),
+		body:      body,
+	}
 }

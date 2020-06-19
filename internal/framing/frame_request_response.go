@@ -1,42 +1,43 @@
 package framing
 
 import (
-	"fmt"
+	"io"
 
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
-// FrameRequestResponse is frame for requesting single response.
-type FrameRequestResponse struct {
-	*BaseFrame
+// RequestResponseFrame is frame for requesting single response.
+type RequestResponseFrame struct {
+	*RawFrame
+}
+
+type RequestResponseFrameSupport struct {
+	*tinyFrame
+	metadata []byte
+	data     []byte
 }
 
 // Validate returns error if frame is invalid.
-func (p *FrameRequestResponse) Validate() (err error) {
-	if p.header.Flag().Check(FlagMetadata) && p.body.Len() < 3 {
+func (r *RequestResponseFrame) Validate() (err error) {
+	if r.header.Flag().Check(FlagMetadata) && r.body.Len() < 3 {
 		err = errIncompleteFrame
 	}
 	return
 }
 
-func (p *FrameRequestResponse) String() string {
-	m, _ := p.MetadataUTF8()
-	return fmt.Sprintf("FrameRequestResponse{%s,data=%s,metadata=%s}", p.header, p.DataUTF8(), m)
-}
-
 // Metadata returns metadata bytes.
-func (p *FrameRequestResponse) Metadata() ([]byte, bool) {
-	return p.trySliceMetadata(0)
+func (r *RequestResponseFrame) Metadata() ([]byte, bool) {
+	return r.trySliceMetadata(0)
 }
 
 // Data returns data bytes.
-func (p *FrameRequestResponse) Data() []byte {
-	return p.trySliceData(0)
+func (r *RequestResponseFrame) Data() []byte {
+	return r.trySliceData(0)
 }
 
 // MetadataUTF8 returns metadata as UTF8 string.
-func (p *FrameRequestResponse) MetadataUTF8() (metadata string, ok bool) {
-	raw, ok := p.Metadata()
+func (r *RequestResponseFrame) MetadataUTF8() (metadata string, ok bool) {
+	raw, ok := r.Metadata()
 	if ok {
 		metadata = string(raw)
 	}
@@ -44,13 +45,42 @@ func (p *FrameRequestResponse) MetadataUTF8() (metadata string, ok bool) {
 }
 
 // DataUTF8 returns data as UTF8 string.
-func (p *FrameRequestResponse) DataUTF8() string {
-	return string(p.Data())
+func (r *RequestResponseFrame) DataUTF8() string {
+	return string(r.Data())
 }
 
-// NewFrameRequestResponse returns a new RequestResponse frame.
-func NewFrameRequestResponse(id uint32, data, metadata []byte, flags ...FrameFlag) *FrameRequestResponse {
-	fg := newFlags(flags...)
+func (r RequestResponseFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+	var wrote int64
+	wrote, err = r.header.WriteTo(w)
+	if err != nil {
+		return
+	}
+	n += wrote
+	wrote, err = writePayload(w, r.data, r.metadata)
+	if err == nil {
+		n += wrote
+	}
+	return
+}
+
+func (r RequestResponseFrameSupport) Len() int {
+	return CalcPayloadFrameSize(r.data, r.metadata)
+}
+
+// NewRequestResponseFrameSupport returns a new RequestResponse frame support.
+func NewRequestResponseFrameSupport(id uint32, data, metadata []byte, fg FrameFlag) FrameSupport {
+	if len(metadata) > 0 {
+		fg |= FlagMetadata
+	}
+	return &RequestResponseFrameSupport{
+		tinyFrame: newTinyFrame(NewFrameHeader(id, FrameTypeRequestResponse, fg)),
+		metadata:  metadata,
+		data:      data,
+	}
+}
+
+// NewRequestResponseFrame returns a new RequestResponse frame.
+func NewRequestResponseFrame(id uint32, data, metadata []byte, fg FrameFlag) *RequestResponseFrame {
 	bf := common.NewByteBuff()
 	if len(metadata) > 0 {
 		fg |= FlagMetadata
@@ -66,7 +96,7 @@ func NewFrameRequestResponse(id uint32, data, metadata []byte, flags ...FrameFla
 			panic(err)
 		}
 	}
-	return &FrameRequestResponse{
-		NewBaseFrame(NewFrameHeader(id, FrameTypeRequestResponse, fg), bf),
+	return &RequestResponseFrame{
+		NewRawFrame(NewFrameHeader(id, FrameTypeRequestResponse, fg), bf),
 	}
 }

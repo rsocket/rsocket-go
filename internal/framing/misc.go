@@ -1,6 +1,8 @@
 package framing
 
 import (
+	"io"
+
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
@@ -13,39 +15,68 @@ func CalcPayloadFrameSize(data, metadata []byte) int {
 	return size
 }
 
-// NewFromBase creates a frame from a BaseFrame.
-func NewFromBase(f *BaseFrame) (frame Frame, err error) {
+// FromRawFrame creates a frame from a RawFrame.
+func FromRawFrame(f *RawFrame) (frame Frame, err error) {
 	switch f.header.Type() {
 	case FrameTypeSetup:
-		frame = &FrameSetup{BaseFrame: f}
+		frame = &SetupFrame{RawFrame: f}
 	case FrameTypeKeepalive:
-		frame = &FrameKeepalive{BaseFrame: f}
+		frame = &KeepaliveFrame{RawFrame: f}
 	case FrameTypeRequestResponse:
-		frame = &FrameRequestResponse{BaseFrame: f}
+		frame = &RequestResponseFrame{RawFrame: f}
 	case FrameTypeRequestFNF:
-		frame = &FrameFNF{BaseFrame: f}
+		frame = &FireAndForgetFrame{RawFrame: f}
 	case FrameTypeRequestStream:
-		frame = &FrameRequestStream{BaseFrame: f}
+		frame = &RequestStreamFrame{RawFrame: f}
 	case FrameTypeRequestChannel:
-		frame = &FrameRequestChannel{BaseFrame: f}
+		frame = &RequestChannelFrame{RawFrame: f}
 	case FrameTypeCancel:
-		frame = &FrameCancel{BaseFrame: f}
+		frame = &CancelFrame{RawFrame: f}
 	case FrameTypePayload:
-		frame = &FramePayload{BaseFrame: f}
+		frame = &PayloadFrame{RawFrame: f}
 	case FrameTypeMetadataPush:
-		frame = &FrameMetadataPush{BaseFrame: f}
+		frame = &MetadataPushFrame{RawFrame: f}
 	case FrameTypeError:
-		frame = &FrameError{BaseFrame: f}
+		frame = &ErrorFrame{RawFrame: f}
 	case FrameTypeRequestN:
-		frame = &FrameRequestN{BaseFrame: f}
+		frame = &RequestNFrame{RawFrame: f}
 	case FrameTypeLease:
-		frame = &FrameLease{BaseFrame: f}
+		frame = &LeaseFrame{RawFrame: f}
 	case FrameTypeResume:
-		frame = &FrameResume{BaseFrame: f}
+		frame = &ResumeFrame{RawFrame: f}
 	case FrameTypeResumeOK:
-		frame = &FrameResumeOK{BaseFrame: f}
+		frame = &ResumeOKFrame{RawFrame: f}
 	default:
 		err = common.ErrInvalidFrame
+	}
+	return
+}
+
+func writePayload(w io.Writer, data []byte, metadata []byte) (n int64, err error) {
+	if l := len(metadata); l > 0 {
+		var wrote int64
+		u := common.MustNewUint24(l)
+		wrote, err = u.WriteTo(w)
+		if err != nil {
+			return
+		}
+		n += wrote
+
+		var v int
+		v, err = w.Write(metadata)
+		if err != nil {
+			return
+		}
+		n += int64(v)
+	}
+
+	if l := len(data); l > 0 {
+		var v int
+		v, err = w.Write(data)
+		if err != nil {
+			return
+		}
+		n += int64(v)
 	}
 	return
 }

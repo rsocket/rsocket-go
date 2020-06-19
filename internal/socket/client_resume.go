@@ -78,12 +78,12 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		}
 	}(ctx, tp)
 
-	var f framing.Frame
+	var f framing.FrameSupport
 
 	// connect first time.
 	if len(p.setup.Token) < 1 || connects == 1 {
 		tp.HandleDisaster(func(frame framing.Frame) (err error) {
-			p.socket.SetError(frame.(*framing.FrameError))
+			p.socket.SetError(frame.(*framing.ErrorFrame))
 			p.markClosing()
 			return
 		})
@@ -94,7 +94,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		return
 	}
 
-	f = framing.NewFrameResume(
+	f = framing.NewResumeFrameSupport(
 		common.DefaultVersion,
 		p.setup.Token,
 		p.socket.counter.WriteBytes(),
@@ -110,7 +110,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 
 	tp.HandleDisaster(func(frame framing.Frame) (err error) {
 		// TODO: process other error with zero StreamID
-		f := frame.(*framing.FrameError)
+		f := frame.(*framing.ErrorFrame)
 		if f.ErrorCode() == common.ErrorCodeRejectedResume {
 			resumeErr <- f.Error()
 			close(resumeErr)
