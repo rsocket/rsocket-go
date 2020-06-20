@@ -101,7 +101,7 @@ func TestPayloadFrameSupport(t *testing.T) {
 	assert.NoError(t, err, "write failed")
 	raw := bf.Bytes()
 	bb := common.NewByteBuff()
-	bb.Write(raw[6:])
+	_, _ = bb.Write(raw[6:])
 	f2, err := FromRawFrame(NewRawFrame(ParseFrameHeader(raw[0:6]), bb))
 	assert.NoError(t, err, "new frame failed")
 	f3 := f2.(*PayloadFrame)

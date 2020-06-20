@@ -2,6 +2,7 @@ package framing
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -109,16 +110,8 @@ const (
 )
 
 // Check returns true if mask exists.
-func (f FrameFlag) Check(mask FrameFlag) bool {
-	return mask&f == mask
-}
-
-func newFlags(flags ...FrameFlag) FrameFlag {
-	var fg FrameFlag
-	for _, it := range flags {
-		fg |= it
-	}
-	return fg
+func (f FrameFlag) Check(flag FrameFlag) bool {
+	return flag&f == flag
 }
 
 type FrameSupport interface {
@@ -134,7 +127,8 @@ type FrameSupport interface {
 }
 
 func PrintFrame(f FrameSupport) string {
-	return "// TODO: print frame"
+	// TODO: print frame
+	return fmt.Sprintf("%+v", f)
 }
 
 // Frame is a single message containing a request, response, or protocol processing.
