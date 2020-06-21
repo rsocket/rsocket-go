@@ -109,6 +109,12 @@ func (u *u32slot) innerRange(fn func(k uint32, v interface{}) bool) bool {
 	return true
 }
 
+func NewU32MapLite() U32Map {
+	return &u32slot{
+		m: make(map[uint32]interface{}),
+	}
+}
+
 func NewU32Map() U32Map {
 	var slots [_slots]*u32slot
 	for i := 0; i < len(slots); i++ {

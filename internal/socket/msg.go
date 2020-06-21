@@ -7,60 +7,60 @@ import (
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
-type closerWithError interface {
+type callback interface {
 	Close(error)
 }
 
-type reqRS struct {
+type requestStreamCallback struct {
 	pc flux.Processor
 }
 
-func (s reqRS) Close(err error) {
+func (s requestStreamCallback) Close(err error) {
 	s.pc.Error(err)
 }
 
-type reqRR struct {
+type requestResponseCallback struct {
 	pc mono.Processor
 }
 
-func (s reqRR) Close(err error) {
+func (s requestResponseCallback) Close(err error) {
 	s.pc.Error(err)
 }
 
-type reqRC struct {
+type requestChannelCallback struct {
 	snd rx.Subscription
 	rcv flux.Processor
 }
 
-func (s reqRC) Close(err error) {
+func (s requestChannelCallback) Close(err error) {
 	s.snd.Cancel()
 	s.rcv.Error(err)
 }
 
-type resRR struct {
+type requestResponseCallbackReverse struct {
 	su rs.Subscription
 }
 
-func (s resRR) Close(err error) {
+func (s requestResponseCallbackReverse) Close(err error) {
 	s.su.Cancel()
 	// TODO: fill err
 }
 
-type resRS struct {
+type requestStreamCallbackReverse struct {
 	su rx.Subscription
 }
 
-func (s resRS) Close(err error) {
+func (s requestStreamCallbackReverse) Close(err error) {
 	s.su.Cancel()
 	// TODO: fill error
 }
 
-type resRC struct {
+type requestChannelCallbackReverse struct {
 	snd rx.Subscription
 	rcv flux.Processor
 }
 
-func (s resRC) Close(err error) {
+func (s requestChannelCallbackReverse) Close(err error) {
 	s.rcv.Error(err)
 	s.snd.Cancel()
 }

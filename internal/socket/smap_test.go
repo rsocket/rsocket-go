@@ -14,7 +14,7 @@ func nextID() uint32 {
 }
 
 func BenchmarkLock(b *testing.B) {
-	var v reqRC
+	var v requestChannelCallback
 	m := make(map[uint32]interface{})
 	var lk sync.RWMutex
 	b.ResetTimer()
@@ -40,7 +40,7 @@ func BenchmarkLock(b *testing.B) {
 }
 
 func BenchmarkSync(b *testing.B) {
-	var v reqRC
+	var v requestChannelCallback
 	m := &sync.Map{}
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {

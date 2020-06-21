@@ -176,6 +176,9 @@ func (f *RawFrame) Body() *common.ByteBuff {
 
 // Len returns length of frame.
 func (f *RawFrame) Len() int {
+	if f.body == nil {
+		return HeaderLen
+	}
 	return HeaderLen + f.body.Len()
 }
 
@@ -187,20 +190,14 @@ func (f *RawFrame) WriteTo(w io.Writer) (n int64, err error) {
 		return
 	}
 	n += wrote
-	wrote, err = f.body.WriteTo(w)
-	if err != nil {
-		return
+	if f.body != nil {
+		wrote, err = f.body.WriteTo(w)
+		if err != nil {
+			return
+		}
+		n += wrote
 	}
-	n += wrote
 	return
-}
-
-// Bytes returns frame in bytes.
-func (f *RawFrame) Bytes() []byte {
-	ret := make([]byte, HeaderLen+f.body.Len())
-	copy(ret[:HeaderLen], f.header.Bytes())
-	copy(ret[HeaderLen:], f.body.Bytes())
-	return ret
 }
 
 func (f *RawFrame) trySeekMetadataLen(offset int) (n int, hasMetadata bool) {

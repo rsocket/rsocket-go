@@ -355,16 +355,16 @@ func (p *server) destroySessions() {
 }
 
 func (p *server) doCleanSession() {
-	deads := make(chan *session.Session)
-	go func(deads chan *session.Session) {
-		for it := range deads {
+	deadSessions := make(chan *session.Session)
+	go func(deadSessions chan *session.Session) {
+		for it := range deadSessions {
 			if err := it.Close(); err != nil {
 				logger.Warnf("close dead session failed: %s\n", err)
 			} else if logger.IsDebugEnabled() {
 				logger.Debugf("close dead session success: %s\n", it)
 			}
 		}
-	}(deads)
+	}(deadSessions)
 	var cur *session.Session
 	for p.sm.Len() > 0 {
 		cur = p.sm.Pop()
@@ -373,9 +373,9 @@ func (p *server) doCleanSession() {
 			p.sm.Push(cur)
 			break
 		}
-		deads <- cur
+		deadSessions <- cur
 	}
-	close(deads)
+	close(deadSessions)
 }
 
 // WithServerResumeSessionDuration sets resume session duration for RSocket server.

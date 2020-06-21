@@ -11,12 +11,6 @@ type PayloadFrame struct {
 	*RawFrame
 }
 
-type PayloadFrameSupport struct {
-	*tinyFrame
-	metadata []byte
-	data     []byte
-}
-
 // Validate returns error if frame is invalid.
 func (p *PayloadFrame) Validate() (err error) {
 	// Minimal length should be 3 if metadata exists.
@@ -56,6 +50,32 @@ func (p *PayloadFrame) MustMetadataUTF8() string {
 // DataUTF8 returns data as UTF8 string.
 func (p *PayloadFrame) DataUTF8() string {
 	return string(p.Data())
+}
+
+type PayloadFrameSupport struct {
+	*tinyFrame
+	metadata []byte
+	data     []byte
+}
+
+func (p PayloadFrameSupport) DataUTF8() string {
+	return string(p.data)
+}
+
+func (p PayloadFrameSupport) MetadataUTF8() (metadata string, ok bool) {
+	if p.header.Flag().Check(FlagMetadata) {
+		metadata = string(p.metadata)
+		ok = true
+	}
+	return
+}
+
+func (p PayloadFrameSupport) Data() []byte {
+	return p.data
+}
+
+func (p PayloadFrameSupport) Metadata() ([]byte, bool) {
+	return p.metadata, p.header.Flag().Check(FlagMetadata)
 }
 
 func (p PayloadFrameSupport) WriteTo(w io.Writer) (n int64, err error) {

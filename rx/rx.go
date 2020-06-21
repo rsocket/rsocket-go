@@ -49,7 +49,7 @@ type RawPublisher interface {
 type Publisher interface {
 	RawPublisher
 	// Subscribe subscribe elements from a publisher, returns a Disposable.
-	// You can add some custome options.
+	// You can add some custom options.
 	// Using `OnSubscribe`, `OnNext`, `OnComplete` and `OnError` as handler wrapper.
 	Subscribe(ctx context.Context, options ...SubscriberOption)
 }

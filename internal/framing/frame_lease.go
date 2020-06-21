@@ -75,29 +75,20 @@ func (l LeaseFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 	}
 	n += int64(v)
 
-	if !l.header.Flag().Check(FlagMetadata) {
-		return
+	if l.header.Flag().Check(FlagMetadata) {
+		v, err = w.Write(l.metadata)
+		if err != nil {
+			return
+		}
+		n += int64(v)
 	}
 
-	u := common.MustNewUint24(len(l.metadata))
-	wrote, err = u.WriteTo(w)
-	if err != nil {
-		return
-	}
-	n += wrote
-
-	v, err = w.Write(l.metadata)
-	if err != nil {
-		return
-	}
-	n += int64(v)
 	return
 }
 
 func (l LeaseFrameSupport) Len() int {
 	n := HeaderLen + 8
 	if l.header.Flag().Check(FlagMetadata) {
-		n += 3
 		n += len(l.metadata)
 	}
 	return n

@@ -34,9 +34,9 @@ func TestParseAuthentication(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	input := make([]byte, 2)
 	rand.Read(input)
+	input[0] &= ^uint8(0x80)
 	_, err := extension.ParseAuthentication(input)
 	assert.True(t, extension.IsInvalidAuthenticationBytes(err), "should error")
-
 }
 
 func TestAuthentication(t *testing.T) {
