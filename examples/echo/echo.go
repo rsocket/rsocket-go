@@ -18,10 +18,11 @@ import (
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
-const ListenAt = "tcp://127.0.0.1:7878"
+var MyTransporter rsocket.Transporter
 
-//const ListenAt = "unix:///tmp/rsocket.echo.sock"
-//const ListenAt = "ws://127.0.0.1:7878/echo"
+func init() {
+	MyTransporter = rsocket.Tcp().HostAndPort("127.0.0.1", 7878).Build()
+}
 
 func main() {
 	go func() {
@@ -32,7 +33,7 @@ func main() {
 		//Fragment(65535).
 		//Resume().
 		OnStart(func() {
-			log.Println("server is listening:", ListenAt)
+			log.Println("server start success!")
 		}).
 		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			//log.Println("SETUP BEGIN:----------------")
@@ -61,7 +62,7 @@ func main() {
 			}
 			return responder(), nil
 		}).
-		Transport(ListenAt).
+		Transport(MyTransporter).
 		Serve(context.Background())
 	if err != nil {
 		panic(err)

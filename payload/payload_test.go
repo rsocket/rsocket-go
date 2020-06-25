@@ -3,6 +3,7 @@ package payload_test
 import (
 	"fmt"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/stretchr/testify/assert"
@@ -40,9 +41,8 @@ func TestRawPayload(t *testing.T) {
 
 	invalid := []byte{0xff, 0xfe, 0xfd}
 	badPayload := payload.New(invalid, invalid)
-	s := badPayload.(fmt.Stringer).String()
-	fmt.Println("no utf8 payload:", s)
-	assert.NotEmpty(t, s)
+	s := badPayload.DataUTF8()
+	assert.False(t, utf8.Valid([]byte(s)))
 }
 
 func TestStrPayload(t *testing.T) {

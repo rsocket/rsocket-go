@@ -4,7 +4,7 @@ import (
 	"io/ioutil"
 	"time"
 
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/core"
 )
 
 type (
@@ -36,7 +36,7 @@ type (
 		// MaxLifetime returns max lifetime of RSocket connection.
 		MaxLifetime() time.Duration
 		// Version return RSocket protocol version.
-		Version() common.Version
+		Version() core.Version
 	}
 )
 

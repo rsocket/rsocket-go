@@ -2,14 +2,13 @@ package socket
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"math"
 	"time"
 
-	"github.com/rsocket/rsocket-go/internal/common"
-	"github.com/rsocket/rsocket-go/internal/framing"
-	"github.com/rsocket/rsocket-go/internal/transport"
+	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/core/framing"
+	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/logger"
 	"go.uber.org/atomic"
 )
@@ -19,10 +18,8 @@ const reconnectDelay = 1 * time.Second
 type resumeClientSocket struct {
 	*baseSocket
 	connects *atomic.Int32
-	uri      *transport.URI
-	headers  map[string][]string
 	setup    *SetupInfo
-	tc       *tls.Config
+	tp       transport.ToClientTransport
 }
 
 func (p *resumeClientSocket) Setup(ctx context.Context, setup *SetupInfo) error {
@@ -50,7 +47,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		_ = p.Close()
 		return
 	}
-	tp, err := p.uri.MakeClientTransport(p.tc, p.headers)
+	tp, err := p.tp(ctx)
 	if err != nil {
 		if connects == 1 {
 			return
@@ -78,11 +75,11 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		}
 	}(ctx, tp)
 
-	var f framing.FrameSupport
+	var f core.FrameSupport
 
 	// connect first time.
 	if len(p.setup.Token) < 1 || connects == 1 {
-		tp.HandleDisaster(func(frame framing.Frame) (err error) {
+		tp.HandleDisaster(func(frame core.Frame) (err error) {
 			p.socket.SetError(frame.(*framing.ErrorFrame))
 			p.markClosing()
 			return
@@ -95,7 +92,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 	}
 
 	f = framing.NewResumeFrameSupport(
-		common.DefaultVersion,
+		core.DefaultVersion,
 		p.setup.Token,
 		p.socket.counter.WriteBytes(),
 		p.socket.counter.ReadBytes(),
@@ -103,15 +100,15 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 
 	resumeErr := make(chan string)
 
-	tp.HandleResumeOK(func(frame framing.Frame) (err error) {
+	tp.HandleResumeOK(func(frame core.Frame) (err error) {
 		close(resumeErr)
 		return
 	})
 
-	tp.HandleDisaster(func(frame framing.Frame) (err error) {
+	tp.HandleDisaster(func(frame core.Frame) (err error) {
 		// TODO: process other error with zero StreamID
 		f := frame.(*framing.ErrorFrame)
-		if f.ErrorCode() == common.ErrorCodeRejectedResume {
+		if f.ErrorCode() == core.ErrorCodeRejectedResume {
 			resumeErr <- f.Error()
 			close(resumeErr)
 		}
@@ -149,12 +146,10 @@ func (p *resumeClientSocket) isClosed() bool {
 }
 
 // NewClientResume creates a client-side socket with resume support.
-func NewClientResume(uri *transport.URI, socket *DuplexRSocket, tc *tls.Config, headers map[string][]string) ClientSocket {
+func NewClientResume(tp transport.ToClientTransport, socket *DuplexRSocket) ClientSocket {
 	return &resumeClientSocket{
 		baseSocket: newBaseSocket(socket),
-		uri:        uri,
-		tc:         tc,
-		headers:    headers,
 		connects:   atomic.NewInt32(0),
+		tp:         tp,
 	}
 }

@@ -7,9 +7,10 @@ import (
 	"bytes"
 	"errors"
 
+	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/core/framing"
+	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/internal/common"
-	"github.com/rsocket/rsocket-go/internal/framing"
-	"github.com/rsocket/rsocket-go/internal/transport"
 )
 
 func Fuzz(data []byte) int {
@@ -26,13 +27,13 @@ func Fuzz(data []byte) int {
 }
 
 func isExpectedError(err error) bool {
-	return err == common.ErrInvalidFrame || err == transport.ErrIncompleteHeader
+	return err == core.ErrInvalidFrame || err == transport.ErrIncompleteHeader
 }
 
 func handleRaw(raw []byte) (err error) {
-	h := framing.ParseFrameHeader(raw)
+	h := core.ParseFrameHeader(raw)
 	bf := common.NewByteBuff()
-	var frame framing.Frame
+	var frame core.Frame
 	frame, err = framing.FromRawFrame(framing.NewRawFrame(h, bf))
 	if err != nil {
 		return
@@ -41,7 +42,7 @@ func handleRaw(raw []byte) (err error) {
 	if err != nil {
 		return
 	}
-	if frame.Len() >= framing.HeaderLen {
+	if frame.Len() >= core.FrameHeaderLen {
 		return
 	}
 	err = errors.New("broken frame")

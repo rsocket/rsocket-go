@@ -2,15 +2,14 @@ package rsocket
 
 import (
 	"context"
-	"crypto/tls"
 	"time"
 
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/core/framing"
+	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
-	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/internal/session"
 	"github.com/rsocket/rsocket-go/internal/socket"
-	"github.com/rsocket/rsocket-go/internal/transport"
 	"github.com/rsocket/rsocket-go/lease"
 	"github.com/rsocket/rsocket-go/logger"
 )
@@ -38,46 +37,21 @@ type (
 		// Resume enable resume for current server.
 		Resume(opts ...OpServerResume) ServerBuilder
 		// Acceptor register server acceptor which is used to handle incoming RSockets.
-		Acceptor(acceptor ServerAcceptor) ServerTransportBuilder
+		Acceptor(acceptor ServerAcceptor) ToServerStarter
 		// OnStart register a handler when serve success.
 		OnStart(onStart func()) ServerBuilder
 	}
 
-	// ServerTransportBuilder is used to build a RSocket server with custom Transport string.
-	ServerTransportBuilder interface {
+	// ToServerStarter is used to build a RSocket server with custom Transport string.
+	ToServerStarter interface {
 		// Transport specify transport string.
-		Transport(transport string) Start
+		Transport(t Transporter) Start
 	}
 
 	// Start start a RSocket server.
 	Start interface {
 		// Serve serve RSocket server.
 		Serve(ctx context.Context) error
-		// Serve serve RSocket server with TLS.
-		//
-		// You can generate cert.pem and key.pem for local testing:
-		//
-		//	 go run $GOROOT/src/crypto/tls/generate_cert.go --host localhost
-		//
-		//	 Load X509
-		//	cert, err := tls.LoadX509KeyPair("cert.pem", "key.pem")
-		//	if err != nil {
-		//		panic(err)
-		//	}
-		//	// Init TLS configuration.
-		//	tc := &tls.Config{
-		//		MinVersion:               tls.VersionTLS12,
-		//		CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
-		//		PreferServerCipherSuites: true,
-		//		CipherSuites: []uint16{
-		//			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-		//			tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-		//			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
-		//			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
-		//		},
-		//		Certificates: []tls.Certificate{cert},
-		//	}
-		ServeTLS(ctx context.Context, c *tls.Config) error
 	}
 )
 
@@ -99,9 +73,9 @@ type serverResumeOptions struct {
 }
 
 type server struct {
+	tp         transport.ToServerTransport
 	resumeOpts *serverResumeOptions
 	fragment   int
-	addr       string
 	acc        ServerAcceptor
 	sm         *session.Manager
 	done       chan struct{}
@@ -134,34 +108,23 @@ func (p *server) Fragment(mtu int) ServerBuilder {
 	return p
 }
 
-func (p *server) Acceptor(acceptor ServerAcceptor) ServerTransportBuilder {
+func (p *server) Acceptor(acceptor ServerAcceptor) ToServerStarter {
 	p.acc = acceptor
 	return p
 }
 
-func (p *server) Transport(transport string) Start {
-	p.addr = transport
+func (p *server) Transport(t Transporter) Start {
+	p.tp = t.Server()
 	return p
 }
 
-func (p *server) ServeTLS(ctx context.Context, c *tls.Config) error {
-	return p.serve(ctx, c)
-}
-
 func (p *server) Serve(ctx context.Context) error {
-	return p.serve(ctx, nil)
-}
+	err := fragmentation.IsValidFragment(p.fragment)
+	if err != nil {
+		return err
+	}
 
-func (p *server) serve(ctx context.Context, tc *tls.Config) error {
-	u, err := transport.ParseURI(p.addr)
-	if err != nil {
-		return err
-	}
-	err = fragmentation.IsValidFragment(p.fragment)
-	if err != nil {
-		return err
-	}
-	t, err := u.MakeServerTransport(tc)
+	t, err := p.tp(ctx)
 	if err != nil {
 		return err
 	}
@@ -173,8 +136,8 @@ func (p *server) serve(ctx context.Context, tc *tls.Config) error {
 	go func(ctx context.Context) {
 		_ = p.loopCleanSession(ctx)
 	}(ctx)
-
-	t.Accept(func(ctx context.Context, tp *transport.Transport) {
+	t.Accept(func(ctx context.Context, tp *transport.Transport, onClose func(*transport.Transport)) {
+		defer onClose(tp)
 		socketChan := make(chan socket.ServerSocket, 1)
 		defer func() {
 			select {
@@ -222,7 +185,7 @@ func (p *server) serve(ctx context.Context, tc *tls.Config) error {
 				}
 			}(ctx, sendingSocket)
 		default:
-			err := framing.NewErrorFrameSupport(0, common.ErrorCodeConnectionError, []byte("first frame must be setup or resume"))
+			err := framing.NewErrorFrameSupport(0, core.ErrorCodeConnectionError, []byte("first frame must be setup or resume"))
 			_ = tp.Send(err, true)
 			_ = tp.Close()
 			return
@@ -244,16 +207,16 @@ func (p *server) serve(ctx context.Context, tc *tls.Config) error {
 
 func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.ErrorFrameSupport) {
 
-	if frame.Header().Flag().Check(framing.FlagLease) && p.leases == nil {
-		err = framing.NewErrorFrameSupport(0, common.ErrorCodeUnsupportedSetup, errUnavailableLease)
+	if frame.Header().Flag().Check(core.FlagLease) && p.leases == nil {
+		err = framing.NewErrorFrameSupport(0, core.ErrorCodeUnsupportedSetup, errUnavailableLease)
 		return
 	}
 
-	isResume := frame.Header().Flag().Check(framing.FlagResume)
+	isResume := frame.Header().Flag().Check(core.FlagResume)
 
 	// 1. receive a token but server doesn't support resume.
 	if isResume && !p.resumeOpts.enable {
-		err = framing.NewErrorFrameSupport(0, common.ErrorCodeUnsupportedSetup, errUnavailableResume)
+		err = framing.NewErrorFrameSupport(0, core.ErrorCodeUnsupportedSetup, errUnavailableResume)
 		return
 	}
 
@@ -263,7 +226,7 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 	if !isResume {
 		sendingSocket = socket.NewServer(rawSocket)
 		if responder, e := p.acc(frame, sendingSocket); e != nil {
-			err = framing.NewErrorFrameSupport(0, common.ErrorCodeRejectedSetup, []byte(e.Error()))
+			err = framing.NewErrorFrameSupport(0, core.ErrorCodeRejectedSetup, []byte(e.Error()))
 		} else {
 			sendingSocket.SetResponder(responder)
 			sendingSocket.SetTransport(tp)
@@ -276,7 +239,7 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 
 	// 3. resume reject because of duplicated token.
 	if _, ok := p.sm.Load(token); ok {
-		err = framing.NewErrorFrameSupport(0, common.ErrorCodeRejectedSetup, errDuplicatedSetupToken)
+		err = framing.NewErrorFrameSupport(0, core.ErrorCodeRejectedSetup, errDuplicatedSetupToken)
 		return
 	}
 
@@ -288,7 +251,7 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 		case *framing.ErrorFrame:
 			err = framing.NewErrorFrameSupport(0, vv.ErrorCode(), vv.ErrorData())
 		default:
-			err = framing.NewErrorFrameSupport(0, common.ErrorCodeInvalidSetup, []byte(e.Error()))
+			err = framing.NewErrorFrameSupport(0, core.ErrorCodeInvalidSetup, []byte(e.Error()))
 		}
 	} else {
 		sendingSocket.SetResponder(responder)
@@ -299,9 +262,9 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 }
 
 func (p *server) doResume(frame *framing.ResumeFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) {
-	var sending framing.FrameSupport
+	var sending core.FrameSupport
 	if !p.resumeOpts.enable {
-		sending = framing.NewErrorFrameSupport(0, common.ErrorCodeRejectedResume, errUnavailableResume)
+		sending = framing.NewErrorFrameSupport(0, core.ErrorCodeRejectedResume, errUnavailableResume)
 	} else if s, ok := p.sm.Load(frame.Token()); ok {
 		sending = framing.NewResumeOKFrameSupport(0)
 		s.Socket().SetTransport(tp)
@@ -312,7 +275,7 @@ func (p *server) doResume(frame *framing.ResumeFrame, tp *transport.Transport, s
 	} else {
 		sending = framing.NewErrorFrameSupport(
 			0,
-			common.ErrorCodeRejectedResume,
+			core.ErrorCodeRejectedResume,
 			[]byte("no such session"),
 		)
 	}

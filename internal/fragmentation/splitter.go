@@ -1,8 +1,8 @@
 package fragmentation
 
 import (
+	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/common"
-	"github.com/rsocket/rsocket-go/internal/framing"
 )
 
 // HandleSplitResult is callback for fragmentation result.
@@ -10,7 +10,7 @@ type HandleSplitResult = func(index int, result SplitResult)
 
 // SplitResult defines fragmentation result struct.
 type SplitResult struct {
-	Flag     framing.FrameFlag
+	Flag     core.FrameFlag
 	Metadata []byte
 	Data     []byte
 }
@@ -33,7 +33,7 @@ func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame HandleSp
 		var follow bool
 		for {
 			bf = common.NewByteBuff()
-			left := mtu - framing.HeaderLen
+			left := mtu - core.FrameHeaderLen
 			if idx == 0 && skip > 0 {
 				left -= skip
 				for i := 0; i < skip; i++ {
@@ -57,18 +57,18 @@ func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame HandleSp
 			curMetadata := metadata[begin1:cursor1]
 			curData := data[begin2:cursor2]
 			follow = cursor1+cursor2 < lenM+lenD
-			var flag framing.FrameFlag
+			var flag core.FrameFlag
 			if follow {
-				flag |= framing.FlagFollow
+				flag |= core.FlagFollow
 			} else {
-				flag &= ^framing.FlagFollow
+				flag &= ^core.FlagFollow
 			}
 			if hasMetadata {
 				// metadata
-				flag |= framing.FlagMetadata
+				flag |= core.FlagMetadata
 			} else {
 				// non-metadata
-				flag &= ^framing.FlagMetadata
+				flag &= ^core.FlagMetadata
 			}
 			ch <- SplitResult{
 				Flag:     flag,

@@ -16,7 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const uri = "tcp://127.0.0.1:7878"
+var tp Transporter
+
+func init() {
+	tp = Tcp().HostAndPort("127.0.0.1", 7878).Build()
+}
 
 func ExampleNewGroup() {
 	group := NewGroup(func() Balancer {
@@ -40,10 +44,10 @@ func ExampleNewGroup() {
 					panic(errors.New("missing service ID in metadata"))
 				}
 				log.Println("[broker] redirect request to service", requestServiceID)
-				return group.Get(requestServiceID).Next().RequestResponse(msg)
+				return group.Get(requestServiceID).MustNext(context.Background()).RequestResponse(msg)
 			})), nil
 		}).
-		Transport(uri).
+		Transport(tp).
 		Serve(context.Background())
 	if err != nil {
 		panic(err)
@@ -72,7 +76,7 @@ func TestServiceSubscribe(t *testing.T) {
 					return mono.Just(result)
 				}))
 			}).
-			Transport(uri).
+			Transport(tp).
 			Start(context.Background())
 		if err != nil {
 			panic(err)
@@ -86,7 +90,7 @@ func TestServiceSubscribe(t *testing.T) {
 	// Create a client and request md5 service.
 	cli, err := Connect().
 		SetupPayload(payload.NewString("This is a Subscriber", "")).
-		Transport(uri).
+		Transport(tp).
 		Start(context.Background())
 	require.NoError(t, err, "create client failed")
 	defer func() {

@@ -5,8 +5,8 @@ import (
 )
 
 const (
-	maskStreamID uint64 = 0x7FFFFFFF
-	halfSeed     uint64 = 0x40000000
+	_maskStreamID uint64 = 0x7FFFFFFF
+	_halfSeed     uint64 = 0x40000000
 )
 
 type StreamID interface {
@@ -22,7 +22,7 @@ func (p *serverStreamIDs) Next() (uint32, bool) {
 	seed := atomic.AddUint64(&p.cur, 1)
 	v := 2 * seed
 	if v != 0 {
-		return uint32(maskStreamID & v), seed <= halfSeed
+		return uint32(_maskStreamID & v), seed <= _halfSeed
 	}
 	return p.Next()
 }
@@ -36,7 +36,7 @@ func (p *clientStreamIDs) Next() (uint32, bool) {
 	seed := atomic.AddUint64(&p.cur, 1)
 	v := 2*(seed-1) + 1
 	if v != 0 {
-		return uint32(maskStreamID & v), seed <= halfSeed
+		return uint32(_maskStreamID & v), seed <= _halfSeed
 	}
 	return p.Next()
 }

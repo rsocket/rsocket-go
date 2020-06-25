@@ -1,22 +1,8 @@
 package payload
 
-import (
-	"strings"
-)
-
 type strPayload struct {
 	data     string
 	metadata string
-}
-
-func (p *strPayload) String() string {
-	bu := strings.Builder{}
-	bu.WriteString("Payload{data=")
-	bu.WriteString(p.data)
-	bu.WriteString("metadata=")
-	bu.WriteString(p.metadata)
-	bu.WriteByte('}')
-	return bu.String()
 }
 
 func (p *strPayload) Metadata() (metadata []byte, ok bool) {

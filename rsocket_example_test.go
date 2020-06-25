@@ -16,6 +16,7 @@ import (
 
 func Example() {
 	// Serve a server
+	tp := rsocket.Tcp().HostAndPort("127.0.0.1", 7878).Build()
 	err := rsocket.Receive().
 		Resume(). // Enable RESUME
 		//Lease().
@@ -27,7 +28,7 @@ func Example() {
 				}),
 			), nil
 		}).
-		Transport("tcp://127.0.0.1:7878").
+		Transport(tp).
 		Serve(context.Background())
 	if err != nil {
 		panic(err)
@@ -36,7 +37,7 @@ func Example() {
 	// Connect to a server.
 	cli, err := rsocket.Connect().
 		SetupPayload(payload.NewString("Hello World", "From Golang")).
-		Transport("tcp://127.0.0.1:7878").
+		Transport(tp).
 		Start(context.Background())
 	if err != nil {
 		panic(err)
@@ -92,7 +93,7 @@ func ExampleReceive() {
 				}),
 			), nil
 		}).
-		Transport("tcp://0.0.0.0:7878").
+		Transport(rsocket.Tcp().HostAndPort("127.0.0.1", 7878).Build()).
 		Serve(context.Background())
 	panic(err)
 }
@@ -100,7 +101,7 @@ func ExampleReceive() {
 func ExampleConnect() {
 	cli, err := rsocket.Connect().
 		Resume(). // Enable RESUME.
-		Lease().  // Enable LEASE.
+		Lease(). // Enable LEASE.
 		Fragment(4096).
 		SetupPayload(payload.NewString("Hello", "World")).
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
@@ -110,7 +111,7 @@ func ExampleConnect() {
 				}),
 			)
 		}).
-		Transport("tcp://127.0.0.1:7878").
+		Transport(rsocket.Tcp().Addr("127.0.0.1:7878").Build()).
 		Start(context.Background())
 	if err != nil {
 		panic(err)

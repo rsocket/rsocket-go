@@ -1,7 +1,7 @@
 package rsocket
 
 import (
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/socket"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
@@ -11,33 +11,33 @@ import (
 
 const (
 	// ErrorCodeInvalidSetup means the setup frame is invalid for the server.
-	ErrorCodeInvalidSetup = common.ErrorCodeInvalidSetup
+	ErrorCodeInvalidSetup = core.ErrorCodeInvalidSetup
 	// ErrorCodeUnsupportedSetup means some (or all) of the parameters specified by the client are unsupported by the server.
-	ErrorCodeUnsupportedSetup = common.ErrorCodeUnsupportedSetup
+	ErrorCodeUnsupportedSetup = core.ErrorCodeUnsupportedSetup
 	// ErrorCodeRejectedSetup means server rejected the setup, it can specify the reason in the payload.
-	ErrorCodeRejectedSetup = common.ErrorCodeRejectedSetup
+	ErrorCodeRejectedSetup = core.ErrorCodeRejectedSetup
 	// ErrorCodeRejectedResume means server rejected the resume, it can specify the reason in the payload.
-	ErrorCodeRejectedResume = common.ErrorCodeRejectedResume
+	ErrorCodeRejectedResume = core.ErrorCodeRejectedResume
 	// ErrorCodeConnectionError means the connection is being terminated.
-	ErrorCodeConnectionError = common.ErrorCodeConnectionError
+	ErrorCodeConnectionError = core.ErrorCodeConnectionError
 	// ErrorCodeConnectionClose means the connection is being terminated.
-	ErrorCodeConnectionClose = common.ErrorCodeConnectionClose
+	ErrorCodeConnectionClose = core.ErrorCodeConnectionClose
 	// ErrorCodeApplicationError means application layer logic generating a Reactive Streams onError event.
-	ErrorCodeApplicationError = common.ErrorCodeApplicationError
+	ErrorCodeApplicationError = core.ErrorCodeApplicationError
 	// ErrorCodeRejected means Responder reject it.
-	ErrorCodeRejected = common.ErrorCodeRejected
+	ErrorCodeRejected = core.ErrorCodeRejected
 	// ErrorCodeCanceled means the Responder canceled the request but may have started processing it (similar to REJECTED but doesn't guarantee lack of side-effects).
-	ErrorCodeCanceled = common.ErrorCodeCanceled
+	ErrorCodeCanceled = core.ErrorCodeCanceled
 	// ErrorCodeInvalid means the request is invalid.
-	ErrorCodeInvalid = common.ErrorCodeInvalid
+	ErrorCodeInvalid = core.ErrorCodeInvalid
 )
 
 // Aliases for Error defines.
 type (
 	// ErrorCode is code for RSocket error.
-	ErrorCode = common.ErrorCode
+	ErrorCode = core.ErrorCode
 	// Error provides a method of accessing code and data.
-	Error = common.CustomError
+	Error = core.CustomError
 )
 
 type (

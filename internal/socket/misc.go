@@ -4,15 +4,15 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rsocket/rsocket-go/internal/common"
-	"github.com/rsocket/rsocket-go/internal/framing"
+	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/rx"
 )
 
 // SetupInfo represents basic info of setup.
 type SetupInfo struct {
 	Lease             bool
-	Version           common.Version
+	Version           core.Version
 	KeepaliveInterval time.Duration
 	KeepaliveLifetime time.Duration
 	Token             []byte
@@ -22,7 +22,7 @@ type SetupInfo struct {
 	Metadata          []byte
 }
 
-func (p *SetupInfo) toFrame() framing.FrameSupport {
+func (p *SetupInfo) toFrame() core.FrameSupport {
 	return framing.NewSetupFrameSupport(
 		p.Version,
 		p.KeepaliveInterval,

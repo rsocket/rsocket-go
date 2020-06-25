@@ -40,17 +40,16 @@ func init() {
 var testData = "Hello World!"
 
 func TestSuite(t *testing.T) {
-	addresses := map[string]string{
-		//"unix":      "unix:///tmp/rsocket.test.sock",
-		"tcp":       "tcp://localhost:7878",
-		"websocket": "ws://localhost:8080/test",
+	transports := map[string]Transporter{
+		"tcp":       Tcp().Addr("127.0.0.1:7878").Build(),
+		"websocket": Websocket().Url("ws://127.0.0.1:8080/test").Build(),
 	}
-	for k, v := range addresses {
-		testAll(k, v, t)
+	for k, v := range transports {
+		testAll(t, k, v)
 	}
 }
 
-func testAll(proto string, addr string, t *testing.T) {
+func testAll(t *testing.T, proto string, tp Transporter) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -112,7 +111,7 @@ func testAll(proto string, addr string, t *testing.T) {
 					}),
 				), nil
 			}).
-			Transport(addr).
+			Transport(tp).
 			Serve(ctx)
 		fmt.Println("SERVER STOPPED!!!!!")
 		if err != nil {
@@ -126,7 +125,7 @@ func testAll(proto string, addr string, t *testing.T) {
 	cli, err := Connect().
 		Fragment(192).
 		SetupPayload(NewString(setupData, setupMetadata)).
-		Transport(addr).
+		Transport(tp).
 		Start(context.Background())
 	assert.NoError(t, err, "connect failed")
 	defer func() {

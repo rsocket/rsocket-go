@@ -3,7 +3,7 @@ package socket
 import (
 	"context"
 
-	"github.com/rsocket/rsocket-go/internal/transport"
+	"github.com/rsocket/rsocket-go/core/transport"
 )
 
 type resumeServerSocket struct {

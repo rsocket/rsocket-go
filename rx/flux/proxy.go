@@ -7,7 +7,7 @@ import (
 	"github.com/jjeffcaii/reactor-go/flux"
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
-	"github.com/rsocket/rsocket-go/internal/framing"
+	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -86,7 +86,7 @@ func (p proxy) ToChan(ctx context.Context, cap int) (c <-chan payload.Payload, e
 		}).
 		Subscribe(ctx,
 			rx.OnNext(func(v payload.Payload) {
-				if _, ok := v.(framing.Frame); ok {
+				if _, ok := v.(core.Frame); ok {
 					ch <- payload.Clone(v)
 				} else {
 					ch <- v

@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -112,11 +114,23 @@ func (p *Runner) runClientMode(ctx context.Context) (err error) {
 	}
 	setupPayload := payload.New(setupData, nil)
 	sendingPayloads := p.createPayload()
+
+	tp, err := makeTransport(p.URI)
+	if err != nil {
+		return
+	}
+
+	// TODO:
+
+	//if ws, ok := tp.(*rsocket.wsTransporter); ok {
+	//	ws.Header(p.wsHeaders)
+	//}
+
 	c, err := cb.
 		DataMimeType(p.DataFormat).
 		MetadataMimeType(p.MetadataFormat).
 		SetupPayload(setupPayload).
-		Transport(p.URI, rsocket.WithWebsocketHeaders(p.wsHeaders)).
+		Transport(tp).
 		Start(ctx)
 	if err != nil {
 		return
@@ -165,6 +179,12 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 		sb = rsocket.Receive()
 	}
 	ch := make(chan error)
+
+	tp, err := makeTransport(p.URI)
+	if err != nil {
+		return err
+	}
+
 	go func() {
 		sendingPayloads := p.createPayload()
 		ch <- sb.
@@ -200,7 +220,7 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 				}))
 				return rsocket.NewAbstractSocket(options...), nil
 			}).
-			Transport(p.URI).
+			Transport(tp).
 			Serve(ctx)
 		close(ch)
 	}()
@@ -317,4 +337,26 @@ func (p *Runner) readData(input string) (data []byte, err error) {
 		data = []byte(input)
 	}
 	return
+}
+
+func makeTransport(s string) (rsocket.Transporter, error) {
+	u, err := url.Parse(s)
+	if err != nil {
+		return nil, err
+	}
+	switch u.Scheme {
+	case "tcp":
+		port, err := strconv.Atoi(u.Port())
+		if err != nil {
+			return nil, err
+		}
+		return rsocket.Tcp().HostAndPort(u.Hostname(), port).Build(), nil
+	case "unix":
+		return rsocket.Unix().Path(u.Hostname()).Build(), nil
+	case "ws", "wss":
+		return rsocket.Websocket().Url(s).Build(), nil
+	default:
+		return nil, fmt.Errorf("invalid transport %s", u.Scheme)
+	}
+
 }
