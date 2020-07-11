@@ -66,7 +66,7 @@ func TestProxy_SubscribeOn(t *testing.T) {
 			sink.Success(payload.NewString("foo", "bar"))
 		})
 	}).
-		SubscribeOn(scheduler.Elastic()).
+		SubscribeOn(scheduler.Parallel()).
 		DoOnSuccess(func(i payload.Payload) {
 			log.Println("success:", i)
 		}).

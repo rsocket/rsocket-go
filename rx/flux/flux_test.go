@@ -271,7 +271,7 @@ func TestFluxProcessorWithRequest(t *testing.T) {
 		DoFinally(func(s rx.SignalType) {
 			close(done)
 		}).
-		SubscribeOn(scheduler.Elastic()).
+		SubscribeOn(scheduler.Parallel()).
 		SubscribeWith(context.Background(), sub)
 	<-done
 }

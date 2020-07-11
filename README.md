@@ -47,7 +47,7 @@ func main() {
 				}),
 			), nil
 		}).
-		Transport("tcp://127.0.0.1:7878").
+		Transport(rsocket.Tcp().Addr(":7878").Build()).
 		Serve(context.Background())
 	panic(err)
 }
@@ -72,7 +72,7 @@ func main() {
 		Resume().
 		Fragment(1024).
 		SetupPayload(payload.NewString("Hello", "World")).
-		Transport("tcp://127.0.0.1:7878").
+		Transport(rsocket.Tcp().HostAndPort("127.0.0.1", 7878).Build()).
 		Start(context.Background())
 	if err != nil {
 		panic(err)
@@ -137,7 +137,7 @@ func main() {
 			// Do something here...
 			fmt.Println("bingo:", input)
 		}).
-		SubscribeOn(scheduler.Elastic()).
+		SubscribeOn(scheduler.Parallel()).
 		Subscribe(context.Background())
 
 	<-done

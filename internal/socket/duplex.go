@@ -328,7 +328,7 @@ func (p *DuplexRSocket) RequestChannel(publisher rx.Publisher) (ret flux.Flux) {
 						panic(fmt.Errorf("unsupported sending channel signal: %s", sig))
 					}
 				}).
-				SubscribeOn(scheduler.Elastic()).
+				SubscribeOn(scheduler.Parallel()).
 				SubscribeWith(context.Background(), sub)
 		})
 	return ret
@@ -382,7 +382,7 @@ func (p *DuplexRSocket) respondRequestResponse(receiving fragmentation.HeaderAnd
 		DoFinally(func(sig rx.SignalType) {
 			p.unregister(sid)
 		}).
-		SubscribeOn(scheduler.Elastic()).
+		SubscribeOn(scheduler.Parallel()).
 		SubscribeWith(context.Background(), sub)
 	return nil
 }
@@ -487,7 +487,7 @@ func (p *DuplexRSocket) respondRequestChannel(pl fragmentation.HeaderAndPayload)
 			default:
 			}
 		}).
-		SubscribeOn(scheduler.Elastic()).
+		SubscribeOn(scheduler.Parallel()).
 		SubscribeWith(context.Background(), sub)
 
 	<-mustSub
@@ -583,7 +583,7 @@ func (p *DuplexRSocket) respondRequestStream(receiving fragmentation.HeaderAndPa
 		DoFinally(func(s rx.SignalType) {
 			p.unregister(sid)
 		}).
-		SubscribeOn(scheduler.Elastic()).
+		SubscribeOn(scheduler.Parallel()).
 		SubscribeWith(context.Background(), sub)
 	return nil
 }

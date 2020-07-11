@@ -79,7 +79,7 @@ func TestRoundRobin(t *testing.T) {
 			DoOnError(func(e error) {
 				assert.Fail(t, "should never run here")
 			}).
-			SubscribeOn(scheduler.Elastic()).
+			SubscribeOn(scheduler.Parallel()).
 			Subscribe(context.Background())
 	}
 	wg.Wait()

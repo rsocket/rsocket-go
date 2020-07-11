@@ -70,7 +70,7 @@ func ExampleReceive() {
 				DoOnSuccess(func(elem payload.Payload) {
 					log.Println("response of Ping from client:", elem)
 				}).
-				SubscribeOn(scheduler.Elastic()).
+				SubscribeOn(scheduler.Parallel()).
 				Subscribe(context.Background())
 			// Return responser which just echo.
 			return rsocket.NewAbstractSocket(

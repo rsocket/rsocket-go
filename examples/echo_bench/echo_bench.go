@@ -57,7 +57,7 @@ func main() {
 	)
 
 	for i := 0; i < n; i++ {
-		client.RequestResponse(payload.New(data, nil)).SubscribeOn(scheduler.Elastic()).SubscribeWith(ctx, sub)
+		client.RequestResponse(payload.New(data, nil)).SubscribeOn(scheduler.Parallel()).SubscribeWith(ctx, sub)
 	}
 	wg.Wait()
 	cost := time.Since(now)

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/jjeffcaii/reactor-go/scheduler"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
@@ -26,6 +27,7 @@ func init() {
 
 func main() {
 	go func() {
+		http.Handle("/metrics", promhttp.Handler())
 		log.Println(http.ListenAndServe(":4444", nil))
 	}()
 	//logger.SetLevel(logger.LevelDebug)
@@ -140,7 +142,7 @@ func responder() rsocket.RSocket {
 			//return payloads.(flux.Flux)
 			payloads.(flux.Flux).
 				//LimitRate(1).
-				SubscribeOn(scheduler.Elastic()).
+				SubscribeOn(scheduler.Parallel()).
 				DoOnNext(func(elem payload.Payload) {
 					log.Println("receiving:", elem)
 				}).
