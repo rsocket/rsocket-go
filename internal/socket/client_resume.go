@@ -79,12 +79,11 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 
 	// connect first time.
 	if len(p.setup.Token) < 1 || connects == 1 {
-		tp.HandleDisaster(func(frame core.Frame) (err error) {
+		tp.RegisterHandler(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
 			p.socket.SetError(frame.(*framing.ErrorFrame))
 			p.markClosing()
 			return
 		})
-
 		f = p.setup.toFrame()
 		err = tp.Send(f, true)
 		p.socket.SetTransport(tp)
@@ -100,12 +99,12 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 
 	resumeErr := make(chan string)
 
-	tp.HandleResumeOK(func(frame core.Frame) (err error) {
+	tp.RegisterHandler(transport.OnResumeOK, func(frame core.Frame) (err error) {
 		close(resumeErr)
 		return
 	})
 
-	tp.HandleDisaster(func(frame core.Frame) (err error) {
+	tp.RegisterHandler(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
 		// TODO: process other error with zero StreamID
 		f := frame.(*framing.ErrorFrame)
 		if f.ErrorCode() == core.ErrorCodeRejectedResume {

@@ -26,7 +26,7 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 
 	if setup.Lease {
 		p.refreshLease(0, 0)
-		tp.HandleLease(func(frame core.Frame) (err error) {
+		tp.RegisterHandler(transport.OnLease, func(frame core.Frame) (err error) {
 			lease := frame.(*framing.LeaseFrame)
 			p.refreshLease(lease.TimeToLive(), int64(lease.NumberOfRequests()))
 			logger.Infof(">>>>> refresh lease: %v\n", lease)
@@ -34,7 +34,7 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 		})
 	}
 
-	tp.HandleDisaster(func(frame core.Frame) (err error) {
+	tp.RegisterHandler(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
 		p.socket.SetError(frame.(*framing.ErrorFrame))
 		return
 	})

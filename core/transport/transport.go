@@ -3,7 +3,6 @@ package transport
 import (
 	"context"
 	"io"
-	"log"
 	"sync"
 	"time"
 
@@ -14,14 +13,13 @@ import (
 	"github.com/rsocket/rsocket-go/logger"
 )
 
-type (
-	// FrameHandler is an alias of frame handler.
-	FrameHandler = func(frame core.Frame) (err error)
-	// ServerTransportAcceptor is an alias of server transport handler.
-	ServerTransportAcceptor = func(ctx context.Context, tp *Transport, onClose func(*Transport))
-)
-
 var errTransportClosed = errors.New("transport closed")
+
+// FrameHandler is an alias of frame handler.
+type FrameHandler = func(frame core.Frame) (err error)
+
+// ServerTransportAcceptor is an alias of server transport handler.
+type ServerTransportAcceptor = func(ctx context.Context, tp *Transport, onClose func(*Transport))
 
 // ServerTransport is server-side RSocket transport.
 type ServerTransport interface {
@@ -34,33 +32,39 @@ type ServerTransport interface {
 	Listen(ctx context.Context, notifier chan<- struct{}) error
 }
 
+type EventType int
+
+const (
+	OnSetup EventType = iota
+	OnResume
+	OnLease
+	OnResumeOK
+	OnFireAndForget
+	OnMetadataPush
+	OnRequestResponse
+	OnRequestStream
+	OnRequestChannel
+	OnPayload
+	OnRequestN
+	OnError
+	OnErrorWithZeroStreamID
+	OnCancel
+	OnKeepalive
+
+	handlerLen = int(OnKeepalive) + 1
+)
+
 // Transport is RSocket transport which is used to carry RSocket frames.
 type Transport struct {
 	conn        core.Conn
 	maxLifetime time.Duration
 	lastRcvPos  uint64
 	once        sync.Once
-
-	hSetup           FrameHandler
-	hResume          FrameHandler
-	hLease           FrameHandler
-	hResumeOK        FrameHandler
-	hFireAndForget   FrameHandler
-	hMetadataPush    FrameHandler
-	hRequestResponse FrameHandler
-	hRequestStream   FrameHandler
-	hRequestChannel  FrameHandler
-	hPayload         FrameHandler
-	hRequestN        FrameHandler
-	hError           FrameHandler
-	hError0          FrameHandler
-	hCancel          FrameHandler
-	hKeepalive       FrameHandler
+	handlers    [handlerLen]FrameHandler
 }
 
-// HandleDisaster registers handler when receiving frame of DISASTER Error with zero StreamID.
-func (p *Transport) HandleDisaster(handler FrameHandler) {
-	p.hError0 = handler
+func (p *Transport) RegisterHandler(event EventType, handler FrameHandler) {
+	p.handlers[int(event)] = handler
 }
 
 // Connection returns current connection.
@@ -141,7 +145,6 @@ L:
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("ctx end")
 			err = ctx.Err()
 			return
 		default:
@@ -165,75 +168,6 @@ L:
 	return
 }
 
-// HandleSetup registers handler when receiving a frame of Setup.
-func (p *Transport) HandleSetup(handler FrameHandler) {
-	p.hSetup = handler
-}
-
-// HandleResume registers handler when receiving a frame of Resume.
-func (p *Transport) HandleResume(handler FrameHandler) {
-	p.hResume = handler
-}
-
-func (p *Transport) HandleLease(handler FrameHandler) {
-	p.hLease = handler
-}
-
-// HandleResumeOK registers handler when receiving a frame of ResumeOK.
-func (p *Transport) HandleResumeOK(handler FrameHandler) {
-	p.hResumeOK = handler
-}
-
-// HandleFNF registers handler when receiving a frame of FireAndForget.
-func (p *Transport) HandleFNF(handler FrameHandler) {
-	p.hFireAndForget = handler
-}
-
-// HandleMetadataPush registers handler when receiving a frame of MetadataPush.
-func (p *Transport) HandleMetadataPush(handler FrameHandler) {
-	p.hMetadataPush = handler
-}
-
-// HandleRequestResponse registers handler when receiving a frame of RequestResponse.
-func (p *Transport) HandleRequestResponse(handler FrameHandler) {
-	p.hRequestResponse = handler
-}
-
-// HandleRequestStream registers handler when receiving a frame of RequestStream.
-func (p *Transport) HandleRequestStream(handler FrameHandler) {
-	p.hRequestStream = handler
-}
-
-// HandleRequestChannel registers handler when receiving a frame of RequestChannel.
-func (p *Transport) HandleRequestChannel(handler FrameHandler) {
-	p.hRequestChannel = handler
-}
-
-// HandlePayload registers handler when receiving a frame of Payload.
-func (p *Transport) HandlePayload(handler FrameHandler) {
-	p.hPayload = handler
-}
-
-// HandleRequestN registers handler when receiving a frame of RequestN.
-func (p *Transport) HandleRequestN(handler FrameHandler) {
-	p.hRequestN = handler
-}
-
-// HandleError registers handler when receiving a frame of Error.
-func (p *Transport) HandleError(handler FrameHandler) {
-	p.hError = handler
-}
-
-// HandleCancel registers handler when receiving a frame of Cancel.
-func (p *Transport) HandleCancel(handler FrameHandler) {
-	p.hCancel = handler
-}
-
-// HandleKeepalive registers handler when receiving a frame of Keepalive.
-func (p *Transport) HandleKeepalive(handler FrameHandler) {
-	p.hKeepalive = handler
-}
-
 // DispatchFrame delivery incoming frames.
 func (p *Transport) DispatchFrame(_ context.Context, frame core.Frame) (err error) {
 	header := frame.Header()
@@ -245,48 +179,48 @@ func (p *Transport) DispatchFrame(_ context.Context, frame core.Frame) (err erro
 	switch t {
 	case core.FrameTypeSetup:
 		p.maxLifetime = frame.(*framing.SetupFrame).MaxLifetime()
-		handler = p.hSetup
+		handler = p.handlers[OnSetup]
 	case core.FrameTypeResume:
-		handler = p.hResume
+		handler = p.handlers[OnResume]
 	case core.FrameTypeResumeOK:
 		p.lastRcvPos = frame.(*framing.ResumeOKFrame).LastReceivedClientPosition()
-		handler = p.hResumeOK
+		handler = p.handlers[OnResumeOK]
 	case core.FrameTypeRequestFNF:
-		handler = p.hFireAndForget
+		handler = p.handlers[OnFireAndForget]
 	case core.FrameTypeMetadataPush:
 		if sid != 0 {
 			// skip invalid metadata push
 			logger.Warnf("rsocket.Transport: omit MetadataPush with non-zero stream id %d\n", sid)
 			return
 		}
-		handler = p.hMetadataPush
+		handler = p.handlers[OnMetadataPush]
 	case core.FrameTypeRequestResponse:
-		handler = p.hRequestResponse
+		handler = p.handlers[OnRequestResponse]
 	case core.FrameTypeRequestStream:
-		handler = p.hRequestStream
+		handler = p.handlers[OnRequestStream]
 	case core.FrameTypeRequestChannel:
-		handler = p.hRequestChannel
+		handler = p.handlers[OnRequestChannel]
 	case core.FrameTypePayload:
-		handler = p.hPayload
+		handler = p.handlers[OnPayload]
 	case core.FrameTypeRequestN:
-		handler = p.hRequestN
+		handler = p.handlers[OnRequestN]
 	case core.FrameTypeError:
 		if sid == 0 {
 			err = errors.New(frame.(*framing.ErrorFrame).Error())
-			if p.hError0 != nil {
-				_ = p.hError0(frame)
+			if call := p.handlers[OnErrorWithZeroStreamID]; call != nil {
+				_ = call(frame)
 			}
 			return
 		}
-		handler = p.hError
+		handler = p.handlers[OnError]
 	case core.FrameTypeCancel:
-		handler = p.hCancel
+		handler = p.handlers[OnCancel]
 	case core.FrameTypeKeepalive:
 		ka := frame.(*framing.KeepaliveFrame)
 		p.lastRcvPos = ka.LastReceivedPosition()
-		handler = p.hKeepalive
+		handler = p.handlers[OnKeepalive]
 	case core.FrameTypeLease:
-		handler = p.hLease
+		handler = p.handlers[OnLease]
 	}
 
 	// Set deadline.

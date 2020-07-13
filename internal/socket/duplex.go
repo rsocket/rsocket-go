@@ -12,7 +12,6 @@ import (
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/core/transport"
-	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
 	"github.com/rsocket/rsocket-go/lease"
 	"github.com/rsocket/rsocket-go/logger"
@@ -44,10 +43,10 @@ type DuplexRSocket struct {
 	outs            chan core.FrameSupport
 	outsPriority    []core.FrameSupport
 	responder       Responder
-	messages        common.U32Map
+	messages        *sync.Map
 	sids            StreamID
 	mtu             int
-	fragments       common.U32Map // key=streamID, value=Joiner
+	fragments       *sync.Map // common.U32Map // key=streamID, value=Joiner
 	closed          *atomic.Bool
 	done            chan struct{}
 	keepaliver      *Keepaliver
@@ -91,7 +90,6 @@ func (p *DuplexRSocket) Close() error {
 	p.cond.Broadcast()
 	p.cond.L.Unlock()
 
-	p.fragments.Clear()
 	<-p.done
 
 	if p.tp != nil {
@@ -101,13 +99,7 @@ func (p *DuplexRSocket) Close() error {
 			_ = p.tp.Close()
 		}
 	}
-
-	p.fragments.Range(func(key uint32, value interface{}) bool {
-		return true
-	})
-	p.fragments.Clear()
-
-	p.messages.Range(func(key uint32, value interface{}) bool {
+	p.messages.Range(func(key, value interface{}) bool {
 		if cc, ok := value.(callback); ok {
 			if p.e == nil {
 				go func() {
@@ -121,7 +113,6 @@ func (p *DuplexRSocket) Close() error {
 		}
 		return true
 	})
-	p.messages.Clear()
 	return p.e
 }
 
@@ -784,18 +775,18 @@ func (p *DuplexRSocket) clearTransport() {
 
 // SetTransport sets a transport for current socket.
 func (p *DuplexRSocket) SetTransport(tp *transport.Transport) {
-	tp.HandleCancel(p.onFrameCancel)
-	tp.HandleError(p.onFrameError)
-	tp.HandleRequestN(p.onFrameRequestN)
-	tp.HandlePayload(p.onFramePayload)
-	tp.HandleKeepalive(p.onFrameKeepalive)
+	tp.RegisterHandler(transport.OnCancel, p.onFrameCancel)
+	tp.RegisterHandler(transport.OnError, p.onFrameError)
+	tp.RegisterHandler(transport.OnRequestN, p.onFrameRequestN)
+	tp.RegisterHandler(transport.OnPayload, p.onFramePayload)
+	tp.RegisterHandler(transport.OnKeepalive, p.onFrameKeepalive)
 
 	if p.responder != nil {
-		tp.HandleRequestResponse(p.onFrameRequestResponse)
-		tp.HandleMetadataPush(p.respondMetadataPush)
-		tp.HandleFNF(p.onFrameFNF)
-		tp.HandleRequestStream(p.onFrameRequestStream)
-		tp.HandleRequestChannel(p.onFrameRequestChannel)
+		tp.RegisterHandler(transport.OnRequestResponse, p.onFrameRequestResponse)
+		tp.RegisterHandler(transport.OnMetadataPush, p.respondMetadataPush)
+		tp.RegisterHandler(transport.OnFireAndForget, p.onFrameFNF)
+		tp.RegisterHandler(transport.OnRequestStream, p.onFrameRequestStream)
+		tp.RegisterHandler(transport.OnRequestChannel, p.onFrameRequestChannel)
 	}
 
 	p.cond.L.Lock()
@@ -1089,9 +1080,9 @@ func NewServerDuplexRSocket(mtu int, leases lease.Leases) *DuplexRSocket {
 		leases:          leases,
 		outs:            make(chan core.FrameSupport, _outChanSize),
 		mtu:             mtu,
-		messages:        common.NewU32Map(),
+		messages:        &sync.Map{},
 		sids:            &serverStreamIDs{},
-		fragments:       common.NewU32MapLite(),
+		fragments:       &sync.Map{},
 		done:            make(chan struct{}),
 		cond:            sync.NewCond(&sync.Mutex{}),
 		counter:         core.NewCounter(),
@@ -1109,9 +1100,9 @@ func NewClientDuplexRSocket(
 		closed:          atomic.NewBool(false),
 		outs:            make(chan core.FrameSupport, _outChanSize),
 		mtu:             mtu,
-		messages:        common.NewU32Map(),
+		messages:        &sync.Map{},
 		sids:            &clientStreamIDs{},
-		fragments:       common.NewU32MapLite(),
+		fragments:       &sync.Map{},
 		done:            make(chan struct{}),
 		cond:            sync.NewCond(&sync.Mutex{}),
 		counter:         core.NewCounter(),
