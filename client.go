@@ -82,7 +82,7 @@ type setupClientSocket interface {
 type clientBuilder struct {
 	resume   *resumeOpts
 	fragment int
-	tpGen    transport.ToClientTransport
+	tpGen    transport.ClientTransportFunc
 	setup    *socket.SetupInfo
 	acceptor ClientSocketAcceptor
 	onCloses []func(error)

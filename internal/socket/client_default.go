@@ -11,7 +11,7 @@ import (
 
 type defaultClientSocket struct {
 	*baseSocket
-	tp transport.ToClientTransport
+	tp transport.ClientTransportFunc
 }
 
 func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err error) {
@@ -55,7 +55,7 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 }
 
 // NewClient create a simple client-side socket.
-func NewClient(tp transport.ToClientTransport, socket *DuplexRSocket) ClientSocket {
+func NewClient(tp transport.ClientTransportFunc, socket *DuplexRSocket) ClientSocket {
 	return &defaultClientSocket{
 		baseSocket: newBaseSocket(socket),
 		tp:         tp,

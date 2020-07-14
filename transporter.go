@@ -13,8 +13,8 @@ import (
 )
 
 type Transporter interface {
-	Client() transport.ToClientTransport
-	Server() transport.ToServerTransport
+	Client() transport.ClientTransportFunc
+	Server() transport.ServerTransportFunc
 }
 
 type tcpTransporter struct {
@@ -26,13 +26,13 @@ type TcpTransporterBuilder struct {
 	opts []func(*tcpTransporter)
 }
 
-func (t *tcpTransporter) Server() transport.ToServerTransport {
+func (t *tcpTransporter) Server() transport.ServerTransportFunc {
 	return func(ctx context.Context) (transport.ServerTransport, error) {
 		return transport.NewTcpServerTransport("tcp", t.addr, t.tls), nil
 	}
 }
 
-func (t *tcpTransporter) Client() transport.ToClientTransport {
+func (t *tcpTransporter) Client() transport.ClientTransportFunc {
 	return func(ctx context.Context) (*transport.Transport, error) {
 		return transport.NewTcpClientTransport("tcp", t.addr, t.tls)
 	}
@@ -108,7 +108,7 @@ func (w *WebsocketTransporterBuilder) Build() Transporter {
 	return ws
 }
 
-func (w *wsTransporter) Server() transport.ToServerTransport {
+func (w *wsTransporter) Server() transport.ServerTransportFunc {
 	return func(ctx context.Context) (transport.ServerTransport, error) {
 		u, err := url.Parse(w.url)
 		if err != nil {
@@ -122,7 +122,7 @@ func (w *wsTransporter) Server() transport.ToServerTransport {
 	}
 }
 
-func (w *wsTransporter) Client() transport.ToClientTransport {
+func (w *wsTransporter) Client() transport.ClientTransportFunc {
 	return func(ctx context.Context) (*transport.Transport, error) {
 		return transport.NewWebsocketClientTransport(w.url, w.tls, w.header)
 	}
@@ -136,7 +136,7 @@ type UnixTransporterBuilder struct {
 	opts []func(*UnixTransporter)
 }
 
-func (u *UnixTransporter) Server() transport.ToServerTransport {
+func (u *UnixTransporter) Server() transport.ServerTransportFunc {
 	return func(ctx context.Context) (transport.ServerTransport, error) {
 		if _, err := os.Stat(u.path); !os.IsNotExist(err) {
 			return nil, err
@@ -145,7 +145,7 @@ func (u *UnixTransporter) Server() transport.ToServerTransport {
 	}
 }
 
-func (u *UnixTransporter) Client() transport.ToClientTransport {
+func (u *UnixTransporter) Client() transport.ClientTransportFunc {
 	return func(ctx context.Context) (*transport.Transport, error) {
 		return transport.NewTcpClientTransport("unix", u.path, nil)
 	}

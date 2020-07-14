@@ -73,7 +73,7 @@ type serverResumeOptions struct {
 }
 
 type server struct {
-	tp         transport.ToServerTransport
+	tp         transport.ServerTransportFunc
 	resumeOpts *serverResumeOptions
 	fragment   int
 	acc        ServerAcceptor

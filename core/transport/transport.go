@@ -13,7 +13,10 @@ import (
 	"github.com/rsocket/rsocket-go/logger"
 )
 
-var errTransportClosed = errors.New("transport closed")
+var (
+	errTransportClosed = errors.New("transport closed")
+	errNoHandler       = errors.New("you must register a handler")
+)
 
 // FrameHandler is an alias of frame handler.
 type FrameHandler = func(frame core.Frame) (err error)
@@ -56,7 +59,7 @@ const (
 
 // Transport is RSocket transport which is used to carry RSocket frames.
 type Transport struct {
-	conn        core.Conn
+	conn        Conn
 	maxLifetime time.Duration
 	lastRcvPos  uint64
 	once        sync.Once
@@ -68,7 +71,7 @@ func (p *Transport) RegisterHandler(event EventType, handler FrameHandler) {
 }
 
 // Connection returns current connection.
-func (p *Transport) Connection() core.Conn {
+func (p *Transport) Connection() Conn {
 	return p.conn
 }
 
@@ -139,33 +142,26 @@ func (p *Transport) ReadFirst(ctx context.Context) (frame core.Frame, err error)
 }
 
 // Start start transport.
-func (p *Transport) Start(ctx context.Context) (err error) {
+func (p *Transport) Start(ctx context.Context) error {
 	defer p.Close()
-L:
 	for {
 		select {
 		case <-ctx.Done():
-			err = ctx.Err()
-			return
+			return ctx.Err()
 		default:
 			f, err := p.conn.Read()
-			if err != nil {
-				break L
+			if err == nil {
+				err = p.DispatchFrame(ctx, f)
 			}
-			err = p.DispatchFrame(ctx, f)
-			if err != nil {
-				break L
+			if err == nil {
+				continue
 			}
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return errors.Wrap(err, "read and delivery frame failed")
 		}
 	}
-	if err == io.EOF {
-		err = nil
-		return
-	}
-	if err != nil {
-		err = errors.Wrap(err, "read and delivery frame failed")
-	}
-	return
 }
 
 // DispatchFrame delivery incoming frames.
@@ -232,7 +228,7 @@ func (p *Transport) DispatchFrame(_ context.Context, frame core.Frame) (err erro
 
 	// missing handler
 	if handler == nil {
-		err = errors.Errorf("missing frame handler: type=%s", t)
+		err = errNoHandler
 		return
 	}
 
@@ -244,9 +240,13 @@ func (p *Transport) DispatchFrame(_ context.Context, frame core.Frame) (err erro
 	return
 }
 
-func NewTransport(c core.Conn) *Transport {
+func NewTransport(c Conn) *Transport {
 	return &Transport{
 		conn:        c,
 		maxLifetime: common.DefaultKeepaliveMaxLifetime,
 	}
+}
+
+func IsNoHandlerError(err error) bool {
+	return err == errNoHandler
 }

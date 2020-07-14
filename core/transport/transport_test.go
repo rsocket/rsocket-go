@@ -1,61 +1,241 @@
 package transport_test
 
 import (
-	"bytes"
+	"context"
+	"io"
+	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/core/transport"
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/atomic"
 )
 
-type mockConn struct {
-	spy map[string]int
-	c   chan core.FrameSupport
+var fakeErr = errors.New("fake error")
+
+func Init(t *testing.T) (*gomock.Controller, *transport.MockConn, *transport.Transport) {
+	ctrl := gomock.NewController(t)
+	conn := transport.NewMockConn(ctrl)
+	tp := transport.NewTransport(conn)
+	return ctrl, conn, tp
 }
 
-func (m *mockConn) call(fn string) {
-	m.spy[fn] = m.spy[fn] + 1
+func TestTransport_Start(t *testing.T) {
+	ctrl, conn, tp := Init(t)
+	defer ctrl.Finish()
+
+	conn.EXPECT().Close().Return(nil).Times(1)
+
+	conn.EXPECT().Read().Return(nil, fakeErr).Times(1)
+	err := tp.Start(context.Background())
+	assert.Error(t, err, "should be an error")
+	assert.True(t, errors.Cause(err) == fakeErr, "should be the fake error")
+
+	conn.EXPECT().Read().Return(nil, io.EOF).Times(1)
+	err = tp.Start(context.Background())
+	assert.NoError(t, err, "there should be no error here if io.EOF occurred")
 }
 
-func (m *mockConn) Close() error {
-	m.call("Close")
-	return nil
-}
+func TestTransport_RegisterHandler(t *testing.T) {
+	ctrl, conn, tp := Init(t)
+	defer ctrl.Finish()
 
-func (m *mockConn) SetDeadline(deadline time.Time) error {
-	m.call("SetDeadline")
-	return nil
-}
+	conn.EXPECT().Close().AnyTimes()
+	conn.EXPECT().SetDeadline(gomock.Any()).AnyTimes()
 
-func (m *mockConn) SetCounter(c *core.Counter) {
-	m.call("SetCounter")
-}
-
-func (m *mockConn) Read() (next core.Frame, err error) {
-	f := <-m.c
-	bf := &bytes.Buffer{}
-	_, err = f.WriteTo(bf)
-	if err != nil {
-		return
+	var cursor int
+	fakeToken := []byte("fake-token")
+	fakeDada := []byte("fake-data")
+	fakeMetadata := []byte("fake-metadata")
+	fakeMimeType := []byte("fake-mime-type")
+	fakeFlag := core.FrameFlag(0)
+	frames := []core.Frame{
+		framing.NewSetupFrame(
+			core.NewVersion(1, 0),
+			30*time.Second,
+			90*time.Second,
+			nil,
+			fakeMimeType,
+			fakeMimeType,
+			fakeDada,
+			fakeMetadata,
+			false),
+		framing.NewMetadataPushFrame(fakeDada),
+		framing.NewFireAndForgetFrame(1, fakeDada, fakeMetadata, fakeFlag),
+		framing.NewRequestResponseFrame(1, fakeDada, fakeMetadata, fakeFlag),
+		framing.NewRequestStreamFrame(1, 1, fakeDada, fakeMetadata, fakeFlag),
+		framing.NewRequestChannelFrame(1, 1, fakeDada, fakeMetadata, fakeFlag),
+		framing.NewRequestNFrame(1, 1, fakeFlag),
+		framing.NewKeepaliveFrame(1, fakeDada, true),
+		framing.NewCancelFrame(1),
+		framing.NewErrorFrame(1, core.ErrorCodeApplicationError, fakeDada),
+		framing.NewLeaseFrame(30*time.Second, 1, fakeMetadata),
+		framing.NewPayloadFrame(1, fakeDada, fakeMetadata, fakeFlag),
+		framing.NewResumeFrame(core.DefaultVersion, fakeToken, 1, 1),
+		framing.NewResumeOKFrame(1),
+		framing.NewErrorFrame(0, core.ErrorCodeRejected, fakeDada),
 	}
-	bs := bf.Bytes()
-	header := core.ParseFrameHeader(bs)
-	bb := common.NewByteBuff()
-	_, err = bb.Write(bs[core.FrameHeaderLen:])
-	if err != nil {
-		return
+	conn.EXPECT().
+		Read().
+		DoAndReturn(func() (core.Frame, error) {
+			defer func() {
+				cursor++
+			}()
+			if cursor >= len(frames) {
+				return nil, io.EOF
+			}
+			return frames[cursor], nil
+		}).
+		AnyTimes()
+
+	calls := make(map[core.FrameType]int)
+	fakeHandler := func(frame core.Frame) (err error) {
+		typ := frame.Header().Type()
+		calls[typ] = calls[typ] + 1
+		return nil
 	}
-	next, err = framing.FromRawFrame(framing.NewRawFrame(header, bb))
-	return
+
+	callsErrorWithZeroStreamID := atomic.NewInt32(0)
+
+	tp.RegisterHandler(transport.OnSetup, fakeHandler)
+	tp.RegisterHandler(transport.OnRequestResponse, fakeHandler)
+	tp.RegisterHandler(transport.OnFireAndForget, fakeHandler)
+	tp.RegisterHandler(transport.OnMetadataPush, fakeHandler)
+	tp.RegisterHandler(transport.OnRequestStream, fakeHandler)
+	tp.RegisterHandler(transport.OnRequestChannel, fakeHandler)
+	tp.RegisterHandler(transport.OnKeepalive, fakeHandler)
+	tp.RegisterHandler(transport.OnRequestN, fakeHandler)
+	tp.RegisterHandler(transport.OnPayload, fakeHandler)
+	tp.RegisterHandler(transport.OnError, fakeHandler)
+	tp.RegisterHandler(transport.OnCancel, fakeHandler)
+	tp.RegisterHandler(transport.OnResumeOK, fakeHandler)
+	tp.RegisterHandler(transport.OnResume, fakeHandler)
+	tp.RegisterHandler(transport.OnLease, fakeHandler)
+	tp.RegisterHandler(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
+		callsErrorWithZeroStreamID.Inc()
+		return
+	})
+
+	toHaveBeenCalled := func(typ core.FrameType, n int) {
+		called, ok := calls[typ]
+		assert.True(t, ok, "%s have not been called", typ)
+		assert.Equal(t, n, called, "%s have not been called %d times", n)
+	}
+
+	err := tp.Start(context.Background())
+	assert.Error(t, err, "should be no error")
+
+	for _, typ := range []core.FrameType{
+		core.FrameTypeSetup,
+		core.FrameTypeRequestResponse,
+		core.FrameTypeRequestFNF,
+		core.FrameTypeMetadataPush,
+		core.FrameTypeRequestStream,
+		core.FrameTypeRequestChannel,
+		core.FrameTypeKeepalive,
+		core.FrameTypeRequestN,
+		core.FrameTypePayload,
+		core.FrameTypeError,
+		core.FrameTypeCancel,
+		core.FrameTypeResume,
+		core.FrameTypeResumeOK,
+		core.FrameTypeLease,
+	} {
+		toHaveBeenCalled(typ, 1)
+	}
+	assert.Equal(t, int32(1), callsErrorWithZeroStreamID.Load(), "error frame with zero stream id has not been called")
 }
 
-func (m *mockConn) Write(support core.FrameSupport) (err error) {
-	m.c <- support
-	return
+func TestTransport_ReadFirst(t *testing.T) {
+	ctrl, conn, tp := Init(t)
+	defer ctrl.Finish()
+
+	conn.EXPECT().Close().AnyTimes()
+
+	conn.EXPECT().Read().Return(nil, fakeErr).Times(1)
+	_, err := tp.ReadFirst(context.Background())
+	assert.Error(t, err, "should be error")
+
+	expect := framing.NewCancelFrame(1)
+	conn.EXPECT().Read().Return(expect, nil).Times(1)
+	actual, err := tp.ReadFirst(context.Background())
+	assert.NoError(t, err, "should not be error")
+	assert.Equal(t, expect, actual, "not match")
 }
 
-func (m *mockConn) Flush() (err error) {
-	m.call("Flush")
-	return
+func TestTransport_Send(t *testing.T) {
+	ctrl, conn, tp := Init(t)
+	defer ctrl.Finish()
+
+	conn.EXPECT().Write(gomock.Any()).Times(2)
+	conn.EXPECT().Flush().Times(1)
+
+	var err error
+
+	err = tp.Send(framing.NewCancelFrame(1), false)
+	assert.NoError(t, err, "send failed")
+
+	err = tp.Send(framing.NewCancelFrame(1), true)
+	assert.NoError(t, err, "send failed")
+}
+
+func TestTransport_Connection(t *testing.T) {
+	ctrl, conn, tp := Init(t)
+	defer ctrl.Finish()
+
+	c := tp.Connection()
+	assert.Equal(t, conn, c)
+}
+
+func TestTransport_Flush(t *testing.T) {
+	ctrl, conn, tp := Init(t)
+	defer ctrl.Finish()
+
+	conn.EXPECT().Flush().Times(1)
+	conn.EXPECT().SetCounter(gomock.Any()).Times(1)
+
+	err := tp.Flush()
+	assert.NoError(t, err, "flush failed")
+	conn.SetCounter(core.NewCounter())
+}
+
+func TestTransport_Close(t *testing.T) {
+	ctrl, conn, tp := Init(t)
+	defer ctrl.Finish()
+
+	conn.EXPECT().Close().Times(1)
+
+	err := tp.Close()
+	assert.NoError(t, err, "close transport failed")
+}
+
+func TestTransport_HandlerReturnsError(t *testing.T) {
+	ctrl, conn, tp := Init(t)
+	defer ctrl.Finish()
+
+	conn.EXPECT().SetDeadline(gomock.Any()).AnyTimes()
+	conn.EXPECT().Close().Times(1)
+	conn.EXPECT().Read().Return(framing.NewCancelFrame(1), nil).Times(1)
+
+	tp.RegisterHandler(transport.OnCancel, func(_ core.Frame) error {
+		return fakeErr
+	})
+	err := tp.Start(context.Background())
+	assert.Equal(t, fakeErr, errors.Cause(err), "should caused by fakeError")
+}
+
+func TestTransport_EmptyHandler(t *testing.T) {
+	ctrl, conn, tp := Init(t)
+	defer ctrl.Finish()
+
+	conn.EXPECT().SetDeadline(gomock.Any()).AnyTimes()
+	conn.EXPECT().Close().Times(1)
+	conn.EXPECT().Read().Return(framing.NewCancelFrame(1), nil).Times(1)
+
+	err := tp.Start(context.Background())
+	assert.True(t, transport.IsNoHandlerError(errors.Cause(err)), "should be no handler error")
 }

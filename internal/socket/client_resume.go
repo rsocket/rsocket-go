@@ -19,7 +19,7 @@ type resumeClientSocket struct {
 	*baseSocket
 	connects *atomic.Int32
 	setup    *SetupInfo
-	tp       transport.ToClientTransport
+	tp       transport.ClientTransportFunc
 }
 
 func (p *resumeClientSocket) Setup(ctx context.Context, setup *SetupInfo) error {
@@ -145,7 +145,7 @@ func (p *resumeClientSocket) isClosed() bool {
 }
 
 // NewClientResume creates a client-side socket with resume support.
-func NewClientResume(tp transport.ToClientTransport, socket *DuplexRSocket) ClientSocket {
+func NewClientResume(tp transport.ClientTransportFunc, socket *DuplexRSocket) ClientSocket {
 	return &resumeClientSocket{
 		baseSocket: newBaseSocket(socket),
 		connects:   atomic.NewInt32(0),

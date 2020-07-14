@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"context"
 	"net/http"
 	"strings"
 )
@@ -19,5 +18,3 @@ func isClosedErr(err error) bool {
 	return false
 }
 
-type ToClientTransport = func(context.Context) (*Transport, error)
-type ToServerTransport = func(context.Context) (ServerTransport, error)

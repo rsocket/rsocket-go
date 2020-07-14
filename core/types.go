@@ -3,7 +3,6 @@ package core
 import (
 	"io"
 	"strings"
-	"time"
 )
 
 // FrameType is type of frame.
@@ -126,20 +125,4 @@ type Frame interface {
 	FrameSupport
 	// Validate returns error if frame is invalid.
 	Validate() error
-}
-
-// Conn is connection for RSocket.
-type Conn interface {
-	io.Closer
-	// SetDeadline set deadline for current connection.
-	// After this deadline, connection will be closed.
-	SetDeadline(deadline time.Time) error
-	// SetCounter bind a counter which can count r/w bytes.
-	SetCounter(c *Counter)
-	// Read reads next frame from Conn.
-	Read() (Frame, error)
-	// Write writes a frame to Conn.
-	Write(FrameSupport) error
-	// Flush.
-	Flush() error
 }
