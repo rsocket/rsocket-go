@@ -18,13 +18,13 @@ type KeepaliveFrame struct {
 	*RawFrame
 }
 
-type KeepaliveFrameSupport struct {
+type WriteableKeepaliveFrame struct {
 	*tinyFrame
 	pos  [8]byte
 	data []byte
 }
 
-func (k KeepaliveFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+func (k WriteableKeepaliveFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = k.header.WriteTo(w)
 	if err != nil {
@@ -48,7 +48,7 @@ func (k KeepaliveFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (k KeepaliveFrameSupport) Len() int {
+func (k WriteableKeepaliveFrame) Len() int {
 	return core.FrameHeaderLen + 8 + len(k.data)
 }
 
@@ -70,7 +70,7 @@ func (k *KeepaliveFrame) Data() []byte {
 	return k.body.Bytes()[lastRecvPosLen:]
 }
 
-func NewKeepaliveFrameSupport(position uint64, data []byte, respond bool) *KeepaliveFrameSupport {
+func NewWriteableKeepaliveFrame(position uint64, data []byte, respond bool) *WriteableKeepaliveFrame {
 	var flag core.FrameFlag
 	if respond {
 		flag |= core.FlagRespond
@@ -82,7 +82,7 @@ func NewKeepaliveFrameSupport(position uint64, data []byte, respond bool) *Keepa
 	h := core.NewFrameHeader(0, core.FrameTypeKeepalive, flag)
 	t := newTinyFrame(h)
 
-	return &KeepaliveFrameSupport{
+	return &WriteableKeepaliveFrame{
 		tinyFrame: t,
 		pos:       b,
 		data:      data,

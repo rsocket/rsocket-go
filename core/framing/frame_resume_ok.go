@@ -13,7 +13,7 @@ type ResumeOKFrame struct {
 	*RawFrame
 }
 
-type ResumeOKFrameSupport struct {
+type WriteableResumeOKFrame struct {
 	*tinyFrame
 	pos [8]byte
 }
@@ -33,7 +33,7 @@ func (r *ResumeOKFrame) LastReceivedClientPosition() uint64 {
 	return binary.BigEndian.Uint64(raw)
 }
 
-func (r ResumeOKFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+func (r WriteableResumeOKFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = r.header.WriteTo(w)
 	if err != nil {
@@ -49,16 +49,16 @@ func (r ResumeOKFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (r ResumeOKFrameSupport) Len() int {
+func (r WriteableResumeOKFrame) Len() int {
 	return core.FrameHeaderLen + 8
 }
 
-func NewResumeOKFrameSupport(position uint64) *ResumeOKFrameSupport {
+func NewWriteableResumeOKFrame(position uint64) *WriteableResumeOKFrame {
 	h := core.NewFrameHeader(0, core.FrameTypeResumeOK, 0)
 	t := newTinyFrame(h)
 	var b [8]byte
 	binary.BigEndian.PutUint64(b[:], position)
-	return &ResumeOKFrameSupport{
+	return &WriteableResumeOKFrame{
 		tinyFrame: t,
 		pos:       b,
 	}

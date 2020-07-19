@@ -10,7 +10,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
-	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/logger"
 )
 
@@ -18,21 +17,31 @@ var _buffPool = sync.Pool{
 	New: func() interface{} { return &bytes.Buffer{} },
 }
 
-type wsConn struct {
-	c       *websocket.Conn
+type RawWsConn interface {
+	io.Closer
+	SetReadDeadline(time.Time) error
+	ReadMessage() (messageType int, p []byte, err error)
+	WriteMessage(messageType int, data []byte) error
+}
+
+type WsConn struct {
+	c       RawWsConn
 	counter *core.Counter
 }
 
-func (p *wsConn) SetCounter(c *core.Counter) {
+func (p *WsConn) SetCounter(c *core.Counter) {
 	p.counter = c
 }
 
-func (p *wsConn) SetDeadline(deadline time.Time) error {
+func (p *WsConn) SetDeadline(deadline time.Time) error {
 	return p.c.SetReadDeadline(deadline)
 }
 
-func (p *wsConn) Read() (f core.Frame, err error) {
+func (p *WsConn) Read() (f core.Frame, err error) {
 	t, raw, err := p.c.ReadMessage()
+	if err == io.EOF {
+		return
+	}
 	if err != nil {
 		err = errors.Wrap(err, "read frame failed")
 		return
@@ -41,24 +50,17 @@ func (p *wsConn) Read() (f core.Frame, err error) {
 		logger.Warnf("omit non-binary message %d\n", t)
 		return p.Read()
 	}
-	// validate min length
-	if len(raw) < core.FrameHeaderLen {
-		err = errors.Wrap(ErrIncompleteHeader, "read frame failed")
-		return
-	}
-	header := core.ParseFrameHeader(raw)
-	bf := common.NewByteBuff()
-	_, err = bf.Write(raw[core.FrameHeaderLen:])
+
+	f, err = framing.FromBytes(raw)
 	if err != nil {
 		err = errors.Wrap(err, "read frame failed")
 		return
 	}
-	base := framing.NewRawFrame(header, bf)
-	f, err = framing.FromRawFrame(base)
-	if err != nil {
-		err = errors.Wrap(err, "read frame failed")
-		return
+
+	if p.counter != nil && f.Header().Resumable() {
+		p.counter.IncReadBytes(f.Len())
 	}
+
 	err = f.Validate()
 	if err != nil {
 		err = errors.Wrap(err, "read frame failed")
@@ -70,11 +72,12 @@ func (p *wsConn) Read() (f core.Frame, err error) {
 	return
 }
 
-func (p *wsConn) Flush() (err error) {
+func (p *WsConn) Flush() (err error) {
 	return
 }
 
-func (p *wsConn) Write(frame core.FrameSupport) (err error) {
+func (p *WsConn) Write(frame core.WriteableFrame) (err error) {
+	size := frame.Len()
 	bf := _buffPool.Get().(*bytes.Buffer)
 	defer func() {
 		bf.Reset()
@@ -92,18 +95,21 @@ func (p *wsConn) Write(frame core.FrameSupport) (err error) {
 		err = errors.Wrap(err, "write frame failed")
 		return
 	}
+	if p.counter != nil && frame.Header().Resumable() {
+		p.counter.IncWriteBytes(size)
+	}
 	if logger.IsDebugEnabled() {
 		logger.Debugf("---> snd: %s\n", frame)
 	}
 	return
 }
 
-func (p *wsConn) Close() error {
+func (p *WsConn) Close() error {
 	return p.c.Close()
 }
 
-func newWebsocketConnection(rawConn *websocket.Conn) *wsConn {
-	return &wsConn{
+func NewWebsocketConnection(rawConn RawWsConn) *WsConn {
+	return &WsConn{
 		c: rawConn,
 	}
 }

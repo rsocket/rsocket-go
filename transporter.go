@@ -28,13 +28,13 @@ type TcpTransporterBuilder struct {
 
 func (t *tcpTransporter) Server() transport.ServerTransportFunc {
 	return func(ctx context.Context) (transport.ServerTransport, error) {
-		return transport.NewTcpServerTransport("tcp", t.addr, t.tls), nil
+		return transport.NewTcpServerTransportWithAddr("tcp", t.addr, t.tls), nil
 	}
 }
 
 func (t *tcpTransporter) Client() transport.ClientTransportFunc {
 	return func(ctx context.Context) (*transport.Transport, error) {
-		return transport.NewTcpClientTransport("tcp", t.addr, t.tls)
+		return transport.NewTcpClientTransportWithAddr("tcp", t.addr, t.tls)
 	}
 }
 
@@ -141,13 +141,13 @@ func (u *UnixTransporter) Server() transport.ServerTransportFunc {
 		if _, err := os.Stat(u.path); !os.IsNotExist(err) {
 			return nil, err
 		}
-		return transport.NewTcpServerTransport("unix", u.path, nil), nil
+		return transport.NewTcpServerTransportWithAddr("unix", u.path, nil), nil
 	}
 }
 
 func (u *UnixTransporter) Client() transport.ClientTransportFunc {
 	return func(ctx context.Context) (*transport.Transport, error) {
-		return transport.NewTcpClientTransport("unix", u.path, nil)
+		return transport.NewTcpClientTransportWithAddr("unix", u.path, nil)
 	}
 }
 

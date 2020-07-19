@@ -13,22 +13,22 @@ import (
 	"github.com/rsocket/rsocket-go/logger"
 )
 
-type tcpConn struct {
-	rawConn net.Conn
+type TcpConn struct {
+	conn    net.Conn
 	writer  *bufio.Writer
 	decoder *LengthBasedFrameDecoder
 	counter *core.Counter
 }
 
-func (p *tcpConn) SetCounter(c *core.Counter) {
+func (p *TcpConn) SetCounter(c *core.Counter) {
 	p.counter = c
 }
 
-func (p *tcpConn) SetDeadline(deadline time.Time) error {
-	return p.rawConn.SetReadDeadline(deadline)
+func (p *TcpConn) SetDeadline(deadline time.Time) error {
+	return p.conn.SetReadDeadline(deadline)
 }
 
-func (p *tcpConn) Read() (f core.Frame, err error) {
+func (p *TcpConn) Read() (f core.Frame, err error) {
 	raw, err := p.decoder.Read()
 	if err == io.EOF {
 		return
@@ -37,21 +37,13 @@ func (p *tcpConn) Read() (f core.Frame, err error) {
 		err = errors.Wrap(err, "read frame failed")
 		return
 	}
-	h := core.ParseFrameHeader(raw)
-	bf := common.NewByteBuff()
-	_, err = bf.Write(raw[core.FrameHeaderLen:])
+	f, err = framing.FromBytes(raw)
 	if err != nil {
 		err = errors.Wrap(err, "read frame failed")
 		return
 	}
-	base := framing.NewRawFrame(h, bf)
-	if p.counter != nil && base.Header().Resumable() {
-		p.counter.IncReadBytes(base.Len())
-	}
-	f, err = framing.FromRawFrame(base)
-	if err != nil {
-		err = errors.Wrap(err, "read frame failed")
-		return
+	if p.counter != nil && f.Header().Resumable() {
+		p.counter.IncReadBytes(f.Len())
 	}
 	err = f.Validate()
 	if err != nil {
@@ -64,7 +56,7 @@ func (p *tcpConn) Read() (f core.Frame, err error) {
 	return
 }
 
-func (p *tcpConn) Flush() (err error) {
+func (p *TcpConn) Flush() (err error) {
 	err = p.writer.Flush()
 	if err != nil {
 		err = errors.Wrap(err, "flush failed")
@@ -72,7 +64,7 @@ func (p *tcpConn) Flush() (err error) {
 	return
 }
 
-func (p *tcpConn) Write(frame core.FrameSupport) (err error) {
+func (p *TcpConn) Write(frame core.WriteableFrame) (err error) {
 	size := frame.Len()
 	if p.counter != nil && frame.Header().Resumable() {
 		p.counter.IncWriteBytes(size)
@@ -97,14 +89,14 @@ func (p *tcpConn) Write(frame core.FrameSupport) (err error) {
 	return
 }
 
-func (p *tcpConn) Close() error {
-	return p.rawConn.Close()
+func (p *TcpConn) Close() error {
+	return p.conn.Close()
 }
 
-func newTCPRConnection(rawConn net.Conn) *tcpConn {
-	return &tcpConn{
-		rawConn: rawConn,
-		writer:  bufio.NewWriter(rawConn),
-		decoder: NewLengthBasedFrameDecoder(rawConn),
+func NewTcpConn(conn net.Conn) *TcpConn {
+	return &TcpConn{
+		conn:    conn,
+		writer:  bufio.NewWriter(conn),
+		decoder: NewLengthBasedFrameDecoder(conn),
 	}
 }

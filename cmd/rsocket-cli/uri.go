@@ -37,7 +37,7 @@ func (p *URI) IsWebsocket() bool {
 func (p *URI) MakeClientTransport(tc *tls.Config, headers map[string][]string) (*transport.Transport, error) {
 	switch strings.ToLower(p.Scheme) {
 	case schemaTCP:
-		return transport.NewTcpClientTransport(schemaTCP, p.Host, tc)
+		return transport.NewTcpClientTransportWithAddr(schemaTCP, p.Host, tc)
 	case schemaWebsocket:
 		if tc == nil {
 			return transport.NewWebsocketClientTransport(p.pp().String(), nil, headers)
@@ -51,7 +51,7 @@ func (p *URI) MakeClientTransport(tc *tls.Config, headers map[string][]string) (
 		}
 		return transport.NewWebsocketClientTransport(p.pp().String(), tc, headers)
 	case schemaUNIX:
-		return transport.NewTcpClientTransport(schemaUNIX, p.Path, tc)
+		return transport.NewTcpClientTransportWithAddr(schemaUNIX, p.Path, tc)
 	default:
 		return nil, errors.Errorf("unsupported transport url: %s", p.pp().String())
 	}
@@ -61,7 +61,7 @@ func (p *URI) MakeClientTransport(tc *tls.Config, headers map[string][]string) (
 func (p *URI) MakeServerTransport(c *tls.Config) (tp transport.ServerTransport, err error) {
 	switch strings.ToLower(p.Scheme) {
 	case schemaTCP:
-		tp = transport.NewTcpServerTransport(schemaTCP, p.Host, c)
+		tp = transport.NewTcpServerTransportWithAddr(schemaTCP, p.Host, c)
 	case schemaWebsocket:
 		tp = transport.NewWebsocketServerTransport(p.Host, p.Path, c)
 	case schemaWebsocketSecure:
@@ -71,7 +71,7 @@ func (p *URI) MakeServerTransport(c *tls.Config) (tp transport.ServerTransport, 
 		}
 		tp = transport.NewWebsocketServerTransport(p.Host, p.Path, c)
 	case schemaUNIX:
-		tp = transport.NewTcpServerTransport(schemaUNIX, p.Path, c)
+		tp = transport.NewTcpServerTransportWithAddr(schemaUNIX, p.Path, c)
 	default:
 		err = errors.Errorf("unsupported transport url: %s", p.pp().String())
 	}

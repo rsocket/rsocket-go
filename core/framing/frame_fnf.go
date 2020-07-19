@@ -12,13 +12,13 @@ type FireAndForgetFrame struct {
 	*RawFrame
 }
 
-type FireAndForgetFrameSupport struct {
+type WriteableFireAndForgetFrame struct {
 	*tinyFrame
 	metadata []byte
 	data     []byte
 }
 
-func (f FireAndForgetFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+func (f WriteableFireAndForgetFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = f.header.WriteTo(w)
 	if err != nil {
@@ -34,7 +34,7 @@ func (f FireAndForgetFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (f FireAndForgetFrameSupport) Len() int {
+func (f WriteableFireAndForgetFrame) Len() int {
 	return CalcPayloadFrameSize(f.data, f.metadata)
 }
 
@@ -70,13 +70,13 @@ func (f *FireAndForgetFrame) DataUTF8() string {
 	return string(f.Data())
 }
 
-func NewFireAndForgetFrameSupport(sid uint32, data, metadata []byte, flag core.FrameFlag) *FireAndForgetFrameSupport {
+func NewWriteableFireAndForgetFrame(sid uint32, data, metadata []byte, flag core.FrameFlag) *WriteableFireAndForgetFrame {
 	if len(metadata) > 0 {
 		flag |= core.FlagMetadata
 	}
 	h := core.NewFrameHeader(sid, core.FrameTypeRequestFNF, flag)
 	t := newTinyFrame(h)
-	return &FireAndForgetFrameSupport{
+	return &WriteableFireAndForgetFrame{
 		tinyFrame: t,
 		metadata:  metadata,
 		data:      data,

@@ -84,7 +84,7 @@ func (p *Transport) SetLifetime(lifetime time.Duration) {
 }
 
 // Send send a frame.
-func (p *Transport) Send(frame core.FrameSupport, flush bool) (err error) {
+func (p *Transport) Send(frame core.WriteableFrame, flush bool) (err error) {
 	defer func() {
 		// ensure frame done when send success.
 		if err == nil {

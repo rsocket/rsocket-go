@@ -15,11 +15,9 @@ import (
 	"go.uber.org/atomic"
 )
 
-var fakeErr = errors.New("fake error")
-
-func Init(t *testing.T) (*gomock.Controller, *transport.MockConn, *transport.Transport) {
+func Init(t *testing.T) (*gomock.Controller, *MockConn, *transport.Transport) {
 	ctrl := gomock.NewController(t)
-	conn := transport.NewMockConn(ctrl)
+	conn := NewMockConn(ctrl)
 	tp := transport.NewTransport(conn)
 	return ctrl, conn, tp
 }

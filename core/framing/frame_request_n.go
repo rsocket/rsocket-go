@@ -13,7 +13,7 @@ type RequestNFrame struct {
 	*RawFrame
 }
 
-type RequestNFrameSupport struct {
+type WriteableRequestNFrame struct {
 	*tinyFrame
 	n [4]byte
 }
@@ -31,7 +31,7 @@ func (r *RequestNFrame) N() uint32 {
 	return binary.BigEndian.Uint32(r.body.Bytes())
 }
 
-func (r RequestNFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+func (r WriteableRequestNFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = r.header.WriteTo(w)
 	if err != nil {
@@ -45,14 +45,14 @@ func (r RequestNFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (r RequestNFrameSupport) Len() int {
+func (r WriteableRequestNFrame) Len() int {
 	return core.FrameHeaderLen + 4
 }
 
-func NewRequestNFrameSupport(id uint32, n uint32, fg core.FrameFlag) *RequestNFrameSupport {
+func NewWriteableRequestNFrame(id uint32, n uint32, fg core.FrameFlag) *WriteableRequestNFrame {
 	var b4 [4]byte
 	binary.BigEndian.PutUint32(b4[:], n)
-	return &RequestNFrameSupport{
+	return &WriteableRequestNFrame{
 		tinyFrame: newTinyFrame(core.NewFrameHeader(id, core.FrameTypeRequestN, fg)),
 		n:         b4,
 	}

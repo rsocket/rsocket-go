@@ -70,7 +70,7 @@ func (p *wsServerTransport) Listen(ctx context.Context, notifier chan<- struct{}
 			return
 		}
 
-		tp := NewTransport(newWebsocketConnection(c))
+		tp := NewTransport(NewWebsocketConnection(c))
 		p.transports.Store(tp, struct{}{})
 		go p.acceptor(ctx, tp, func(tp *Transport) {
 			p.transports.Delete(tp)
@@ -139,5 +139,5 @@ func NewWebsocketClientTransport(url string, tc *tls.Config, header http.Header)
 	if err != nil {
 		return nil, errors.Wrap(err, "dial websocket failed")
 	}
-	return NewTransport(newWebsocketConnection(wsConn)), nil
+	return NewTransport(NewWebsocketConnection(wsConn)), nil
 }

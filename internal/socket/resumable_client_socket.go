@@ -16,7 +16,7 @@ import (
 const reconnectDelay = 1 * time.Second
 
 type resumeClientSocket struct {
-	*baseSocket
+	*BaseSocket
 	connects *atomic.Int32
 	setup    *SetupInfo
 	tp       transport.ClientTransportFunc
@@ -25,7 +25,7 @@ type resumeClientSocket struct {
 func (p *resumeClientSocket) Setup(ctx context.Context, setup *SetupInfo) error {
 	p.setup = setup
 	go func(ctx context.Context) {
-		_ = p.socket.loopWrite(ctx)
+		_ = p.socket.LoopWrite(ctx)
 	}(ctx)
 	return p.connect(ctx)
 }
@@ -75,7 +75,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		}
 	}(ctx, tp)
 
-	var f core.FrameSupport
+	var f core.WriteableFrame
 
 	// connect first time.
 	if len(p.setup.Token) < 1 || connects == 1 {
@@ -90,7 +90,7 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		return
 	}
 
-	f = framing.NewResumeFrameSupport(
+	f = framing.NewWriteableResumeFrame(
 		core.DefaultVersion,
 		p.setup.Token,
 		p.socket.counter.WriteBytes(),
@@ -145,9 +145,9 @@ func (p *resumeClientSocket) isClosed() bool {
 }
 
 // NewClientResume creates a client-side socket with resume support.
-func NewClientResume(tp transport.ClientTransportFunc, socket *DuplexRSocket) ClientSocket {
+func NewClientResume(tp transport.ClientTransportFunc, socket *DuplexConnection) ClientSocket {
 	return &resumeClientSocket{
-		baseSocket: newBaseSocket(socket),
+		BaseSocket: NewBaseSocket(socket),
 		connects:   atomic.NewInt32(0),
 		tp:         tp,
 	}

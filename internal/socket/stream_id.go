@@ -9,8 +9,10 @@ const (
 	_halfSeed     uint64 = 0x40000000
 )
 
+// StreamID can be used to generate stream ids.
 type StreamID interface {
-	Next() (id uint32, lap1st bool)
+	// Next returns next stream id.
+	Next() (id uint32, firstLoop bool)
 }
 
 type serverStreamIDs struct {

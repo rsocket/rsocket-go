@@ -37,7 +37,7 @@ type ClientSocket interface {
 	Closeable
 	Responder
 	// Setup setups current socket.
-	Setup(ctx context.Context, setup *SetupInfo) (err error)
+	Setup(ctx context.Context, setup *SetupInfo) error
 }
 
 // ServerSocket represents a server-side socket.

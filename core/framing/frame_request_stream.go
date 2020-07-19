@@ -17,7 +17,7 @@ type RequestStreamFrame struct {
 	*RawFrame
 }
 
-type RequestStreamFrameSupport struct {
+type WriteableRequestStreamFrame struct {
 	*tinyFrame
 	n        [4]byte
 	metadata []byte
@@ -65,7 +65,7 @@ func (r *RequestStreamFrame) DataUTF8() string {
 	return string(r.Data())
 }
 
-func (r RequestStreamFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+func (r WriteableRequestStreamFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = r.header.WriteTo(w)
 	if err != nil {
@@ -88,11 +88,11 @@ func (r RequestStreamFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (r RequestStreamFrameSupport) Len() int {
+func (r WriteableRequestStreamFrame) Len() int {
 	return 4 + CalcPayloadFrameSize(r.data, r.metadata)
 }
 
-func NewRequestStreamFrameSupport(id uint32, n uint32, data, metadata []byte, flag core.FrameFlag) core.FrameSupport {
+func NewWriteableRequestStreamFrame(id uint32, n uint32, data, metadata []byte, flag core.FrameFlag) core.WriteableFrame {
 	if len(metadata) > 0 {
 		flag |= core.FlagMetadata
 	}
@@ -100,7 +100,7 @@ func NewRequestStreamFrameSupport(id uint32, n uint32, data, metadata []byte, fl
 	binary.BigEndian.PutUint32(b[:], n)
 	h := core.NewFrameHeader(id, core.FrameTypeRequestStream, flag)
 	t := newTinyFrame(h)
-	return &RequestStreamFrameSupport{
+	return &WriteableRequestStreamFrame{
 		tinyFrame: t,
 		n:         b,
 		metadata:  metadata,

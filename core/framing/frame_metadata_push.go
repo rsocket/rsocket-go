@@ -13,7 +13,7 @@ var _metadataPushHeader = core.NewFrameHeader(0, core.FrameTypeMetadataPush, cor
 type MetadataPushFrame struct {
 	*RawFrame
 }
-type MetadataPushFrameSupport struct {
+type WriteableMetadataPushFrame struct {
 	*tinyFrame
 	metadata []byte
 }
@@ -42,7 +42,7 @@ func (m *MetadataPushFrame) MetadataUTF8() (metadata string, ok bool) {
 	return
 }
 
-func (m MetadataPushFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+func (m WriteableMetadataPushFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = m.header.WriteTo(w)
 	if err != nil {
@@ -59,7 +59,7 @@ func (m MetadataPushFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (m MetadataPushFrameSupport) Len() int {
+func (m WriteableMetadataPushFrame) Len() int {
 	return core.FrameHeaderLen + len(m.metadata)
 }
 
@@ -68,9 +68,9 @@ func (m *MetadataPushFrame) DataUTF8() (data string) {
 	return
 }
 
-func NewMetadataPushFrameSupport(metadata []byte) *MetadataPushFrameSupport {
+func NewWriteableMetadataPushFrame(metadata []byte) *WriteableMetadataPushFrame {
 	t := newTinyFrame(_metadataPushHeader)
-	return &MetadataPushFrameSupport{
+	return &WriteableMetadataPushFrame{
 		tinyFrame: t,
 		metadata:  metadata,
 	}

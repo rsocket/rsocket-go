@@ -20,17 +20,17 @@ type ErrorFrame struct {
 	*RawFrame
 }
 
-type ErrorFrameSupport struct {
+type WriteableErrorFrame struct {
 	*tinyFrame
 	code core.ErrorCode
 	data []byte
 }
 
-func (e ErrorFrameSupport) Error() string {
+func (e WriteableErrorFrame) Error() string {
 	return makeErrorString(e.code, e.data)
 }
 
-func (e ErrorFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+func (e WriteableErrorFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = e.header.WriteTo(w)
 	if err != nil {
@@ -43,10 +43,16 @@ func (e ErrorFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 		return
 	}
 	n += 4
+
+	l, err := w.Write(e.data)
+	if err != nil {
+		return
+	}
+	n += int64(l)
 	return
 }
 
-func (e ErrorFrameSupport) Len() int {
+func (e WriteableErrorFrame) Len() int {
 	return core.FrameHeaderLen + 4 + len(e.data)
 }
 
@@ -73,10 +79,10 @@ func (p *ErrorFrame) ErrorData() []byte {
 	return p.body.Bytes()[errDataOff:]
 }
 
-func NewErrorFrameSupport(id uint32, code core.ErrorCode, data []byte) *ErrorFrameSupport {
+func NewWriteableErrorFrame(id uint32, code core.ErrorCode, data []byte) *WriteableErrorFrame {
 	h := core.NewFrameHeader(id, core.FrameTypeError, 0)
 	t := newTinyFrame(h)
-	return &ErrorFrameSupport{
+	return &WriteableErrorFrame{
 		tinyFrame: t,
 		code:      code,
 		data:      data,

@@ -1,9 +1,6 @@
 package socket
 
 import (
-	"sync"
-	"time"
-
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
@@ -69,81 +66,4 @@ func (p AbstractRSocket) RequestChannel(messages rx.Publisher) flux.Flux {
 		return flux.Error(errUnimplementedRequestChannel)
 	}
 	return p.RC(messages)
-}
-
-type baseSocket struct {
-	socket   *DuplexRSocket
-	closers  []func(error)
-	once     sync.Once
-	reqLease *leaser
-}
-
-func (p *baseSocket) refreshLease(ttl time.Duration, n int64) {
-	deadline := time.Now().Add(ttl)
-	if p.reqLease == nil {
-		p.reqLease = newLeaser(deadline, n)
-	} else {
-		p.reqLease.refresh(deadline, n)
-	}
-}
-
-func (p *baseSocket) FireAndForget(message payload.Payload) {
-	if err := p.reqLease.allow(); err != nil {
-		logger.Warnf("request FireAndForget failed: %v\n", err)
-	}
-	p.socket.FireAndForget(message)
-}
-
-func (p *baseSocket) MetadataPush(message payload.Payload) {
-	p.socket.MetadataPush(message)
-}
-
-func (p *baseSocket) RequestResponse(message payload.Payload) mono.Mono {
-	if err := p.reqLease.allow(); err != nil {
-		return mono.Error(err)
-	}
-	return p.socket.RequestResponse(message)
-}
-
-func (p *baseSocket) RequestStream(message payload.Payload) flux.Flux {
-	if err := p.reqLease.allow(); err != nil {
-		return flux.Error(err)
-	}
-	return p.socket.RequestStream(message)
-}
-
-func (p *baseSocket) RequestChannel(messages rx.Publisher) flux.Flux {
-	if err := p.reqLease.allow(); err != nil {
-		return flux.Error(err)
-	}
-	return p.socket.RequestChannel(messages)
-}
-
-func (p *baseSocket) OnClose(fn func(error)) {
-	if fn != nil {
-		p.closers = append(p.closers, fn)
-	}
-}
-
-func (p *baseSocket) Close() (err error) {
-	p.once.Do(func() {
-		err = p.socket.Close()
-		for i, l := 0, len(p.closers); i < l; i++ {
-			func(fn func(error)) {
-				defer func() {
-					if e := tryRecover(recover()); e != nil {
-						logger.Errorf("handle socket closer failed: %s\n", e)
-					}
-				}()
-				fn(err)
-			}(p.closers[l-i-1])
-		}
-	})
-	return
-}
-
-func newBaseSocket(rawSocket *DuplexRSocket) *baseSocket {
-	return &baseSocket{
-		socket: rawSocket,
-	}
 }

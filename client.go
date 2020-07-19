@@ -165,7 +165,7 @@ func (p *clientBuilder) Start(ctx context.Context) (client Client, err error) {
 		return nil, err
 	}
 
-	sk := socket.NewClientDuplexRSocket(
+	sk := socket.NewClientDuplexConnection(
 		p.fragment,
 		p.setup.KeepaliveInterval,
 	)

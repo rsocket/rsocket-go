@@ -11,5 +11,5 @@ install:
 
 script:
   - golangci-lint run ./...
-  - go test -v -covermode=atomic -coverprofile=coverage.out -race -count=1 ./rx/... ./internal/... ./extension/... ./payload/... .
+  - go test -v -covermode=atomic -coverprofile=coverage.out -race -count=1 ./core/... ./balancer/... ./rx/... ./internal/... ./extension/... ./payload/... .
   - goveralls -coverprofile=coverage.out -service=travis-ci -repotoken $COVERALLS_TOKEN

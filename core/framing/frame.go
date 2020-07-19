@@ -124,7 +124,22 @@ func NewRawFrame(header core.FrameHeader, body *common.ByteBuff) *RawFrame {
 	}
 }
 
-func PrintFrame(f core.FrameSupport) string {
+// FromBytes creates frame from a byte slice.
+func FromBytes(b []byte) (core.Frame, error) {
+	if len(b) < core.FrameHeaderLen {
+		return nil, errIncompleteFrame
+	}
+	header := core.ParseFrameHeader(b[:core.FrameHeaderLen])
+	bb := common.NewByteBuff()
+	_, err := bb.Write(b[core.FrameHeaderLen:])
+	if err != nil {
+		return nil, err
+	}
+	raw := NewRawFrame(header, bb)
+	return FromRawFrame(raw)
+}
+
+func PrintFrame(f core.WriteableFrame) string {
 	// TODO: print frame
 	return fmt.Sprintf("%+v", f)
 }

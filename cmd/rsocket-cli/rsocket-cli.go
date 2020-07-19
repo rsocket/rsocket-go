@@ -11,16 +11,27 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+type fmtLogger struct {
+}
+
+func (f fmtLogger) Debugf(format string, args ...interface{}) {
+	fmt.Printf(format, args...)
+}
+
+func (f fmtLogger) Infof(format string, args ...interface{}) {
+	fmt.Printf(format, args...)
+}
+
+func (f fmtLogger) Warnf(format string, args ...interface{}) {
+	fmt.Printf(format, args...)
+}
+
+func (f fmtLogger) Errorf(format string, args ...interface{}) {
+	_, _ = os.Stderr.WriteString(fmt.Sprintf(format, args...))
+}
+
 func init() {
-	logger.DisablePrefix()
-	fn := func(s string, i ...interface{}) {
-		fmt.Printf(s, i...)
-	}
-	logger.SetFunc(logger.LevelDebug, fn)
-	logger.SetFunc(logger.LevelInfo, fn)
-	logger.SetFunc(logger.LevelError, func(s string, i ...interface{}) {
-		_, _ = os.Stderr.WriteString(fmt.Sprintf(s, i...))
-	})
+	logger.SetLogger(fmtLogger{})
 }
 
 func main() {

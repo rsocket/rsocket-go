@@ -7,7 +7,7 @@ import (
 )
 
 type resumeServerSocket struct {
-	*baseSocket
+	*BaseSocket
 	token []byte
 }
 
@@ -33,13 +33,13 @@ func (p *resumeServerSocket) Start(ctx context.Context) error {
 	defer func() {
 		_ = p.Close()
 	}()
-	return p.socket.loopWrite(ctx)
+	return p.socket.LoopWrite(ctx)
 }
 
 // NewServerResume creates a new server-side socket with resume support.
-func NewServerResume(socket *DuplexRSocket, token []byte) ServerSocket {
+func NewServerResume(socket *DuplexConnection, token []byte) ServerSocket {
 	return &resumeServerSocket{
-		baseSocket: newBaseSocket(socket),
+		BaseSocket: NewBaseSocket(socket),
 		token:      token,
 	}
 }

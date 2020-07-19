@@ -12,7 +12,7 @@ type RequestResponseFrame struct {
 	*RawFrame
 }
 
-type RequestResponseFrameSupport struct {
+type WriteableRequestResponseFrame struct {
 	*tinyFrame
 	metadata []byte
 	data     []byte
@@ -50,7 +50,7 @@ func (r *RequestResponseFrame) DataUTF8() string {
 	return string(r.Data())
 }
 
-func (r RequestResponseFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+func (r WriteableRequestResponseFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = r.header.WriteTo(w)
 	if err != nil {
@@ -64,16 +64,16 @@ func (r RequestResponseFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (r RequestResponseFrameSupport) Len() int {
+func (r WriteableRequestResponseFrame) Len() int {
 	return CalcPayloadFrameSize(r.data, r.metadata)
 }
 
-// NewRequestResponseFrameSupport returns a new RequestResponse frame support.
-func NewRequestResponseFrameSupport(id uint32, data, metadata []byte, fg core.FrameFlag) core.FrameSupport {
+// NewWriteableRequestResponseFrame returns a new RequestResponse frame support.
+func NewWriteableRequestResponseFrame(id uint32, data, metadata []byte, fg core.FrameFlag) core.WriteableFrame {
 	if len(metadata) > 0 {
 		fg |= core.FlagMetadata
 	}
-	return &RequestResponseFrameSupport{
+	return &WriteableRequestResponseFrame{
 		tinyFrame: newTinyFrame(core.NewFrameHeader(id, core.FrameTypeRequestResponse, fg)),
 		metadata:  metadata,
 		data:      data,

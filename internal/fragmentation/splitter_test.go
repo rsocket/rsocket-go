@@ -27,10 +27,10 @@ func split2joiner(mtu int, data, metadata []byte) (joiner Joiner, err error) {
 	fn := func(idx int, result SplitResult) {
 		sid := uint32(77778888)
 		if idx == 0 {
-			f := framing.NewPayloadFrameSupport(sid, result.Data, result.Metadata, core.FlagComplete|result.Flag)
+			f := framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, core.FlagComplete|result.Flag)
 			joiner = NewJoiner(f)
 		} else {
-			f := framing.NewPayloadFrameSupport(sid, result.Data, result.Metadata, result.Flag)
+			f := framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag)
 			joiner.Push(f)
 		}
 	}

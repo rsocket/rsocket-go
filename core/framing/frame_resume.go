@@ -25,6 +25,14 @@ type ResumeFrame struct {
 	*RawFrame
 }
 
+type WriteableResumeFrame struct {
+	*tinyFrame
+	version  core.Version
+	token    []byte
+	posFirst [8]byte
+	posLast  [8]byte
+}
+
 // Validate validate current frame.
 func (r *ResumeFrame) Validate() (err error) {
 	if r.body.Len() < _minResumeLength {
@@ -62,15 +70,7 @@ func (r *ResumeFrame) FirstAvailableClientPosition() uint64 {
 	return binary.BigEndian.Uint64(raw[offset:])
 }
 
-type ResumeFrameSupport struct {
-	*tinyFrame
-	version  core.Version
-	token    []byte
-	posFirst [8]byte
-	posLast  [8]byte
-}
-
-func (r ResumeFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+func (r WriteableResumeFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = r.header.WriteTo(w)
 	if err != nil {
@@ -114,19 +114,19 @@ func (r ResumeFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (r ResumeFrameSupport) Len() int {
+func (r WriteableResumeFrame) Len() int {
 	return core.FrameHeaderLen + _lenTokenLength + _lenFirstPos + _lenLastRecvPos + _lenVersion + len(r.token)
 }
 
-// NewResumeFrameSupport creates a new frame support of Resume.
-func NewResumeFrameSupport(version core.Version, token []byte, firstAvailableClientPosition, lastReceivedServerPosition uint64) *ResumeFrameSupport {
+// NewWriteableResumeFrame creates a new frame support of Resume.
+func NewWriteableResumeFrame(version core.Version, token []byte, firstAvailableClientPosition, lastReceivedServerPosition uint64) *WriteableResumeFrame {
 	h := core.NewFrameHeader(0, core.FrameTypeResume, 0)
 	t := newTinyFrame(h)
 	var a, b [8]byte
 	binary.BigEndian.PutUint64(a[:], firstAvailableClientPosition)
 	binary.BigEndian.PutUint64(b[:], lastReceivedServerPosition)
 
-	return &ResumeFrameSupport{
+	return &WriteableResumeFrame{
 		tinyFrame: t,
 		version:   version,
 		token:     token,

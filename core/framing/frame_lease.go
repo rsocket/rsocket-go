@@ -21,6 +21,13 @@ type LeaseFrame struct {
 	*RawFrame
 }
 
+type WriteableLeaseFrame struct {
+	*tinyFrame
+	ttl      [4]byte
+	n        [4]byte
+	metadata []byte
+}
+
 // Validate returns error if frame is invalid.
 func (l *LeaseFrame) Validate() (err error) {
 	if l.body.Len() < minLeaseFrame {
@@ -48,14 +55,7 @@ func (l *LeaseFrame) Metadata() []byte {
 	return l.body.Bytes()[8:]
 }
 
-type LeaseFrameSupport struct {
-	*tinyFrame
-	ttl      [4]byte
-	n        [4]byte
-	metadata []byte
-}
-
-func (l LeaseFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+func (l WriteableLeaseFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = l.header.WriteTo(w)
 	if err != nil {
@@ -87,7 +87,7 @@ func (l LeaseFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (l LeaseFrameSupport) Len() int {
+func (l WriteableLeaseFrame) Len() int {
 	n := core.FrameHeaderLen + 8
 	if l.header.Flag().Check(core.FlagMetadata) {
 		n += len(l.metadata)
@@ -95,7 +95,7 @@ func (l LeaseFrameSupport) Len() int {
 	return n
 }
 
-func NewLeaseFrameSupport(ttl time.Duration, n uint32, metadata []byte) *LeaseFrameSupport {
+func NewWriteableLeaseFrame(ttl time.Duration, n uint32, metadata []byte) *WriteableLeaseFrame {
 	var a, b [4]byte
 	binary.BigEndian.PutUint32(a[:], uint32(ttl.Milliseconds()))
 	binary.BigEndian.PutUint32(b[:], n)
@@ -106,7 +106,7 @@ func NewLeaseFrameSupport(ttl time.Duration, n uint32, metadata []byte) *LeaseFr
 	}
 	h := core.NewFrameHeader(0, core.FrameTypeLease, flag)
 	t := newTinyFrame(h)
-	return &LeaseFrameSupport{
+	return &WriteableLeaseFrame{
 		tinyFrame: t,
 		ttl:       a,
 		n:         b,

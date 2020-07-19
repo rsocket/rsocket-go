@@ -263,11 +263,7 @@ import (
 )
 
 func init() {
-	logger.SetFunc(logger.LevelDebug|logger.LevelInfo|logger.LevelWarn|logger.LevelError, func(template string, args ...interface{}) {
-		// Implement your own logger here...
-		log.Printf(template, args...)
-	})
-	logger.SetLevel(logger.LevelInfo)
+	logger.SetLevel(logger.LevelDebug)
 }
 
 ```

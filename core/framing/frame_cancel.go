@@ -11,11 +11,11 @@ type CancelFrame struct {
 	*RawFrame
 }
 
-type CancelFrameSupport struct {
+type WriteableCancelFrame struct {
 	*tinyFrame
 }
 
-func (c CancelFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+func (c WriteableCancelFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = c.header.WriteTo(w)
 	if err != nil {
@@ -25,7 +25,7 @@ func (c CancelFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (c CancelFrameSupport) Len() int {
+func (c WriteableCancelFrame) Len() int {
 	return core.FrameHeaderLen
 }
 
@@ -38,9 +38,9 @@ func (f *CancelFrame) Validate() (err error) {
 	return
 }
 
-func NewCancelFrameSupport(id uint32) *CancelFrameSupport {
+func NewWriteableCancelFrame(id uint32) *WriteableCancelFrame {
 	h := core.NewFrameHeader(id, core.FrameTypeCancel, 0)
-	return &CancelFrameSupport{
+	return &WriteableCancelFrame{
 		tinyFrame: newTinyFrame(h),
 	}
 }

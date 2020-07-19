@@ -14,21 +14,35 @@ import (
 
 const _sid uint32 = 1
 
+func TestFromBytes(t *testing.T) {
+	// empty
+	_, err := FromBytes([]byte{})
+	assert.Error(t, err, "should be error")
+
+	b := &bytes.Buffer{}
+	frame := NewWriteableRequestResponseFrame(42, []byte("fake-data"), []byte("fake-metadata"), 0)
+	_, _ = frame.WriteTo(b)
+	frameActual, err := FromBytes(b.Bytes())
+	assert.NoError(t, err, "should not be error")
+	assert.Equal(t, frame.Header(), frameActual.Header(), "header does not match")
+	assert.Equal(t, frame.Len(), frameActual.Len())
+}
+
 func TestFrameCancel(t *testing.T) {
 	f := NewCancelFrame(_sid)
 	checkBasic(t, f, core.FrameTypeCancel)
-	f2 := NewCancelFrameSupport(_sid)
+	f2 := NewWriteableCancelFrame(_sid)
 	checkBytes(t, f, f2)
 }
 
 func TestFrameError(t *testing.T) {
-	errData := []byte(common.RandAlphanumeric(100))
+	errData := []byte(common.RandAlphanumeric(10))
 	f := NewErrorFrame(_sid, core.ErrorCodeApplicationError, errData)
 	checkBasic(t, f, core.FrameTypeError)
 	assert.Equal(t, core.ErrorCodeApplicationError, f.ErrorCode())
 	assert.Equal(t, errData, f.ErrorData())
 	assert.NotEmpty(t, f.Error())
-	f2 := NewErrorFrame(_sid, core.ErrorCodeApplicationError, errData)
+	f2 := NewWriteableErrorFrame(_sid, core.ErrorCodeApplicationError, errData)
 	checkBytes(t, f, f2)
 }
 
@@ -43,7 +57,7 @@ func TestFrameFNF(t *testing.T) {
 	assert.Nil(t, metadata)
 	assert.True(t, f.Header().Flag().Check(core.FlagNext))
 	assert.False(t, f.Header().Flag().Check(core.FlagMetadata))
-	f2 := NewFireAndForgetFrameSupport(_sid, b, nil, core.FlagNext)
+	f2 := NewWriteableFireAndForgetFrame(_sid, b, nil, core.FlagNext)
 	checkBytes(t, f, f2)
 
 	// With Metadata
@@ -55,7 +69,7 @@ func TestFrameFNF(t *testing.T) {
 	assert.Equal(t, b, metadata)
 	assert.True(t, f.Header().Flag().Check(core.FlagNext))
 	assert.True(t, f.Header().Flag().Check(core.FlagMetadata))
-	f2 = NewFireAndForgetFrameSupport(_sid, nil, b, core.FlagNext)
+	f2 = NewWriteableFireAndForgetFrame(_sid, nil, b, core.FlagNext)
 	checkBytes(t, f, f2)
 }
 
@@ -67,7 +81,7 @@ func TestFrameKeepalive(t *testing.T) {
 	assert.Equal(t, d, f.Data())
 	assert.Equal(t, pos, f.LastReceivedPosition())
 	assert.True(t, f.Header().Flag().Check(core.FlagRespond))
-	f2 := NewKeepaliveFrameSupport(pos, d, true)
+	f2 := NewWriteableKeepaliveFrame(pos, d, true)
 	checkBytes(t, f, f2)
 }
 
@@ -79,7 +93,7 @@ func TestFrameLease(t *testing.T) {
 	assert.Equal(t, time.Second, f.TimeToLive())
 	assert.Equal(t, n, f.NumberOfRequests())
 	assert.Equal(t, metadata, f.Metadata())
-	f2 := NewLeaseFrameSupport(time.Second, n, metadata)
+	f2 := NewWriteableLeaseFrame(time.Second, n, metadata)
 	checkBytes(t, f, f2)
 }
 
@@ -90,7 +104,7 @@ func TestFrameMetadataPush(t *testing.T) {
 	metadata2, ok := f.Metadata()
 	assert.True(t, ok)
 	assert.Equal(t, metadata, metadata2)
-	f2 := NewMetadataPushFrameSupport(metadata)
+	f2 := NewWriteableMetadataPushFrame(metadata)
 	checkBytes(t, f, f2)
 }
 
@@ -103,7 +117,7 @@ func TestPayloadFrame(t *testing.T) {
 	assert.Equal(t, b, f.Data())
 	assert.Equal(t, b, m)
 	assert.Equal(t, core.FlagNext|core.FlagMetadata, f.Header().Flag())
-	f2 := NewPayloadFrameSupport(_sid, b, b, core.FlagNext)
+	f2 := NewWriteablePayloadFrame(_sid, b, b, core.FlagNext)
 	checkBytes(t, f, f2)
 }
 
@@ -117,7 +131,7 @@ func TestFrameRequestChannel(t *testing.T) {
 	m, ok := f.Metadata()
 	assert.True(t, ok)
 	assert.Equal(t, b, m)
-	f2 := NewRequestChannelFrameSupport(_sid, n, b, b, core.FlagNext)
+	f2 := NewWriteableRequestChannelFrame(_sid, n, b, b, core.FlagNext)
 	checkBytes(t, f, f2)
 }
 
@@ -126,7 +140,7 @@ func TestFrameRequestN(t *testing.T) {
 	f := NewRequestNFrame(_sid, n, 0)
 	checkBasic(t, f, core.FrameTypeRequestN)
 	assert.Equal(t, n, f.N())
-	f2 := NewRequestNFrameSupport(_sid, n, 0)
+	f2 := NewWriteableRequestNFrame(_sid, n, 0)
 	checkBytes(t, f, f2)
 }
 
@@ -139,7 +153,7 @@ func TestFrameRequestResponse(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, b, m)
 	assert.Equal(t, core.FlagNext|core.FlagMetadata, f.Header().Flag())
-	f2 := NewRequestResponseFrameSupport(_sid, b, b, core.FlagNext)
+	f2 := NewWriteableRequestResponseFrame(_sid, b, b, core.FlagNext)
 	checkBytes(t, f, f2)
 }
 
@@ -153,7 +167,7 @@ func TestFrameRequestStream(t *testing.T) {
 	m, ok := f.Metadata()
 	assert.True(t, ok)
 	assert.Equal(t, b, m)
-	f2 := NewRequestStreamFrameSupport(_sid, n, b, b, core.FlagNext)
+	f2 := NewWriteableRequestStreamFrame(_sid, n, b, b, core.FlagNext)
 	checkBytes(t, f, f2)
 }
 
@@ -169,7 +183,7 @@ func TestFrameResume(t *testing.T) {
 	assert.Equal(t, p2, f.LastReceivedServerPosition())
 	assert.Equal(t, v.Major(), f.Version().Major())
 	assert.Equal(t, v.Minor(), f.Version().Minor())
-	f2 := NewResumeFrameSupport(v, token, p1, p2)
+	f2 := NewWriteableResumeFrame(v, token, p1, p2)
 	checkBytes(t, f, f2)
 }
 
@@ -178,7 +192,7 @@ func TestFrameResumeOK(t *testing.T) {
 	f := NewResumeOKFrame(pos)
 	checkBasic(t, f, core.FrameTypeResumeOK)
 	assert.Equal(t, pos, f.LastReceivedClientPosition())
-	f2 := NewResumeOKFrameSupport(pos)
+	f2 := NewWriteableResumeOKFrame(pos)
 	checkBytes(t, f, f2)
 }
 
@@ -205,7 +219,7 @@ func TestFrameSetup(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, m, m2)
 
-	fs := NewSetupFrameSupport(v, timeKeepalive, maxLifetime, token, mimeMetadata, mimeData, d, m, false)
+	fs := NewWriteableSetupFrame(v, timeKeepalive, maxLifetime, token, mimeMetadata, mimeData, d, m, false)
 
 	checkBytes(t, f, fs)
 }
@@ -226,7 +240,8 @@ func checkBasic(t *testing.T, f core.Frame, typ core.FrameType) {
 	<-f.DoneNotify()
 }
 
-func checkBytes(t *testing.T, a core.Frame, b core.FrameSupport) {
+func checkBytes(t *testing.T, a core.Frame, b core.WriteableFrame) {
+	assert.NoError(t, a.Validate())
 	assert.Equal(t, a.Len(), b.Len())
 	bf1, bf2 := &bytes.Buffer{}, &bytes.Buffer{}
 	_, err := a.WriteTo(bf1)

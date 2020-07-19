@@ -185,7 +185,7 @@ func (p *server) Serve(ctx context.Context) error {
 				}
 			}(ctx, sendingSocket)
 		default:
-			err := framing.NewErrorFrameSupport(0, core.ErrorCodeConnectionError, []byte("first frame must be setup or resume"))
+			err := framing.NewWriteableErrorFrame(0, core.ErrorCodeConnectionError, []byte("first frame must be setup or resume"))
 			_ = tp.Send(err, true)
 			_ = tp.Close()
 			return
@@ -205,10 +205,10 @@ func (p *server) Serve(ctx context.Context) error {
 	return t.Listen(ctx, serveNotifier)
 }
 
-func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.ErrorFrameSupport) {
+func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.WriteableErrorFrame) {
 
 	if frame.Header().Flag().Check(core.FlagLease) && p.leases == nil {
-		err = framing.NewErrorFrameSupport(0, core.ErrorCodeUnsupportedSetup, errUnavailableLease)
+		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeUnsupportedSetup, errUnavailableLease)
 		return
 	}
 
@@ -216,17 +216,17 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 
 	// 1. receive a token but server doesn't support resume.
 	if isResume && !p.resumeOpts.enable {
-		err = framing.NewErrorFrameSupport(0, core.ErrorCodeUnsupportedSetup, errUnavailableResume)
+		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeUnsupportedSetup, errUnavailableResume)
 		return
 	}
 
-	rawSocket := socket.NewServerDuplexRSocket(p.fragment, p.leases)
+	rawSocket := socket.NewServerDuplexConnection(p.fragment, p.leases)
 
 	// 2. no resume
 	if !isResume {
-		sendingSocket = socket.NewServer(rawSocket)
+		sendingSocket = socket.NewSimpleServerSocket(rawSocket)
 		if responder, e := p.acc(frame, sendingSocket); e != nil {
-			err = framing.NewErrorFrameSupport(0, core.ErrorCodeRejectedSetup, []byte(e.Error()))
+			err = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedSetup, []byte(e.Error()))
 		} else {
 			sendingSocket.SetResponder(responder)
 			sendingSocket.SetTransport(tp)
@@ -239,7 +239,7 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 
 	// 3. resume reject because of duplicated token.
 	if _, ok := p.sm.Load(token); ok {
-		err = framing.NewErrorFrameSupport(0, core.ErrorCodeRejectedSetup, errDuplicatedSetupToken)
+		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedSetup, errDuplicatedSetupToken)
 		return
 	}
 
@@ -249,9 +249,9 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 	if responder, e := p.acc(frame, sendingSocket); e != nil {
 		switch vv := e.(type) {
 		case *framing.ErrorFrame:
-			err = framing.NewErrorFrameSupport(0, vv.ErrorCode(), vv.ErrorData())
+			err = framing.NewWriteableErrorFrame(0, vv.ErrorCode(), vv.ErrorData())
 		default:
-			err = framing.NewErrorFrameSupport(0, core.ErrorCodeInvalidSetup, []byte(e.Error()))
+			err = framing.NewWriteableErrorFrame(0, core.ErrorCodeInvalidSetup, []byte(e.Error()))
 		}
 	} else {
 		sendingSocket.SetResponder(responder)
@@ -262,18 +262,18 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 }
 
 func (p *server) doResume(frame *framing.ResumeFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) {
-	var sending core.FrameSupport
+	var sending core.WriteableFrame
 	if !p.resumeOpts.enable {
-		sending = framing.NewErrorFrameSupport(0, core.ErrorCodeRejectedResume, errUnavailableResume)
+		sending = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedResume, errUnavailableResume)
 	} else if s, ok := p.sm.Load(frame.Token()); ok {
-		sending = framing.NewResumeOKFrameSupport(0)
+		sending = framing.NewWriteableResumeOKFrame(0)
 		s.Socket().SetTransport(tp)
 		socketChan <- s.Socket()
 		if logger.IsDebugEnabled() {
 			logger.Debugf("recover session: %s\n", s)
 		}
 	} else {
-		sending = framing.NewErrorFrameSupport(
+		sending = framing.NewWriteableErrorFrame(
 			0,
 			core.ErrorCodeRejectedResume,
 			[]byte("no such session"),

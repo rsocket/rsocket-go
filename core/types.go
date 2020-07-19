@@ -108,7 +108,7 @@ func (f FrameFlag) Check(flag FrameFlag) bool {
 	return flag&f == flag
 }
 
-type FrameSupport interface {
+type WriteableFrame interface {
 	io.WriterTo
 	// FrameHeader returns frame FrameHeader.
 	Header() FrameHeader
@@ -122,7 +122,7 @@ type FrameSupport interface {
 
 // Frame is a single message containing a request, response, or protocol processing.
 type Frame interface {
-	FrameSupport
+	WriteableFrame
 	// Validate returns error if frame is invalid.
 	Validate() error
 }

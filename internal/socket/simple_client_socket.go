@@ -9,12 +9,12 @@ import (
 	"github.com/rsocket/rsocket-go/logger"
 )
 
-type defaultClientSocket struct {
-	*baseSocket
+type simpleClientSocket struct {
+	*BaseSocket
 	tp transport.ClientTransportFunc
 }
 
-func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err error) {
+func (p *simpleClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err error) {
 	tp, err := p.tp(ctx)
 	if err != nil {
 		return
@@ -29,7 +29,6 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 		tp.RegisterHandler(transport.OnLease, func(frame core.Frame) (err error) {
 			lease := frame.(*framing.LeaseFrame)
 			p.refreshLease(lease.TimeToLive(), int64(lease.NumberOfRequests()))
-			logger.Infof(">>>>> refresh lease: %v\n", lease)
 			return
 		})
 	}
@@ -46,18 +45,16 @@ func (p *defaultClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err 
 		_ = p.Close()
 	}(ctx, tp)
 
-	go func(ctx context.Context) {
-		_ = p.socket.loopWrite(ctx)
-	}(ctx)
+	go p.socket.LoopWrite(ctx)
 	setupFrame := setup.toFrame()
 	err = p.socket.tp.Send(setupFrame, true)
 	return
 }
 
 // NewClient create a simple client-side socket.
-func NewClient(tp transport.ClientTransportFunc, socket *DuplexRSocket) ClientSocket {
-	return &defaultClientSocket{
-		baseSocket: newBaseSocket(socket),
+func NewClient(tp transport.ClientTransportFunc, socket *DuplexConnection) ClientSocket {
+	return &simpleClientSocket{
+		BaseSocket: NewBaseSocket(socket),
 		tp:         tp,
 	}
 }

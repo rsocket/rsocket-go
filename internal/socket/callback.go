@@ -1,7 +1,7 @@
 package socket
 
 import (
-	rs "github.com/jjeffcaii/reactor-go"
+	"github.com/jjeffcaii/reactor-go"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"

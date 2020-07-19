@@ -11,12 +11,11 @@ import (
 )
 
 type tcpServerTransport struct {
-	network, addr string
-	acceptor      ServerTransportAcceptor
-	listener      net.Listener
-	onceClose     sync.Once
-	tls           *tls.Config
-	transports    *sync.Map
+	listenerFn func() (net.Listener, error)
+	acceptor   ServerTransportAcceptor
+	listener   net.Listener
+	onceClose  sync.Once
+	transports *sync.Map
 }
 
 func (p *tcpServerTransport) Accept(acceptor ServerTransportAcceptor) {
@@ -40,20 +39,13 @@ func (p *tcpServerTransport) Close() (err error) {
 }
 
 func (p *tcpServerTransport) Listen(ctx context.Context, notifier chan<- struct{}) (err error) {
-	if p.tls == nil {
-		p.listener, err = net.Listen(p.network, p.addr)
-		if err != nil {
-			err = errors.Wrap(err, "server listen failed")
-			return
-		}
-	} else {
-		p.listener, err = tls.Listen(p.network, p.addr, p.tls)
-		if err != nil {
-			err = errors.Wrap(err, "server listen failed")
-			return
-		}
+	p.listener, err = p.listenerFn()
+	if err != nil {
+		close(notifier)
+		return
 	}
 	notifier <- struct{}{}
+	close(notifier)
 	return p.listen(ctx)
 }
 
@@ -90,7 +82,7 @@ func (p *tcpServerTransport) listen(ctx context.Context) (err error) {
 			break
 		}
 		// Dispatch raw conn.
-		tp := NewTransport(newTCPRConnection(c))
+		tp := NewTransport(NewTcpConn(c))
 		p.transports.Store(tp, struct{}{})
 		go p.acceptor(ctx, tp, func(t *Transport) {
 			p.transports.Delete(t)
@@ -99,16 +91,29 @@ func (p *tcpServerTransport) listen(ctx context.Context) (err error) {
 	return
 }
 
-func NewTcpServerTransport(network, addr string, c *tls.Config) *tcpServerTransport {
+func NewTcpServerTransport(gen func() (net.Listener, error)) ServerTransport {
 	return &tcpServerTransport{
-		network:    network,
-		addr:       addr,
-		tls:        c,
+		listenerFn: gen,
 		transports: &sync.Map{},
 	}
 }
 
-func NewTcpClientTransport(network, addr string, tlsConfig *tls.Config) (tp *Transport, err error) {
+func NewTcpServerTransportWithAddr(network, addr string, c *tls.Config) ServerTransport {
+	gen := func() (net.Listener, error) {
+		if c == nil {
+			return net.Listen(network, addr)
+		} else {
+			return tls.Listen(network, addr, c)
+		}
+	}
+	return NewTcpServerTransport(gen)
+}
+
+func NewTcpClientTransport(rawConn net.Conn) *Transport {
+	return NewTransport(NewTcpConn(rawConn))
+}
+
+func NewTcpClientTransportWithAddr(network, addr string, tlsConfig *tls.Config) (tp *Transport, err error) {
 	var rawConn net.Conn
 	if tlsConfig == nil {
 		rawConn, err = net.Dial(network, addr)
@@ -118,6 +123,6 @@ func NewTcpClientTransport(network, addr string, tlsConfig *tls.Config) (tp *Tra
 	if err != nil {
 		return
 	}
-	tp = NewTransport(newTCPRConnection(rawConn))
+	tp = NewTcpClientTransport(rawConn)
 	return
 }

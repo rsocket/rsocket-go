@@ -22,6 +22,18 @@ type SetupFrame struct {
 	*RawFrame
 }
 
+type WriteableSetupFrame struct {
+	*tinyFrame
+	version      core.Version
+	keepalive    [4]byte
+	lifetime     [4]byte
+	token        []byte
+	mimeMetadata []byte
+	mimeData     []byte
+	metadata     []byte
+	data         []byte
+}
+
 // Validate returns error if frame is invalid.
 func (p *SetupFrame) Validate() (err error) {
 	if p.Len() < _minSetupFrameLen {
@@ -126,19 +138,7 @@ func (p *SetupFrame) seekMIME() int {
 	return 14 + int(l)
 }
 
-type SetupFrameSupport struct {
-	*tinyFrame
-	version      core.Version
-	keepalive    [4]byte
-	lifetime     [4]byte
-	token        []byte
-	mimeMetadata []byte
-	mimeData     []byte
-	metadata     []byte
-	data         []byte
-}
-
-func (s SetupFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
+func (s WriteableSetupFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = s.header.WriteTo(w)
 	if err != nil {
@@ -211,7 +211,7 @@ func (s SetupFrameSupport) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (s SetupFrameSupport) Len() int {
+func (s WriteableSetupFrame) Len() int {
 	n := _minSetupFrameLen + CalcPayloadFrameSize(s.data, s.metadata)
 	n += len(s.mimeData) + len(s.mimeMetadata)
 	if l := len(s.token); l > 0 {
@@ -220,7 +220,7 @@ func (s SetupFrameSupport) Len() int {
 	return n
 }
 
-func NewSetupFrameSupport(
+func NewWriteableSetupFrame(
 	version core.Version,
 	timeBetweenKeepalive,
 	maxLifetime time.Duration,
@@ -230,7 +230,7 @@ func NewSetupFrameSupport(
 	data []byte,
 	metadata []byte,
 	lease bool,
-) *SetupFrameSupport {
+) *WriteableSetupFrame {
 	var flag core.FrameFlag
 	if l := len(token); l > 0 {
 		flag |= core.FlagResume
@@ -247,7 +247,7 @@ func NewSetupFrameSupport(
 	var a, b [4]byte
 	binary.BigEndian.PutUint32(a[:], uint32(timeBetweenKeepalive.Nanoseconds()/1e6))
 	binary.BigEndian.PutUint32(b[:], uint32(maxLifetime.Nanoseconds()/1e6))
-	return &SetupFrameSupport{
+	return &WriteableSetupFrame{
 		tinyFrame:    t,
 		version:      version,
 		keepalive:    a,

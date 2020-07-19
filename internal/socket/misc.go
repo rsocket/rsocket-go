@@ -22,8 +22,8 @@ type SetupInfo struct {
 	Metadata          []byte
 }
 
-func (p *SetupInfo) toFrame() core.FrameSupport {
-	return framing.NewSetupFrameSupport(
+func (p *SetupInfo) toFrame() core.WriteableFrame {
+	return framing.NewWriteableSetupFrame(
 		p.Version,
 		p.KeepaliveInterval,
 		p.KeepaliveLifetime,
@@ -51,14 +51,17 @@ func tryRecover(e interface{}) (err error) {
 	return
 }
 
-func toIntN(n uint32) int {
+func ToIntRequestN(n uint32) int {
 	if n > rx.RequestMax {
 		return rx.RequestMax
 	}
 	return int(n)
 }
 
-func toU32N(n int) uint32 {
+func ToUint32RequestN(n int) uint32 {
+	if n < 0 {
+		panic("invalid negative int")
+	}
 	if n > rx.RequestMax {
 		return rx.RequestMax
 	}

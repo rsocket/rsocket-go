@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	. "github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/logger"
 	. "github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -20,22 +19,6 @@ const (
 	streamElements           = int32(3)
 	channelElements          = int32(2)
 )
-
-func init() {
-	//logger.SetLevel(logger.LevelDebug)
-	logger.SetFunc(logger.LevelInfo, func(s string, i ...interface{}) {
-		fmt.Printf(s, i...)
-	})
-	logger.SetFunc(logger.LevelDebug, func(s string, i ...interface{}) {
-		fmt.Printf(s, i...)
-	})
-	logger.SetFunc(logger.LevelWarn, func(s string, i ...interface{}) {
-		fmt.Printf(s, i...)
-	})
-	logger.SetFunc(logger.LevelError, func(s string, i ...interface{}) {
-		fmt.Printf(s, i...)
-	})
-}
 
 var testData = "Hello World!"
 
