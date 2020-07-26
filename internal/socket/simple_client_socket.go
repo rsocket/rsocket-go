@@ -45,7 +45,9 @@ func (p *simpleClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err e
 		_ = p.Close()
 	}(ctx, tp)
 
-	go p.socket.LoopWrite(ctx)
+	go func() {
+		_ = p.socket.LoopWrite(ctx)
+	}()
 	setupFrame := setup.toFrame()
 	err = p.socket.tp.Send(setupFrame, true)
 	return
