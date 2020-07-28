@@ -6,8 +6,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -21,30 +19,21 @@ const defaultWebsocketPath = "/"
 var upgrader websocket.Upgrader
 
 func init() {
-	// Default allow CORS.
-	cors := true
-	if v, ok := os.LookupEnv("RSOCKET_WS_CORS"); ok {
-		v = strings.TrimSpace(strings.ToLower(v))
-		cors = v == "yes" || v == "on" || v == "1" || v == "true"
-	}
 	upgrader = websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-	}
-	if cors {
-		upgrader.CheckOrigin = func(r *http.Request) bool {
+		CheckOrigin: func(r *http.Request) bool {
 			return true
-		}
+		},
 	}
 }
 
 type wsServerTransport struct {
-	addr       string
 	path       string
 	acceptor   ServerTransportAcceptor
 	onceClose  sync.Once
+	listenerFn func() (net.Listener, error)
 	listener   net.Listener
-	tls        *tls.Config
 	transports *sync.Map
 }
 
@@ -69,7 +58,6 @@ func (p *wsServerTransport) Listen(ctx context.Context, notifier chan<- struct{}
 			logger.Errorf("create websocket conn failed: %s\n", err.Error())
 			return
 		}
-
 		tp := NewTransport(NewWebsocketConnection(c))
 		p.transports.Store(tp, struct{}{})
 		go p.acceptor(ctx, tp, func(tp *Transport) {
@@ -77,14 +65,11 @@ func (p *wsServerTransport) Listen(ctx context.Context, notifier chan<- struct{}
 		})
 	})
 
-	if p.tls == nil {
-		p.listener, err = net.Listen("tcp", p.addr)
-	} else {
-		p.listener, err = tls.Listen("tcp", p.addr, p.tls)
-	}
+	p.listener, err = p.listenerFn()
 
 	if err != nil {
 		err = errors.Wrap(err, "server listen failed")
+		close(notifier)
 		return
 	}
 
@@ -112,16 +97,24 @@ func (p *wsServerTransport) Listen(ctx context.Context, notifier chan<- struct{}
 	return
 }
 
-func NewWebsocketServerTransport(addr string, path string, c *tls.Config) *wsServerTransport {
+func NewWebsocketServerTransport(gen func() (net.Listener, error), path string) ServerTransport {
 	if path == "" {
 		path = defaultWebsocketPath
 	}
 	return &wsServerTransport{
-		addr:       addr,
 		path:       path,
-		tls:        c,
+		listenerFn: gen,
 		transports: &sync.Map{},
 	}
+}
+
+func NewWebsocketServerTransportWithAddr(addr string, path string, c *tls.Config) ServerTransport {
+	return NewWebsocketServerTransport(func() (net.Listener, error) {
+		if c == nil {
+			return net.Listen("tcp", addr)
+		}
+		return tls.Listen("tcp", addr, c)
+	}, path)
 }
 
 func NewWebsocketClientTransport(url string, tc *tls.Config, header http.Header) (*Transport, error) {

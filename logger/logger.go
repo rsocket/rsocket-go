@@ -2,8 +2,10 @@ package logger
 
 import "log"
 
-var _level = LevelInfo
-var _logger Logger = simpleLogger{}
+var (
+	_level         = LevelInfo
+	_logger Logger = simpleLogger{}
+)
 
 const (
 	// LevelDebug is DEBUG level.

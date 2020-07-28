@@ -121,6 +121,28 @@ func (p proxy) BlockLast(ctx context.Context) (last payload.Payload, err error) 
 	return
 }
 
+func (p proxy) BlockSlice(ctx context.Context) (results []payload.Payload, err error) {
+	done := make(chan struct{})
+	p.Flux.
+		DoFinally(func(s reactor.SignalType) {
+			close(done)
+		}).
+		DoOnCancel(func() {
+			err = reactor.ErrSubscribeCancelled
+		}).
+		Subscribe(
+			ctx,
+			reactor.OnNext(func(v interface{}) {
+				results = append(results, v.(payload.Payload))
+			}),
+			reactor.OnError(func(e error) {
+				err = e
+			}),
+		)
+	<-done
+	return
+}
+
 func (p proxy) DoOnSubscribe(fn rx.FnOnSubscribe) Flux {
 	return newProxy(p.Flux.DoOnSubscribe(func(su reactor.Subscription) {
 		fn(su)

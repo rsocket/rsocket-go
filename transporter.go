@@ -118,7 +118,7 @@ func (w *wsTransporter) Server() transport.ServerTransportFunc {
 		if len(port) < 1 {
 			return nil, errors.New("missing websocket port")
 		}
-		return transport.NewWebsocketServerTransport(fmt.Sprintf("%s:%s", u.Hostname(), port), u.Path, w.tls), nil
+		return transport.NewWebsocketServerTransportWithAddr(fmt.Sprintf("%s:%s", u.Hostname(), port), u.Path, w.tls), nil
 	}
 }
 

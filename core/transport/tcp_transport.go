@@ -98,19 +98,19 @@ func NewTcpServerTransport(gen func() (net.Listener, error)) ServerTransport {
 	}
 }
 
-func NewTcpServerTransportWithAddr(network, addr string, c *tls.Config) ServerTransport {
+func NewTcpClientTransport(c net.Conn) *Transport {
+	return NewTransport(NewTcpConn(c))
+}
+
+func NewTcpServerTransportWithAddr(network, addr string, tlsConfig *tls.Config) ServerTransport {
 	gen := func() (net.Listener, error) {
-		if c == nil {
+		if tlsConfig == nil {
 			return net.Listen(network, addr)
 		} else {
-			return tls.Listen(network, addr, c)
+			return tls.Listen(network, addr, tlsConfig)
 		}
 	}
 	return NewTcpServerTransport(gen)
-}
-
-func NewTcpClientTransport(rawConn net.Conn) *Transport {
-	return NewTransport(NewTcpConn(rawConn))
 }
 
 func NewTcpClientTransportWithAddr(network, addr string, tlsConfig *tls.Config) (tp *Transport, err error) {

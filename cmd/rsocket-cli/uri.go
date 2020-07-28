@@ -63,13 +63,13 @@ func (p *URI) MakeServerTransport(c *tls.Config) (tp transport.ServerTransport, 
 	case schemaTCP:
 		tp = transport.NewTcpServerTransportWithAddr(schemaTCP, p.Host, c)
 	case schemaWebsocket:
-		tp = transport.NewWebsocketServerTransport(p.Host, p.Path, c)
+		tp = transport.NewWebsocketServerTransportWithAddr(p.Host, p.Path, c)
 	case schemaWebsocketSecure:
 		if c == nil {
 			err = errors.Errorf("missing TLS Config for proto %s", schemaWebsocketSecure)
 			return
 		}
-		tp = transport.NewWebsocketServerTransport(p.Host, p.Path, c)
+		tp = transport.NewWebsocketServerTransportWithAddr(p.Host, p.Path, c)
 	case schemaUNIX:
 		tp = transport.NewTcpServerTransportWithAddr(schemaUNIX, p.Path, c)
 	default:

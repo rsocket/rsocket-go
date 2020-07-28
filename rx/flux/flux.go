@@ -60,6 +60,8 @@ type Flux interface {
 	// ToChan subscribe to this Flux and puts items into a chan.
 	// It also puts errors into another chan.
 	ToChan(ctx context.Context, cap int) (c <-chan payload.Payload, e <-chan error)
+	// BlockSlice subscribe to this Flux and convert to payload slice.
+	BlockSlice(context.Context) ([]payload.Payload, error)
 }
 
 // Processor represent a base processor that exposes Flux API for Processor.

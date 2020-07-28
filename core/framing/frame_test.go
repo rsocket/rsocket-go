@@ -52,6 +52,8 @@ func TestFrameFNF(t *testing.T) {
 	f := NewFireAndForgetFrame(_sid, b, nil, core.FlagNext)
 	checkBasic(t, f, core.FrameTypeRequestFNF)
 	assert.Equal(t, b, f.Data())
+	_ = f.DataUTF8()
+	_, _ = f.MetadataUTF8()
 	metadata, ok := f.Metadata()
 	assert.False(t, ok)
 	assert.Nil(t, metadata)
@@ -100,10 +102,14 @@ func TestFrameLease(t *testing.T) {
 func TestFrameMetadataPush(t *testing.T) {
 	metadata := []byte("foobar")
 	f := NewMetadataPushFrame(metadata)
+	assert.Nil(t, f.Data(), "should not be nil")
+	assert.Equal(t, "", f.DataUTF8(), "should be zero string")
 	checkBasic(t, f, core.FrameTypeMetadataPush)
 	metadata2, ok := f.Metadata()
 	assert.True(t, ok)
 	assert.Equal(t, metadata, metadata2)
+	_, _ = f.MetadataUTF8()
+
 	f2 := NewWriteableMetadataPushFrame(metadata)
 	checkBytes(t, f, f2)
 }
@@ -116,9 +122,18 @@ func TestPayloadFrame(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, b, f.Data())
 	assert.Equal(t, b, m)
+	_ = f.DataUTF8()
+	_, _ = f.MetadataUTF8()
 	assert.Equal(t, core.FlagNext|core.FlagMetadata, f.Header().Flag())
 	f2 := NewWriteablePayloadFrame(_sid, b, b, core.FlagNext)
 	checkBytes(t, f, f2)
+
+	assert.Equal(t, b, f2.Data())
+	_ = f2.DataUTF8()
+	m2, ok := f2.Metadata()
+	assert.True(t, ok)
+	assert.Equal(t, b, m2)
+	_, _ = f2.MetadataUTF8()
 }
 
 func TestFrameRequestChannel(t *testing.T) {
@@ -131,6 +146,10 @@ func TestFrameRequestChannel(t *testing.T) {
 	m, ok := f.Metadata()
 	assert.True(t, ok)
 	assert.Equal(t, b, m)
+
+	_ = f.DataUTF8()
+	_, _ = f.MetadataUTF8()
+
 	f2 := NewWriteableRequestChannelFrame(_sid, n, b, b, core.FlagNext)
 	checkBytes(t, f, f2)
 }
@@ -153,6 +172,8 @@ func TestFrameRequestResponse(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, b, m)
 	assert.Equal(t, core.FlagNext|core.FlagMetadata, f.Header().Flag())
+	_ = f.DataUTF8()
+	_, _ = f.MetadataUTF8()
 	f2 := NewWriteableRequestResponseFrame(_sid, b, b, core.FlagNext)
 	checkBytes(t, f, f2)
 }
@@ -167,6 +188,8 @@ func TestFrameRequestStream(t *testing.T) {
 	m, ok := f.Metadata()
 	assert.True(t, ok)
 	assert.Equal(t, b, m)
+	_, _ = f.MetadataUTF8()
+	_ = f.DataUTF8()
 	f2 := NewWriteableRequestStreamFrame(_sid, n, b, b, core.FlagNext)
 	checkBytes(t, f, f2)
 }
@@ -218,6 +241,9 @@ func TestFrameSetup(t *testing.T) {
 	m2, ok := f.Metadata()
 	assert.True(t, ok)
 	assert.Equal(t, m, m2)
+
+	_ = f.DataUTF8()
+	_, _ = f.MetadataUTF8()
 
 	fs := NewWriteableSetupFrame(v, timeKeepalive, maxLifetime, token, mimeMetadata, mimeData, d, m, false)
 
