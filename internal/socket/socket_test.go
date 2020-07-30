@@ -30,7 +30,7 @@ var (
 	}
 )
 
-func Init(t *testing.T) (*gomock.Controller, *MockConn, *transport.Transport) {
+func InitTransport(t *testing.T) (*gomock.Controller, *MockConn, *transport.Transport) {
 	ctrl := gomock.NewController(t)
 	conn := NewMockConn(ctrl)
 	tp := transport.NewTransport(conn)

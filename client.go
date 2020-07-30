@@ -173,7 +173,7 @@ func (p *clientBuilder) Start(ctx context.Context) (client Client, err error) {
 	var cs setupClientSocket
 	if p.resume != nil {
 		p.setup.Token = p.resume.tokenGen()
-		cs = socket.NewClientResume(p.tpGen, sk)
+		cs = socket.NewResumableClientSocket(p.tpGen, sk)
 	} else {
 		cs = socket.NewClient(p.tpGen, sk)
 	}

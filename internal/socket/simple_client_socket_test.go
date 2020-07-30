@@ -30,7 +30,7 @@ func TestNewClientWithBrokenTransporter(t *testing.T) {
 }
 
 func TestNewClient(t *testing.T) {
-	ctrl, conn, tp := Init(t)
+	ctrl, conn, tp := InitTransport(t)
 	defer ctrl.Finish()
 
 	// For test
@@ -100,7 +100,7 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestLease(t *testing.T) {
-	ctrl, conn, tp := Init(t)
+	ctrl, conn, tp := InitTransport(t)
 	defer ctrl.Finish()
 
 	// For test

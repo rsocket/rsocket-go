@@ -41,7 +41,7 @@ func main() {
 	app.UsageText = "rsocket-cli [global options] [URI]"
 	app.Name = "rsocket-cli"
 	app.Usage = "CLI for RSocket."
-	app.Version = "v0.5"
+	app.Version = "v0.6"
 	app.Flags = newFlags(conf)
 	app.ArgsUsage = "[URI]"
 	app.Action = func(c *cli.Context) (err error) {

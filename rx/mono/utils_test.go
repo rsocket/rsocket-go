@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	rsMono "github.com/jjeffcaii/reactor-go/mono"
+
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx/mono"
@@ -125,4 +127,11 @@ loop:
 		}
 	}
 
+}
+
+func TestRaw(t *testing.T) {
+	fakePayload := payload.NewString("fake", "payload")
+	res, err := mono.Raw(rsMono.Just(fakePayload)).Block(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, fakePayload, res)
 }

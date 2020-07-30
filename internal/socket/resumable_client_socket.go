@@ -144,8 +144,8 @@ func (p *resumeClientSocket) isClosed() bool {
 	return p.connects.Load() < 0
 }
 
-// NewClientResume creates a client-side socket with resume support.
-func NewClientResume(tp transport.ClientTransportFunc, socket *DuplexConnection) ClientSocket {
+// NewResumableClientSocket creates a client-side socket with resume support.
+func NewResumableClientSocket(tp transport.ClientTransportFunc, socket *DuplexConnection) ClientSocket {
 	return &resumeClientSocket{
 		BaseSocket: NewBaseSocket(socket),
 		connects:   atomic.NewInt32(0),

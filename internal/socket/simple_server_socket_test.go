@@ -18,7 +18,7 @@ import (
 var fakeResponder = rsocket.NewAbstractSocket()
 
 func TestSimpleServerSocket_Start(t *testing.T) {
-	ctrl, conn, tp := Init(t)
+	ctrl, conn, tp := InitTransport(t)
 	defer ctrl.Finish()
 
 	// For test

@@ -191,7 +191,7 @@ func (p *server) Serve(ctx context.Context) error {
 			return
 		}
 		if err := tp.Start(ctx); err != nil {
-			logger.Warnf("transport exit: %s\n", err.Error())
+			logger.Warnf("transport exit: %+v\n", err)
 		}
 	})
 

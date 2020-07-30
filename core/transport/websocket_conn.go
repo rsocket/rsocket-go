@@ -39,15 +39,23 @@ func (p *WsConn) SetDeadline(deadline time.Time) error {
 
 func (p *WsConn) Read() (f core.Frame, err error) {
 	t, raw, err := p.c.ReadMessage()
+
 	if err == io.EOF {
 		return
 	}
+
+	if websocket.IsCloseError(err) || websocket.IsUnexpectedCloseError(err) || isClosedErr(err) {
+		err = io.EOF
+		return
+	}
+
 	if err != nil {
 		err = errors.Wrap(err, "read frame failed")
 		return
 	}
+
+	// Skip non-binary message
 	if t != websocket.BinaryMessage {
-		logger.Warnf("omit non-binary message %d\n", t)
 		return p.Read()
 	}
 

@@ -415,3 +415,17 @@ loop:
 	}
 
 }
+
+func TestFlux_BlockSlice(t *testing.T) {
+	const n = 10
+	arr, err := flux.
+		Create(func(ctx context.Context, s flux.Sink) {
+			for i := 0; i < n; i++ {
+				s.Next(payload.NewString("hello", strconv.Itoa(i)))
+			}
+			s.Complete()
+		}).
+		BlockSlice(context.Background())
+	assert.NoError(t, err)
+	assert.Len(t, arr, n)
+}
