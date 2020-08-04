@@ -195,8 +195,9 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 					return sendingPayloads
 				}))
 				options = append(options, rsocket.RequestChannel(func(messages rx.Publisher) flux.Flux {
-					messages.Subscribe(ctx, rx.OnNext(func(input payload.Payload) {
+					messages.Subscribe(ctx, rx.OnNext(func(input payload.Payload) error {
 						p.showPayload(input)
+						return nil
 					}))
 					return sendingPayloads
 				}))
@@ -270,8 +271,9 @@ func (p *Runner) execRequestStream(ctx context.Context, c rsocket.Client, send p
 
 func (p *Runner) printFlux(ctx context.Context, f flux.Flux) (err error) {
 	_, err = f.
-		DoOnNext(func(input payload.Payload) {
+		DoOnNext(func(input payload.Payload) error {
 			p.showPayload(input)
+			return nil
 		}).
 		BlockLast(ctx)
 	return

@@ -143,8 +143,9 @@ func responder() rsocket.RSocket {
 			payloads.(flux.Flux).
 				//LimitRate(1).
 				SubscribeOn(scheduler.Parallel()).
-				DoOnNext(func(elem payload.Payload) {
+				DoOnNext(func(elem payload.Payload) error {
 					log.Println("receiving:", elem)
+					return nil
 				}).
 				Subscribe(context.Background())
 			return flux.Create(func(i context.Context, sink flux.Sink) {

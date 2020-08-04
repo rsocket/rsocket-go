@@ -49,10 +49,11 @@ func main() {
 	ctx := context.Background()
 
 	sub := rx.NewSubscriber(
-		rx.OnNext(func(input payload.Payload) {
+		rx.OnNext(func(input payload.Payload) error {
 			//m2, _ := elem.MetadataUTF8()
 			//assert.Equal(t, m1, m2, "metadata doesn't match")
 			wg.Done()
+			return nil
 		}),
 	)
 
