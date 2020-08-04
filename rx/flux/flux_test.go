@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jjeffcaii/reactor-go"
 	nativeFlux "github.com/jjeffcaii/reactor-go/flux"
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go/payload"
@@ -19,8 +20,9 @@ import (
 
 func TestEmpty(t *testing.T) {
 	last, err := flux.Empty().
-		DoOnNext(func(input payload.Payload) {
+		DoOnNext(func(input payload.Payload) error {
 			assert.FailNow(t, "unreachable")
+			return nil
 		}).
 		BlockLast(context.Background())
 	assert.NoError(t, err)
@@ -33,8 +35,9 @@ func TestEmpty(t *testing.T) {
 func TestError(t *testing.T) {
 	err := errors.New("boom")
 	_, _ = flux.Error(err).
-		DoOnNext(func(input payload.Payload) {
+		DoOnNext(func(input payload.Payload) error {
 			assert.FailNow(t, "unreachable")
+			return nil
 		}).
 		DoOnError(func(e error) {
 			assert.Equal(t, err, e)
@@ -54,8 +57,9 @@ func TestClone(t *testing.T) {
 
 	c := atomic.NewInt32(0)
 	last, err := clone.
-		DoOnNext(func(input payload.Payload) {
+		DoOnNext(func(input payload.Payload) error {
 			c.Inc()
+			return nil
 		}).
 		DoOnError(func(e error) {
 			assert.FailNow(t, "unreachable")
@@ -70,12 +74,13 @@ func TestRaw(t *testing.T) {
 	const total = 10
 	c := atomic.NewInt32(0)
 	f := flux.
-		Raw(nativeFlux.Range(0, total).Map(func(v interface{}) interface{} {
-			return payload.NewString(fmt.Sprintf("data_%d", v.(int)), "")
+		Raw(nativeFlux.Range(0, total).Map(func(v reactor.Any) (reactor.Any, error) {
+			return payload.NewString(fmt.Sprintf("data_%d", v.(int)), ""), nil
 		}))
 	last, err := f.
-		DoOnNext(func(input payload.Payload) {
+		DoOnNext(func(input payload.Payload) error {
 			c.Inc()
+			return nil
 		}).
 		BlockLast(context.Background())
 	assert.NoError(t, err)
@@ -85,8 +90,9 @@ func TestRaw(t *testing.T) {
 	c.Store(0)
 	const take = 3
 	last, err = f.Take(take).
-		DoOnNext(func(input payload.Payload) {
+		DoOnNext(func(input payload.Payload) error {
 			c.Inc()
+			return nil
 		}).
 		BlockLast(context.Background())
 	assert.NoError(t, err)
@@ -102,8 +108,9 @@ func TestJust(t *testing.T) {
 			payload.NewString("bar", ""),
 			payload.NewString("qux", ""),
 		).
-		DoOnNext(func(input payload.Payload) {
+		DoOnNext(func(input payload.Payload) error {
 			c.Inc()
+			return nil
 		}).
 		BlockLast(context.Background())
 	assert.NoError(t, err)
@@ -126,9 +133,10 @@ func TestCreate(t *testing.T) {
 	nextRequests := atomic.NewInt32(0)
 
 	f.
-		DoOnNext(func(input payload.Payload) {
+		DoOnNext(func(input payload.Payload) error {
 			fmt.Println("next:", input)
 			su.Request(1)
+			return nil
 		}).
 		DoOnRequest(func(n int) {
 			fmt.Println("request:", n)
@@ -152,8 +160,8 @@ func TestCreate(t *testing.T) {
 func TestMap(t *testing.T) {
 	last, err := flux.
 		Just(payload.NewString("hello", "")).
-		Map(func(p payload.Payload) payload.Payload {
-			return payload.NewString(p.DataUTF8()+" world", "")
+		Map(func(p payload.Payload) (payload.Payload, error) {
+			return payload.NewString(p.DataUTF8()+" world", ""), nil
 		}).
 		BlockLast(context.Background())
 	assert.NoError(t, err)
@@ -173,8 +181,9 @@ func TestProcessor(t *testing.T) {
 	done := make(chan struct{})
 
 	processor.
-		DoOnNext(func(input payload.Payload) {
+		DoOnNext(func(input payload.Payload) error {
 			fmt.Println("next:", input)
+			return nil
 		}).
 		DoFinally(func(s rx.SignalType) {
 			close(done)
@@ -200,8 +209,9 @@ func TestSwitchOnFirst(t *testing.T) {
 			n, _ := strconv.Atoi(input.DataUTF8())
 			return n > first
 		})
-	}).Subscribe(context.Background(), rx.OnNext(func(input payload.Payload) {
+	}).Subscribe(context.Background(), rx.OnNext(func(input payload.Payload) error {
 		fmt.Println("next:", input.DataUTF8())
+		return nil
 	}))
 }
 
@@ -216,9 +226,10 @@ func TestFluxRequest(t *testing.T) {
 	var su rx.Subscription
 
 	sub := rx.NewSubscriber(
-		rx.OnNext(func(input payload.Payload) {
+		rx.OnNext(func(input payload.Payload) error {
 			fmt.Println("onNext:", input)
 			su.Request(1)
+			return nil
 		}),
 		rx.OnComplete(func() {
 			fmt.Println("complete")
@@ -256,8 +267,9 @@ func TestFluxProcessorWithRequest(t *testing.T) {
 	var su rx.Subscription
 
 	sub := rx.NewSubscriber(
-		rx.OnNext(func(input payload.Payload) {
+		rx.OnNext(func(input payload.Payload) error {
 			su.Request(1)
+			return nil
 		}),
 		rx.OnSubscribe(func(s rx.Subscription) {
 			su = s

@@ -72,8 +72,9 @@ func TestAbstractRSocket_RequestStream(t *testing.T) {
 	var res []payload.Payload
 
 	_, err := s.RequestStream(fakeRequest).
-		DoOnNext(func(input payload.Payload) {
+		DoOnNext(func(input payload.Payload) error {
 			res = append(res, input)
+			return nil
 		}).
 		BlockLast(context.Background())
 	assert.NoError(t, err)
@@ -92,8 +93,9 @@ func TestAbstractRSocket_RequestChannel(t *testing.T) {
 	}
 	var res []payload.Payload
 	_, err := s.RequestChannel(flux.Just(fakeRequest)).
-		DoOnNext(func(input payload.Payload) {
+		DoOnNext(func(input payload.Payload) error {
 			res = append(res, input)
+			return nil
 		}).
 		BlockLast(context.Background())
 	assert.NoError(t, err)

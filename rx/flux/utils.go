@@ -61,8 +61,9 @@ func CreateProcessor() Processor {
 func Clone(source rx.Publisher) Flux {
 	return Create(func(ctx context.Context, s Sink) {
 		source.Subscribe(ctx,
-			rx.OnNext(func(input payload.Payload) {
+			rx.OnNext(func(input payload.Payload) error {
 				s.Next(input)
+				return nil
 			}),
 			rx.OnComplete(func() {
 				s.Complete()

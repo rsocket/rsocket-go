@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"errors"
 	"fmt"
-	"log"
 	"testing"
 	"time"
 
@@ -43,7 +42,7 @@ func ExampleNewGroup() {
 				if !ok {
 					panic(errors.New("missing service ID in metadata"))
 				}
-				log.Println("[broker] redirect request to service", requestServiceID)
+				fmt.Println("[broker] redirect request to service", requestServiceID)
 				return group.Get(requestServiceID).MustNext(context.Background()).RequestResponse(msg)
 			})), nil
 		}).
@@ -72,7 +71,7 @@ func TestServiceSubscribe(t *testing.T) {
 			Acceptor(func(socket RSocket) RSocket {
 				return NewAbstractSocket(RequestResponse(func(msg payload.Payload) mono.Mono {
 					result := payload.NewString(fmt.Sprintf("%02x", md5.Sum(msg.Data())), "MD5 RESULT")
-					log.Println("[publisher] accept MD5 request:", msg.DataUTF8())
+					fmt.Println("[publisher] accept MD5 request:", msg.DataUTF8())
 					return mono.Just(result)
 				}))
 			}).
@@ -98,9 +97,10 @@ func TestServiceSubscribe(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 	}()
 	_, err = cli.RequestResponse(payload.NewString("Hello World!", "md5")).
-		DoOnSuccess(func(elem payload.Payload) {
-			log.Println("[subscriber] receive MD5 response:", elem.DataUTF8())
+		DoOnSuccess(func(elem payload.Payload) error {
+			fmt.Println("[subscriber] receive MD5 response:", elem.DataUTF8())
 			require.Equal(t, "ed076287532e86365e841e92bfc50d8c", elem.DataUTF8(), "bad md5")
+			return nil
 		}).
 		Block(context.Background())
 	require.NoError(t, err, "request failed")

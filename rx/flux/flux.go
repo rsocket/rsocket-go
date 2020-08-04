@@ -44,7 +44,7 @@ type Flux interface {
 	// DoOnSubscribe add behavior triggered when the Flux is done being subscribed.
 	DoOnSubscribe(rx.FnOnSubscribe) Flux
 	// Map transform the items emitted by this Flux by applying a synchronous function to each item.
-	Map(func(payload.Payload) payload.Payload) Flux
+	Map(func(payload.Payload) (payload.Payload, error)) Flux
 	// SwitchOnFirst transform the current Flux once it emits its first element, making a conditional transformation possible.
 	SwitchOnFirst(FnSwitchOnFirst) Flux
 	// SubscribeOn run subscribe, onSubscribe and request on a specified scheduler.

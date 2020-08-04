@@ -80,9 +80,10 @@ func testAll(t *testing.T, proto string, tp Transporter) {
 
 						inputs.(flux.Flux).DoFinally(func(s rx.SignalType) {
 							close(receives)
-						}).Subscribe(context.Background(), rx.OnNext(func(input Payload) {
+						}).Subscribe(context.Background(), rx.OnNext(func(input Payload) error {
 							//fmt.Println("rcv from channel:", input)
 							receives <- input
+							return nil
 						}))
 
 						return flux.Create(func(ctx context.Context, s flux.Sink) {
@@ -149,11 +150,12 @@ func testRequestStream(ctx context.Context, cli Client, t *testing.T) {
 		DoFinally(func(s rx.SignalType) {
 			close(done)
 		}).
-		DoOnNext(func(elem Payload) {
+		DoOnNext(func(elem Payload) error {
 			m, _ := elem.MetadataUTF8()
 			assert.Equal(t, fmt.Sprintf("%d", atomic.LoadInt32(&seq)), m, "bad stream metadata")
 			assert.Equal(t, testData, elem.DataUTF8(), "bad stream data")
 			atomic.AddInt32(&seq, 1)
+			return nil
 		}).
 		BlockLast(ctx)
 	<-done
@@ -169,12 +171,13 @@ func testRequestStreamOneByOne(ctx context.Context, cli Client, t *testing.T) {
 		DoFinally(func(s rx.SignalType) {
 			close(done)
 		}).
-		DoOnNext(func(elem Payload) {
+		DoOnNext(func(elem Payload) error {
 			m, _ := elem.MetadataUTF8()
 			assert.Equal(t, fmt.Sprintf("%d", atomic.LoadInt32(&seq)), m, "bad stream metadata")
 			assert.Equal(t, testData, elem.DataUTF8(), "bad stream data")
 			atomic.AddInt32(&seq, 1)
 			su.Request(1)
+			return nil
 		}).
 		Subscribe(ctx, rx.OnSubscribe(func(s rx.Subscription) {
 			su = s
@@ -196,12 +199,13 @@ func testRequestChannel(ctx context.Context, cli Client, t *testing.T) {
 	var seq int
 
 	_, err := cli.RequestChannel(send).
-		DoOnNext(func(elem Payload) {
+		DoOnNext(func(elem Payload) error {
 			//fmt.Println(elem)
 			m, _ := elem.MetadataUTF8()
 			assert.Equal(t, fmt.Sprintf("%d_from_server", seq), m, "bad channel metadata")
 			assert.Equal(t, testData, elem.DataUTF8(), "bad channel data")
 			seq++
+			return nil
 		}).
 		BlockLast(ctx)
 	assert.NoError(t, err, "block last failed")
@@ -227,15 +231,17 @@ func testRequestChannelOneByOne(ctx context.Context, cli Client, t *testing.T) {
 			assert.Equal(t, rx.SignalComplete, s, "bad signal type")
 			close(done)
 		}).
-		DoOnNext(func(elem Payload) {
+		DoOnNext(func(elem Payload) error {
 			fmt.Println(elem)
 			m, _ := elem.MetadataUTF8()
 			assert.Equal(t, fmt.Sprintf("%d_from_server", seq), m, "bad channel metadata")
 			assert.Equal(t, testData, elem.DataUTF8(), "bad channel data")
 			seq++
+			return nil
 		}).
-		Subscribe(ctx, rx.OnNext(func(elem Payload) {
+		Subscribe(ctx, rx.OnNext(func(elem Payload) error {
 			su.Request(1)
+			return nil
 		}), rx.OnSubscribe(func(s rx.Subscription) {
 			su = s
 			su.Request(1)

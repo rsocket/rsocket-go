@@ -38,7 +38,7 @@ func (s requestChannelCallback) Close(err error) {
 }
 
 type requestResponseCallbackReverse struct {
-	su rs.Subscription
+	su reactor.Subscription
 }
 
 func (s requestResponseCallbackReverse) Close(err error) {

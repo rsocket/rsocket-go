@@ -275,7 +275,7 @@ func (p *DuplexConnection) RequestChannel(publisher rx.Publisher) (ret flux.Flux
 
 			sndRequested := make(chan struct{})
 			sub := rx.NewSubscriber(
-				rx.OnNext(func(item payload.Payload) {
+				rx.OnNext(func(item payload.Payload) (err error) {
 					var newborn bool
 					select {
 					case <-sndRequested:
@@ -306,6 +306,7 @@ func (p *DuplexConnection) RequestChannel(publisher rx.Publisher) (ret flux.Flux
 						}
 						p.sendFrame(f)
 					})
+					return
 				}),
 				rx.OnSubscribe(func(s rx.Subscription) {
 					p.register(sid, requestChannelCallback{rcv: receiving, snd: s})
@@ -363,8 +364,9 @@ func (p *DuplexConnection) respondRequestResponse(receiving fragmentation.Header
 
 	// 4. async subscribe publisher
 	sub := rx.NewSubscriber(
-		rx.OnNext(func(input payload.Payload) {
+		rx.OnNext(func(input payload.Payload) error {
 			p.sendPayload(sid, input, core.FlagNext|core.FlagComplete)
+			return nil
 		}),
 		rx.OnError(func(e error) {
 			p.writeError(sid, e)
@@ -465,8 +467,9 @@ func (p *DuplexConnection) respondRequestChannel(pl fragmentation.HeaderAndPaylo
 			close(mustSub)
 			s.Request(initRequestN)
 		}),
-		rx.OnNext(func(elem payload.Payload) {
+		rx.OnNext(func(elem payload.Payload) error {
 			p.sendPayload(sid, elem, core.FlagNext)
+			return nil
 		}),
 	)
 
@@ -559,8 +562,9 @@ func (p *DuplexConnection) respondRequestStream(receiving fragmentation.HeaderAn
 	}
 
 	sub := rx.NewSubscriber(
-		rx.OnNext(func(elem payload.Payload) {
+		rx.OnNext(func(elem payload.Payload) error {
 			p.sendPayload(sid, elem, core.FlagNext)
+			return nil
 		}),
 		rx.OnSubscribe(func(s rx.Subscription) {
 			p.register(sid, requestStreamCallbackReverse{su: s})

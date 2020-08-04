@@ -39,8 +39,9 @@ func (p proxy) ToChan(ctx context.Context) (c <-chan payload.Payload, e <-chan e
 	errorChannel := make(chan error, 1)
 	payloadChannel := make(chan payload.Payload, 1)
 	p.
-		DoOnSuccess(func(input payload.Payload) {
+		DoOnSuccess(func(input payload.Payload) error {
 			payloadChannel <- input
+			return nil
 		}).
 		DoOnError(func(e error) {
 			errorChannel <- e
@@ -75,7 +76,7 @@ func (p proxy) Filter(fn rx.FnPredicate) Mono {
 }
 
 func (p proxy) DoFinally(fn rx.FnFinally) Mono {
-	return newProxy(p.Mono.DoFinally(func(signal rs.SignalType) {
+	return newProxy(p.Mono.DoFinally(func(signal reactor.SignalType) {
 		fn(rx.SignalType(signal))
 	}))
 }
@@ -86,13 +87,13 @@ func (p proxy) DoOnError(fn rx.FnOnError) Mono {
 	}))
 }
 func (p proxy) DoOnSuccess(next rx.FnOnNext) Mono {
-	return newProxy(p.Mono.DoOnNext(func(v interface{}) {
-		next(v.(payload.Payload))
+	return newProxy(p.Mono.DoOnNext(func(v reactor.Any) error {
+		return next(v.(payload.Payload))
 	}))
 }
 
 func (p proxy) DoOnSubscribe(fn rx.FnOnSubscribe) Mono {
-	return newProxy(p.Mono.DoOnSubscribe(func(su rs.Subscription) {
+	return newProxy(p.Mono.DoOnSubscribe(func(su reactor.Subscription) {
 		fn(su)
 	}))
 }
@@ -110,21 +111,21 @@ func (p proxy) Subscribe(ctx context.Context, options ...rx.SubscriberOption) {
 }
 
 func (p proxy) SubscribeWith(ctx context.Context, actual rx.Subscriber) {
-	var sub rs.Subscriber
+	var sub reactor.Subscriber
 	if actual == rx.EmptySubscriber {
 		sub = rx.EmptyRawSubscriber
 	} else {
-		sub = rs.NewSubscriber(
-			rs.OnNext(func(v interface{}) {
-				actual.OnNext(v.(payload.Payload))
+		sub = reactor.NewSubscriber(
+			reactor.OnNext(func(v reactor.Any) error {
+				return actual.OnNext(v.(payload.Payload))
 			}),
-			rs.OnComplete(func() {
+			reactor.OnComplete(func() {
 				actual.OnComplete()
 			}),
-			rs.OnSubscribe(func(su rs.Subscription) {
+			reactor.OnSubscribe(func(su reactor.Subscription) {
 				actual.OnSubscribe(su)
 			}),
-			rs.OnError(func(e error) {
+			reactor.OnError(func(e error) {
 				actual.OnError(e)
 			}),
 		)

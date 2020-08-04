@@ -46,8 +46,9 @@ func Example() {
 		_ = cli.Close()
 	}()
 	cli.RequestResponse(payload.NewString("Ping", time.Now().String())).
-		DoOnSuccess(func(elem payload.Payload) {
+		DoOnSuccess(func(elem payload.Payload) error {
 			log.Println("incoming response:", elem)
+			return nil
 		}).
 		Subscribe(context.Background())
 }
@@ -67,8 +68,9 @@ func ExampleReceive() {
 
 			// Request to client.
 			sendingSocket.RequestResponse(payload.NewString("Ping", time.Now().String())).
-				DoOnSuccess(func(elem payload.Payload) {
+				DoOnSuccess(func(elem payload.Payload) error {
 					log.Println("response of Ping from client:", elem)
+					return nil
 				}).
 				SubscribeOn(scheduler.Parallel()).
 				Subscribe(context.Background())
@@ -123,16 +125,18 @@ func ExampleConnect() {
 	cli.FireAndForget(payload.NewString("This is a FNF message.", ""))
 	// Simple RequestResponse.
 	cli.RequestResponse(payload.NewString("This is a RequestResponse message.", "")).
-		DoOnSuccess(func(elem payload.Payload) {
+		DoOnSuccess(func(elem payload.Payload) error {
 			log.Println("response:", elem)
+			return nil
 		}).
 		Subscribe(context.Background())
 	var s rx.Subscription
 	// RequestStream with backpressure. (one by one)
 	cli.RequestStream(payload.NewString("This is a RequestStream message.", "")).
-		DoOnNext(func(elem payload.Payload) {
+		DoOnNext(func(elem payload.Payload) error {
 			log.Println("next element in stream:", elem)
 			s.Request(1)
+			return nil
 		}).
 		Subscribe(context.Background(), rx.OnSubscribe(func(s rx.Subscription) {
 			s.Request(1)
@@ -145,8 +149,9 @@ func ExampleConnect() {
 		s.Complete()
 	})
 	cli.RequestChannel(sendFlux).
-		DoOnNext(func(elem payload.Payload) {
+		DoOnNext(func(elem payload.Payload) error {
 			log.Println("next element in channel:", elem)
+			return nil
 		}).
 		Subscribe(context.Background())
 }

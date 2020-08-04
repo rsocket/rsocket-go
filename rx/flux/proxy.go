@@ -3,7 +3,7 @@ package flux
 import (
 	"context"
 
-	reactor "github.com/jjeffcaii/reactor-go"
+	"github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/flux"
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
@@ -32,8 +32,8 @@ func (p proxy) Next(v payload.Payload) {
 	p.mustProcessor().Next(v)
 }
 
-func (p proxy) Map(fn func(in payload.Payload) payload.Payload) Flux {
-	return newProxy(p.Flux.Map(func(i interface{}) interface{} {
+func (p proxy) Map(fn func(in payload.Payload) (payload.Payload, error)) Flux {
+	return newProxy(p.Flux.Map(func(i reactor.Any) (reactor.Any, error) {
 		return fn(i.(payload.Payload))
 	}))
 }
@@ -65,8 +65,8 @@ func (p proxy) DoOnError(fn rx.FnOnError) Flux {
 }
 
 func (p proxy) DoOnNext(fn rx.FnOnNext) Flux {
-	return newProxy(p.Flux.DoOnNext(func(v interface{}) {
-		fn(v.(payload.Payload))
+	return newProxy(p.Flux.DoOnNext(func(v reactor.Any) error {
+		return fn(v.(payload.Payload))
 	}))
 }
 
@@ -85,12 +85,13 @@ func (p proxy) ToChan(ctx context.Context, cap int) (c <-chan payload.Payload, e
 			close(err)
 		}).
 		Subscribe(ctx,
-			rx.OnNext(func(v payload.Payload) {
+			rx.OnNext(func(v payload.Payload) error {
 				if _, ok := v.(core.Frame); ok {
 					ch <- payload.Clone(v)
 				} else {
 					ch <- v
 				}
+				return nil
 			}),
 			rx.OnError(func(e error) {
 				err <- e
@@ -132,8 +133,9 @@ func (p proxy) BlockSlice(ctx context.Context) (results []payload.Payload, err e
 		}).
 		Subscribe(
 			ctx,
-			reactor.OnNext(func(v interface{}) {
+			reactor.OnNext(func(v reactor.Any) error {
 				results = append(results, v.(payload.Payload))
+				return nil
 			}),
 			reactor.OnError(func(e error) {
 				err = e
@@ -179,8 +181,8 @@ func (p proxy) SubscribeWith(ctx context.Context, s rx.Subscriber) {
 		sub = rx.EmptyRawSubscriber
 	} else {
 		sub = reactor.NewSubscriber(
-			reactor.OnNext(func(v interface{}) {
-				s.OnNext(v.(payload.Payload))
+			reactor.OnNext(func(v reactor.Any) error {
+				return s.OnNext(v.(payload.Payload))
 			}),
 			reactor.OnError(func(e error) {
 				s.OnError(e)

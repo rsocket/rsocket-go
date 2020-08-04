@@ -78,8 +78,9 @@ func TestNewClient(t *testing.T) {
 
 	var stream []payload.Payload
 	_, err = cli.RequestStream(payload.New(fakeData, fakeMetadata)).
-		DoOnNext(func(input payload.Payload) {
+		DoOnNext(func(input payload.Payload) error {
 			stream = append(stream, input)
+			return nil
 		}).
 		DoOnSubscribe(func(s rx.Subscription) {
 			nextId := nextRequestId()

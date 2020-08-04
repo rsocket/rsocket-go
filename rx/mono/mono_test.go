@@ -49,8 +49,9 @@ func TestJustOrEmpty(t *testing.T) {
 
 func TestJust(t *testing.T) {
 	Just(payload.NewString("hello", "world")).
-		Subscribe(context.Background(), rx.OnNext(func(i payload.Payload) {
+		Subscribe(context.Background(), rx.OnNext(func(i payload.Payload) error {
 			log.Println("next:", i)
+			return nil
 		}))
 }
 
@@ -67,8 +68,9 @@ func TestProxy_SubscribeOn(t *testing.T) {
 		})
 	}).
 		SubscribeOn(scheduler.Parallel()).
-		DoOnSuccess(func(i payload.Payload) {
+		DoOnSuccess(func(i payload.Payload) error {
 			log.Println("success:", i)
+			return nil
 		}).
 		Block(context.Background())
 	assert.NoError(t, err)
@@ -101,8 +103,9 @@ func TestProxy_Filter(t *testing.T) {
 		Filter(func(i payload.Payload) bool {
 			return strings.EqualFold("hello_no", i.DataUTF8())
 		}).
-		DoOnSuccess(func(i payload.Payload) {
+		DoOnSuccess(func(i payload.Payload) error {
 			assert.Fail(t, "should never run here")
+			return nil
 		}).
 		DoFinally(func(i rx.SignalType) {
 			log.Println("finally:", i)
@@ -114,14 +117,16 @@ func TestCreate(t *testing.T) {
 	Create(func(i context.Context, sink Sink) {
 		sink.Success(payload.NewString("hello", "world"))
 	}).
-		DoOnSuccess(func(i payload.Payload) {
+		DoOnSuccess(func(i payload.Payload) error {
 			log.Println("doOnNext:", i)
+			return nil
 		}).
 		DoFinally(func(s rx.SignalType) {
 			log.Println("doFinally:", s)
 		}).
-		Subscribe(context.Background(), rx.OnNext(func(i payload.Payload) {
+		Subscribe(context.Background(), rx.OnNext(func(i payload.Payload) error {
 			log.Println("next:", i)
+			return nil
 		}))
 
 	Create(func(i context.Context, sink Sink) {
@@ -130,8 +135,9 @@ func TestCreate(t *testing.T) {
 		DoOnError(func(e error) {
 			assert.Equal(t, "foobar", e.Error(), "bad error")
 		}).
-		DoOnSuccess(func(i payload.Payload) {
+		DoOnSuccess(func(i payload.Payload) error {
 			assert.Fail(t, "should never run here")
+			return nil
 		}).
 		Subscribe(context.Background())
 }

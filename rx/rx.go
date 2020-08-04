@@ -23,7 +23,7 @@ type (
 	// FnOnComplete is alias of function for signal when no more elements are available
 	FnOnComplete = func()
 	// FnOnNext is alias of function for signal when next element arrived.
-	FnOnNext = func(input payload.Payload)
+	FnOnNext = func(input payload.Payload) error
 	// FnOnSubscribe is alias of function for signal when subscribe begin.
 	FnOnSubscribe = func(s Subscription)
 	// FnOnError is alias of function for signal when an error occurred.
