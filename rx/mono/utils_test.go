@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	rsMono "github.com/jjeffcaii/reactor-go/mono"
+	"github.com/jjeffcaii/reactor-go/scheduler"
 
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/payload"
@@ -74,19 +75,19 @@ func TestToChannel(t *testing.T) {
 		payloads <- p
 	}()
 
-	channel, chanerrors := mono.CreateFromChannel(payloads, err).ToChan(context.Background())
+	valueChan, errChan := mono.CreateFromChannel(payloads, err).ToChan(context.Background())
 
 loop:
 	for {
 		select {
-		case p, ok := <-channel:
+		case p, ok := <-valueChan:
 			if !ok {
 				break loop
 			}
 			assert.Equal(t, "data", p.DataUTF8())
 			md, _ := p.MetadataUTF8()
 			assert.Equal(t, "metadata", md)
-		case err := <-chanerrors:
+		case err := <-errChan:
 			if err != nil {
 				assert.NoError(t, err)
 			}
@@ -109,17 +110,17 @@ func TestToChannelEmitError(t *testing.T) {
 		}
 	}()
 
-	channel, chanerrors := mono.CreateFromChannel(payloads, err).ToChan(context.Background())
+	valueChan, errChan := mono.CreateFromChannel(payloads, err).ToChan(context.Background())
 
 loop:
 	for {
 		select {
-		case _, ok := <-channel:
+		case _, ok := <-valueChan:
 			if !ok {
 				break loop
 			}
 			assert.Fail(t, "should never receive anything")
-		case err := <-chanerrors:
+		case err := <-errChan:
 			if err != nil {
 				break loop
 			}
@@ -134,4 +135,24 @@ func TestRaw(t *testing.T) {
 	res, err := mono.Raw(rsMono.Just(fakePayload)).Block(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, fakePayload, res)
+}
+
+func TestSubscribeWithChan(t *testing.T) {
+	valueChan := make(chan payload.Payload)
+	errChan := make(chan error)
+
+	fakePayload := payload.NewString("fake data", "fake metadata")
+
+	mono.
+		Create(func(ctx context.Context, sink mono.Sink) {
+			sink.Success(fakePayload)
+		}).
+		SubscribeOn(scheduler.Parallel()).
+		SubscribeWithChan(context.Background(), valueChan, errChan)
+	select {
+	case next := <-valueChan:
+		assert.True(t, payload.Equal(fakePayload, next), "result doesn't match")
+	case err := <-errChan:
+		assert.NoError(t, err, "should not return error")
+	}
 }

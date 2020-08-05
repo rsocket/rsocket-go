@@ -7,7 +7,6 @@ import (
 	"github.com/jjeffcaii/reactor-go/flux"
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
-	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -18,14 +17,6 @@ type proxy struct {
 
 func (p proxy) Raw() flux.Flux {
 	return p.Flux
-}
-
-func (p proxy) mustProcessor() flux.Processor {
-	processor, ok := p.Flux.(flux.Processor)
-	if !ok {
-		panic(errors.New("require flux.Processor"))
-	}
-	return processor
 }
 
 func (p proxy) Next(v payload.Payload) {
@@ -70,33 +61,21 @@ func (p proxy) DoOnNext(fn rx.FnOnNext) Flux {
 	}))
 }
 
-func (p proxy) ToChan(ctx context.Context, cap int) (c <-chan payload.Payload, e <-chan error) {
+func (p proxy) ToChan(ctx context.Context, cap int) (<-chan payload.Payload, <-chan error) {
 	if cap < 1 {
 		cap = 1
 	}
 	ch := make(chan payload.Payload, cap)
 	err := make(chan error, 1)
-	p.
-		DoFinally(func(s rx.SignalType) {
-			if s == rx.SignalCancel {
+	p.Flux.
+		DoFinally(func(s reactor.SignalType) {
+			defer close(ch)
+			defer close(err)
+			if s == reactor.SignalTypeCancel {
 				err <- reactor.ErrSubscribeCancelled
 			}
-			close(ch)
-			close(err)
 		}).
-		Subscribe(ctx,
-			rx.OnNext(func(v payload.Payload) error {
-				if _, ok := v.(core.Frame); ok {
-					ch <- payload.Clone(v)
-				} else {
-					ch <- v
-				}
-				return nil
-			}),
-			rx.OnError(func(e error) {
-				err <- e
-			}),
-		)
+		SubscribeWithChan(ctx, ch, err)
 	return ch, err
 }
 
@@ -120,6 +99,14 @@ func (p proxy) BlockLast(ctx context.Context) (last payload.Payload, err error) 
 		last = v.(payload.Payload)
 	}
 	return
+}
+
+func (p proxy) SubscribeWithChan(ctx context.Context, payloads chan<- payload.Payload, err chan<- error) {
+	p.Flux.SubscribeWithChan(ctx, payloads, err)
+}
+
+func (p proxy) BlockToSlice(ctx context.Context, results *[]payload.Payload) error {
+	return p.Flux.BlockToSlice(ctx, results)
 }
 
 func (p proxy) BlockSlice(ctx context.Context) (results []payload.Payload, err error) {
@@ -196,6 +183,14 @@ func (p proxy) SubscribeWith(ctx context.Context, s rx.Subscriber) {
 		)
 	}
 	p.Flux.SubscribeWith(ctx, sub)
+}
+
+func (p proxy) mustProcessor() flux.Processor {
+	processor, ok := p.Flux.(flux.Processor)
+	if !ok {
+		panic(errors.New("require flux.Processor"))
+	}
+	return processor
 }
 
 type sinkProxy struct {

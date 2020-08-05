@@ -1,6 +1,7 @@
 package payload
 
 import (
+	"bytes"
 	"io/ioutil"
 	"time"
 
@@ -109,4 +110,21 @@ func MustNewFile(filename string, metadata []byte) Payload {
 		panic(err)
 	}
 	return foo
+}
+
+func Equal(a Payload, b Payload) bool {
+	if a == b {
+		return true
+	}
+	if !bytes.Equal(a.Data(), b.Data()) {
+		return false
+	}
+
+	m1, ok1 := a.Metadata()
+	m2, ok2 := b.Metadata()
+	if ok1 != ok2 {
+		return false
+	}
+
+	return bytes.Equal(m1, m2)
 }

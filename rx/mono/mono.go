@@ -27,6 +27,8 @@ type Mono interface {
 	DoOnSubscribe(rx.FnOnSubscribe) Mono
 	// SubscribeOn customize a Scheduler running Subscribe, OnSubscribe and Request.
 	SubscribeOn(scheduler.Scheduler) Mono
+	// SubscribeWithChan subscribe to this Mono and puts item/error into channels.
+	SubscribeWithChan(ctx context.Context, valueChan chan<- payload.Payload, errChan chan<- error)
 	// Block blocks Mono and returns data and error.
 	Block(context.Context) (payload.Payload, error)
 	//SwitchIfEmpty switch to an alternative Publisher if this Mono is completed without any data.

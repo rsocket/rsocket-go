@@ -35,27 +35,42 @@ func (p proxy) Error(e error) {
 	p.mustProcessor().Error(e)
 }
 
-func (p proxy) ToChan(ctx context.Context) (c <-chan payload.Payload, e <-chan error) {
-	errorChannel := make(chan error, 1)
-	payloadChannel := make(chan payload.Payload, 1)
-	p.
-		DoOnSuccess(func(input payload.Payload) error {
-			payloadChannel <- input
-			return nil
-		}).
-		DoOnError(func(e error) {
-			errorChannel <- e
-		}).
-		DoFinally(func(s rx.SignalType) {
-			close(payloadChannel)
-			close(errorChannel)
-		}).
-		Subscribe(ctx)
-	return payloadChannel, errorChannel
+func (p proxy) ToChan(ctx context.Context) (<-chan payload.Payload, <-chan error) {
+	value := make(chan payload.Payload, 1)
+	err := make(chan error, 1)
+	p.subscribeWithChan(ctx, value, err, true)
+	return value, err
 }
 
 func (p proxy) SubscribeOn(sc scheduler.Scheduler) Mono {
 	return newProxy(p.Mono.SubscribeOn(sc))
+}
+
+func (p proxy) subscribeWithChan(ctx context.Context, valueChan chan<- payload.Payload, errChan chan<- error, autoClose bool) {
+	p.Mono.
+		DoFinally(func(s reactor.SignalType) {
+			if autoClose {
+				defer close(valueChan)
+				defer close(errChan)
+			}
+			if s == reactor.SignalTypeCancel {
+				errChan <- reactor.ErrSubscribeCancelled
+			}
+		}).
+		Subscribe(
+			ctx,
+			reactor.OnNext(func(v reactor.Any) error {
+				valueChan <- v.(payload.Payload)
+				return nil
+			}),
+			reactor.OnError(func(e error) {
+				errChan <- e
+			}),
+		)
+}
+
+func (p proxy) SubscribeWithChan(ctx context.Context, valueChan chan<- payload.Payload, errChan chan<- error) {
+	p.subscribeWithChan(ctx, valueChan, errChan, false)
 }
 
 func (p proxy) Block(ctx context.Context) (pa payload.Payload, err error) {

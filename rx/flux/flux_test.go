@@ -2,15 +2,15 @@ package flux_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/jjeffcaii/reactor-go"
-	nativeFlux "github.com/jjeffcaii/reactor-go/flux"
+	reactorFlux "github.com/jjeffcaii/reactor-go/flux"
 	"github.com/jjeffcaii/reactor-go/scheduler"
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -74,7 +74,7 @@ func TestRaw(t *testing.T) {
 	const total = 10
 	c := atomic.NewInt32(0)
 	f := flux.
-		Raw(nativeFlux.Range(0, total).Map(func(v reactor.Any) (reactor.Any, error) {
+		Raw(reactorFlux.Range(0, total).Map(func(v reactor.Any) (reactor.Any, error) {
 			return payload.NewString(fmt.Sprintf("data_%d", v.(int)), ""), nil
 		}))
 	last, err := f.
@@ -368,23 +368,22 @@ func TestToChannel(t *testing.T) {
 
 	f := flux.CreateFromChannel(payloads, err)
 
-	channel, chanerrors := f.ToChan(context.Background(), 0)
+	valueChan, errChan := f.ToChan(context.Background(), 0)
 
 	var count int
 loop:
 	for {
 		select {
-		case _, o := <-channel:
-			if o {
-				count++
-			} else {
+		case _, ok := <-valueChan:
+			if !ok {
 				break loop
 			}
-		case err := <-chanerrors:
+			count++
+		case err := <-errChan:
 			if err != nil {
-				t.Error(err)
-				break loop
+				assert.NoError(t, err)
 			}
+			break loop
 		}
 	}
 
@@ -400,29 +399,25 @@ func TestToChannelEmitError(t *testing.T) {
 		defer close(err)
 
 		for i := 1; i <= 10; i++ {
-			err <- errors.New("boom!")
+			err <- errors.New("boom")
 		}
 	}()
 
 	f := flux.CreateFromChannel(payloads, err)
 
-	channel, chanerrors := f.ToChan(context.Background(), 0)
+	valChan, errChan := f.ToChan(context.Background(), 0)
 
 loop:
 	for {
 		select {
-		case _, o := <-channel:
-			if o {
-				t.Fail()
-			} else {
+		case _, ok := <-valChan:
+			if !ok {
 				break loop
 			}
-		case err := <-chanerrors:
-			if err != nil {
-				break loop
-			} else {
-				t.Fail()
-			}
+			assert.Fail(t, "should be unreachable")
+		case err := <-errChan:
+			assert.Error(t, err, "should return error")
+			break loop
 		}
 	}
 
@@ -430,14 +425,54 @@ loop:
 
 func TestFlux_BlockSlice(t *testing.T) {
 	const n = 10
-	arr, err := flux.
+	arr, err := genRandomFlux(n).BlockSlice(context.Background())
+	assert.NoError(t, err)
+	assert.Len(t, arr, n)
+}
+
+func TestFlux_BlockToSlice(t *testing.T) {
+	results := make([]payload.Payload, 0)
+	const n = 10
+	err := genRandomFlux(n).BlockToSlice(context.Background(), &results)
+	assert.NoError(t, err)
+	assert.Len(t, results, n)
+}
+
+func TestFlux_SubscribeWithChan(t *testing.T) {
+	ch := make(chan payload.Payload)
+	err := make(chan error)
+	done := make(chan struct{})
+
+	const n = 10
+	genRandomFlux(n).
+		DoFinally(func(s rx.SignalType) {
+			close(done)
+		}).
+		SubscribeOn(scheduler.Parallel()).
+		SubscribeWithChan(context.Background(), ch, err)
+
+	var results []payload.Payload
+
+L:
+	for {
+		select {
+		case v := <-ch:
+			results = append(results, v)
+		case e := <-err:
+			assert.NoError(t, e)
+		case <-done:
+			break L
+		}
+	}
+	assert.Len(t, results, n)
+}
+
+func genRandomFlux(n int) flux.Flux {
+	return flux.
 		Create(func(ctx context.Context, s flux.Sink) {
 			for i := 0; i < n; i++ {
 				s.Next(payload.NewString("hello", strconv.Itoa(i)))
 			}
 			s.Complete()
-		}).
-		BlockSlice(context.Background())
-	assert.NoError(t, err)
-	assert.Len(t, arr, n)
+		})
 }

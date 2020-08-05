@@ -49,6 +49,10 @@ type Flux interface {
 	SwitchOnFirst(FnSwitchOnFirst) Flux
 	// SubscribeOn run subscribe, onSubscribe and request on a specified scheduler.
 	SubscribeOn(scheduler.Scheduler) Flux
+	// SubscribeWithChan subscribe to this Flux and puts items/error into a chan.
+	SubscribeWithChan(ctx context.Context, values chan<- payload.Payload, err chan<- error)
+	// BlockToSlice subscribe Flux and save values into slice.
+	BlockToSlice(ctx context.Context, results *[]payload.Payload) error
 	// Raw returns Native Flux in reactor-go.
 	Raw() flux.Flux
 	// BlockFirst subscribe to this Flux and block indefinitely until the upstream signals its first value or completes.
