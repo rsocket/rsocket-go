@@ -29,7 +29,7 @@ func startServer(ctx context.Context, port int, counter *sync.Map) {
 				}),
 			), nil
 		}).
-		Transport(rsocket.Tcp().HostAndPort("127.0.0.1", port).Build()).
+		Transport(rsocket.TcpServer().SetHostAndPort("127.0.0.1", port).Build()).
 		Serve(ctx)
 }
 
@@ -60,7 +60,7 @@ func TestRoundRobin(t *testing.T) {
 
 	for i := 0; i < len(ports); i++ {
 		client, err := rsocket.Connect().
-			Transport(rsocket.Tcp().HostAndPort("127.0.0.1", ports[i]).Build()).
+			Transport(rsocket.TcpClient().SetHostAndPort("127.0.0.1", ports[i]).Build()).
 			Start(context.Background())
 		assert.NoError(t, err)
 		b.PutLabel(fmt.Sprintf("test-client-%d", ports[i]), client)

@@ -379,11 +379,11 @@ loop:
 				break loop
 			}
 			count++
-		case err := <-errChan:
-			if err != nil {
-				assert.NoError(t, err)
+		case err, ok := <-errChan:
+			if !ok {
+				break loop
 			}
-			break loop
+			assert.NoError(t, err)
 		}
 	}
 
@@ -428,14 +428,6 @@ func TestFlux_BlockSlice(t *testing.T) {
 	arr, err := genRandomFlux(n).BlockSlice(context.Background())
 	assert.NoError(t, err)
 	assert.Len(t, arr, n)
-}
-
-func TestFlux_BlockToSlice(t *testing.T) {
-	results := make([]payload.Payload, 0)
-	const n = 10
-	err := genRandomFlux(n).BlockToSlice(context.Background(), &results)
-	assert.NoError(t, err)
-	assert.Len(t, results, n)
 }
 
 func TestFlux_SubscribeWithChan(t *testing.T) {

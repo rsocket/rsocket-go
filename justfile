@@ -4,7 +4,6 @@ lint:
         golangci-lint run ./...
 test:
         go test -count=1 -coverprofile=coverage.out \
-        ./balancer/... \
         ./core/... \
         ./extension/... \
         ./internal/... \

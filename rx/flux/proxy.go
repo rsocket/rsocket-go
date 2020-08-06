@@ -69,8 +69,10 @@ func (p proxy) ToChan(ctx context.Context, cap int) (<-chan payload.Payload, <-c
 	err := make(chan error, 1)
 	p.Flux.
 		DoFinally(func(s reactor.SignalType) {
-			defer close(ch)
-			defer close(err)
+			defer func() {
+				close(ch)
+				close(err)
+			}()
 			if s == reactor.SignalTypeCancel {
 				err <- reactor.ErrSubscribeCancelled
 			}
@@ -95,9 +97,10 @@ func (p proxy) BlockLast(ctx context.Context) (last payload.Payload, err error) 
 	if err != nil {
 		return
 	}
-	if v != nil {
-		last = v.(payload.Payload)
+	if v == nil {
+		return
 	}
+	last = v.(payload.Payload)
 	return
 }
 
@@ -105,18 +108,14 @@ func (p proxy) SubscribeWithChan(ctx context.Context, payloads chan<- payload.Pa
 	p.Flux.SubscribeWithChan(ctx, payloads, err)
 }
 
-func (p proxy) BlockToSlice(ctx context.Context, results *[]payload.Payload) error {
-	return p.Flux.BlockToSlice(ctx, results)
-}
-
 func (p proxy) BlockSlice(ctx context.Context) (results []payload.Payload, err error) {
 	done := make(chan struct{})
 	p.Flux.
 		DoFinally(func(s reactor.SignalType) {
-			close(done)
-		}).
-		DoOnCancel(func() {
-			err = reactor.ErrSubscribeCancelled
+			defer close(done)
+			if s == reactor.SignalTypeCancel {
+				err = reactor.ErrSubscribeCancelled
+			}
 		}).
 		Subscribe(
 			ctx,

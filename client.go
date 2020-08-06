@@ -64,13 +64,12 @@ type ClientBuilder interface {
 }
 
 type ToClientStarter interface {
-	// Transport set Transport for current RSocket client.
-	// URI is used to create RSocket Transport:
+	// Transport set generator func for current RSocket client.
 	// Example:
 	// "tcp://127.0.0.1:7878" means a TCP RSocket transport.
 	// "ws://127.0.0.1:8080/a/b/c" means a Websocket RSocket transport.
 	// "wss://127.0.0.1:8080/a/b/c" means a  Websocket RSocket transport with HTTPS.
-	Transport(Transporter) ClientStarter
+	Transport(transport.ClientTransportFunc) ClientStarter
 }
 
 // ToClientStarter is used to build a RSocket client with custom Transport string.
@@ -153,8 +152,8 @@ func (p *clientBuilder) Acceptor(acceptor ClientSocketAcceptor) ToClientStarter 
 	return p
 }
 
-func (p *clientBuilder) Transport(support Transporter) ClientStarter {
-	p.tpGen = support.Client()
+func (p *clientBuilder) Transport(t transport.ClientTransportFunc) ClientStarter {
+	p.tpGen = t
 	return p
 }
 

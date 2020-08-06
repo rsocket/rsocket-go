@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	. "github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/core/transport"
 	. "github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -23,16 +24,26 @@ const (
 var testData = "Hello World!"
 
 func TestSuite(t *testing.T) {
-	transports := map[string]Transporter{
-		"tcp":       Tcp().Addr("127.0.0.1:7878").Build(),
-		"websocket": Websocket().Url("ws://127.0.0.1:8080/test").Build(),
+	m := []string{
+		"tcp",
+		"websocket",
 	}
-	for k, v := range transports {
-		testAll(t, k, v)
+	c := []transport.ClientTransportFunc{
+		TcpClient().SetHostAndPort("127.0.0.1", 7878).Build(),
+		WebsocketClient().SetUrl("ws://127.0.0.1:8080/test").Build(),
 	}
+	s := []transport.ServerTransportFunc{
+		TcpServer().SetAddr(":7878").Build(),
+		WebsocketServer().SetAddr("127.0.0.1:8080").SetPath("/test").Build(),
+	}
+
+	for i := 0; i < len(m); i++ {
+		testAll(t, m[i], c[i], s[i])
+	}
+
 }
 
-func testAll(t *testing.T, proto string, tp Transporter) {
+func testAll(t *testing.T, proto string, clientTp transport.ClientTransportFunc, serverTp transport.ServerTransportFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -95,7 +106,7 @@ func testAll(t *testing.T, proto string, tp Transporter) {
 					}),
 				), nil
 			}).
-			Transport(tp).
+			Transport(serverTp).
 			Serve(ctx)
 		fmt.Println("SERVER STOPPED!!!!!")
 		if err != nil {
@@ -109,7 +120,7 @@ func testAll(t *testing.T, proto string, tp Transporter) {
 	cli, err := Connect().
 		Fragment(192).
 		SetupPayload(NewString(setupData, setupMetadata)).
-		Transport(tp).
+		Transport(clientTp).
 		Start(context.Background())
 	assert.NoError(t, err, "connect failed")
 	defer func() {

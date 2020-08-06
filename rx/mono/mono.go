@@ -33,7 +33,7 @@ type Mono interface {
 	Block(context.Context) (payload.Payload, error)
 	//SwitchIfEmpty switch to an alternative Publisher if this Mono is completed without any data.
 	SwitchIfEmpty(alternative Mono) Mono
-	// Raw returns low-level Mono which defined in upstream reactor library.
+	// Raw returns low-level reactor.Mono which defined in reactor-go library.
 	Raw() mono.Mono
 	// ToChan subscribe Mono and puts items into a chan.
 	// It also puts errors into another chan.

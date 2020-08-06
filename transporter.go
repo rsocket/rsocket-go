@@ -5,177 +5,186 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 
-	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/core/transport"
 )
 
-type Transporter interface {
-	Client() transport.ClientTransportFunc
-	Server() transport.ServerTransportFunc
+const DefaultUnixSockPath = "/var/run/rsocket.sock"
+const DefaultPort = 7878
+
+type TcpClientBuilder struct {
+	addr   string
+	tlsCfg *tls.Config
 }
 
-type tcpTransporter struct {
-	addr string
-	tls  *tls.Config
+type TcpServerBuilder struct {
+	addr   string
+	tlsCfg *tls.Config
 }
 
-type TcpTransporterBuilder struct {
-	opts []func(*tcpTransporter)
-}
-
-func (t *tcpTransporter) Server() transport.ServerTransportFunc {
-	return func(ctx context.Context) (transport.ServerTransport, error) {
-		return transport.NewTcpServerTransportWithAddr("tcp", t.addr, t.tls), nil
-	}
-}
-
-func (t *tcpTransporter) Client() transport.ClientTransportFunc {
-	return func(ctx context.Context) (*transport.Transport, error) {
-		return transport.NewTcpClientTransportWithAddr("tcp", t.addr, t.tls)
-	}
-}
-
-func (t *TcpTransporterBuilder) Addr(addr string) *TcpTransporterBuilder {
-	t.opts = append(t.opts, func(transporter *tcpTransporter) {
-		transporter.addr = addr
-	})
-	return t
-}
-
-func (t *TcpTransporterBuilder) HostAndPort(host string, port int) *TcpTransporterBuilder {
-	return t.Addr(fmt.Sprintf("%s:%d", host, port))
-}
-
-func (t *TcpTransporterBuilder) TLS(config *tls.Config) *TcpTransporterBuilder {
-	t.opts = append(t.opts, func(transporter *tcpTransporter) {
-		transporter.tls = config
-	})
-	return t
-}
-
-func (t *TcpTransporterBuilder) Build() Transporter {
-	tp := &tcpTransporter{
-		addr: ":7878",
-		tls:  nil,
-	}
-	for _, opt := range t.opts {
-		opt(tp)
-	}
-	return tp
-}
-
-type wsTransporter struct {
+type WebsocketClientBuilder struct {
 	url    string
-	tls    *tls.Config
+	tlsCfg *tls.Config
 	header http.Header
 }
 
-type WebsocketTransporterBuilder struct {
-	opts []func(*wsTransporter)
+type WebsocketServerBuilder struct {
+	addr      string
+	path      string
+	tlsConfig *tls.Config
 }
 
-func (w *WebsocketTransporterBuilder) Header(header http.Header) *WebsocketTransporterBuilder {
-	w.opts = append(w.opts, func(transporter *wsTransporter) {
-		transporter.header = header
-	})
-	return w
-}
-
-func (w *WebsocketTransporterBuilder) Url(url string) *WebsocketTransporterBuilder {
-	w.opts = append(w.opts, func(transporter *wsTransporter) {
-		transporter.url = url
-	})
-	return w
-}
-
-func (w *WebsocketTransporterBuilder) TLS(config *tls.Config) *WebsocketTransporterBuilder {
-	w.opts = append(w.opts, func(transporter *wsTransporter) {
-		transporter.tls = config
-	})
-	return w
-}
-
-func (w *WebsocketTransporterBuilder) Build() Transporter {
-	ws := &wsTransporter{
-		url: "",
-	}
-	for _, opt := range w.opts {
-		opt(ws)
-	}
-	return ws
-}
-
-func (w *wsTransporter) Server() transport.ServerTransportFunc {
-	return func(ctx context.Context) (transport.ServerTransport, error) {
-		u, err := url.Parse(w.url)
-		if err != nil {
-			return nil, err
-		}
-		port := u.Port()
-		if len(port) < 1 {
-			return nil, errors.New("missing websocket port")
-		}
-		return transport.NewWebsocketServerTransportWithAddr(fmt.Sprintf("%s:%s", u.Hostname(), port), u.Path, w.tls), nil
-	}
-}
-
-func (w *wsTransporter) Client() transport.ClientTransportFunc {
-	return func(ctx context.Context) (*transport.Transport, error) {
-		return transport.NewWebsocketClientTransport(w.url, w.tls, w.header)
-	}
-}
-
-type UnixTransporter struct {
+type UnixClientBuilder struct {
 	path string
 }
 
-type UnixTransporterBuilder struct {
-	opts []func(*UnixTransporter)
+type UnixServerBuilder struct {
+	path string
 }
 
-func (u *UnixTransporter) Server() transport.ServerTransportFunc {
+func (us *UnixServerBuilder) SetPath(path string) *UnixServerBuilder {
+	us.path = path
+	return us
+}
+
+func (us *UnixServerBuilder) Build() transport.ServerTransportFunc {
 	return func(ctx context.Context) (transport.ServerTransport, error) {
-		if _, err := os.Stat(u.path); !os.IsNotExist(err) {
+		if _, err := os.Stat(us.path); !os.IsNotExist(err) {
 			return nil, err
 		}
-		return transport.NewTcpServerTransportWithAddr("unix", u.path, nil), nil
+		return transport.NewTcpServerTransportWithAddr("unix", us.path, nil), nil
 	}
 }
 
-func (u *UnixTransporter) Client() transport.ClientTransportFunc {
+func (uc *UnixClientBuilder) SetPath(path string) *UnixClientBuilder {
+	uc.path = path
+	return uc
+}
+
+func (uc UnixClientBuilder) Build() transport.ClientTransportFunc {
 	return func(ctx context.Context) (*transport.Transport, error) {
-		return transport.NewTcpClientTransportWithAddr("unix", u.path, nil)
+		return transport.NewTcpClientTransportWithAddr("unix", uc.path, nil)
 	}
 }
 
-func (u *UnixTransporterBuilder) Path(path string) *UnixTransporterBuilder {
-	u.opts = append(u.opts, func(transporter *UnixTransporter) {
-		transporter.path = path
-	})
-	return u
+func (ws *WebsocketServerBuilder) SetAddr(addr string) *WebsocketServerBuilder {
+	ws.addr = addr
+	return ws
 }
 
-func (u *UnixTransporterBuilder) Build() Transporter {
-	tp := &UnixTransporter{
-		path: "/var/run/rsocket.sock",
+func (ws *WebsocketServerBuilder) SetPath(path string) *WebsocketServerBuilder {
+	ws.path = path
+	return ws
+}
+
+func (ws *WebsocketServerBuilder) SetTlsConfig(c *tls.Config) *WebsocketServerBuilder {
+	ws.tlsConfig = c
+	return ws
+}
+
+func (ws *WebsocketServerBuilder) Build() transport.ServerTransportFunc {
+	return func(ctx context.Context) (transport.ServerTransport, error) {
+		return transport.NewWebsocketServerTransportWithAddr(ws.addr, ws.path, ws.tlsConfig), nil
 	}
-	for _, opt := range u.opts {
-		opt(tp)
+}
+
+func (wc *WebsocketClientBuilder) SetTlsConfig(c *tls.Config) *WebsocketClientBuilder {
+	wc.tlsCfg = c
+	return wc
+}
+
+func (wc *WebsocketClientBuilder) SetUrl(url string) *WebsocketClientBuilder {
+	wc.url = url
+	return wc
+}
+
+func (wc *WebsocketClientBuilder) SetHeader(h http.Header) *WebsocketClientBuilder {
+	wc.header = h
+	return wc
+}
+
+func (wc *WebsocketClientBuilder) Build() transport.ClientTransportFunc {
+	return func(ctx context.Context) (*transport.Transport, error) {
+		return transport.NewWebsocketClientTransport(wc.url, wc.tlsCfg, wc.header)
 	}
-	return tp
 }
 
-func Tcp() *TcpTransporterBuilder {
-	return &TcpTransporterBuilder{}
+func (ts *TcpServerBuilder) SetHostAndPort(host string, port int) *TcpServerBuilder {
+	ts.addr = fmt.Sprintf("%s:%d", host, port)
+	return ts
 }
 
-func Websocket() *WebsocketTransporterBuilder {
-	return &WebsocketTransporterBuilder{}
+func (ts *TcpServerBuilder) SetAddr(addr string) *TcpServerBuilder {
+	ts.addr = addr
+	return ts
 }
 
-func Unix() *UnixTransporterBuilder {
-	return &UnixTransporterBuilder{}
+func (ts *TcpServerBuilder) SetTlsConfig(c *tls.Config) *TcpServerBuilder {
+	ts.tlsCfg = c
+	return ts
+}
+
+func (ts *TcpServerBuilder) Build() transport.ServerTransportFunc {
+	return func(ctx context.Context) (transport.ServerTransport, error) {
+		return transport.NewTcpServerTransportWithAddr("tcp", ts.addr, ts.tlsCfg), nil
+	}
+}
+
+func (tc *TcpClientBuilder) SetHostAndPort(host string, port int) *TcpClientBuilder {
+	tc.addr = fmt.Sprintf("%s:%d", host, port)
+	return tc
+}
+
+func (tc *TcpClientBuilder) SetAddr(addr string) *TcpClientBuilder {
+	tc.addr = addr
+	return tc
+}
+
+func (tc *TcpClientBuilder) SetTlsConfig(c *tls.Config) *TcpClientBuilder {
+	tc.tlsCfg = c
+	return tc
+}
+
+func (tc *TcpClientBuilder) Build() transport.ClientTransportFunc {
+	return func(ctx context.Context) (*transport.Transport, error) {
+		return transport.NewTcpClientTransportWithAddr("tcp", tc.addr, tc.tlsCfg)
+	}
+}
+
+func TcpClient() *TcpClientBuilder {
+	return &TcpClientBuilder{
+		addr: fmt.Sprintf(":%d", DefaultPort),
+	}
+}
+
+func TcpServer() *TcpServerBuilder {
+	return &TcpServerBuilder{
+		addr: fmt.Sprintf(":%d", DefaultPort),
+	}
+}
+
+func WebsocketClient() *WebsocketClientBuilder {
+	return &WebsocketClientBuilder{
+		url: fmt.Sprintf("ws://127.0.0.1:%d", DefaultPort),
+	}
+}
+
+func WebsocketServer() *WebsocketServerBuilder {
+	return &WebsocketServerBuilder{
+		addr: fmt.Sprintf(":%d", DefaultPort),
+		path: "/",
+	}
+}
+
+func UnixClient() *UnixClientBuilder {
+	return &UnixClientBuilder{
+		path: DefaultUnixSockPath,
+	}
+}
+
+func UnixServer() *UnixServerBuilder {
+	return &UnixServerBuilder{
+		path: DefaultUnixSockPath,
+	}
 }
