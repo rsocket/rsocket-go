@@ -14,12 +14,6 @@ import (
 	"github.com/rsocket/rsocket-go/rx/flux"
 )
 
-var tp rsocket.Transporter
-
-func init() {
-	tp = rsocket.Tcp().Addr("127.0.0.1:7878").Build()
-}
-
 const number = 13
 
 func main() {
@@ -82,7 +76,7 @@ func server(readyCh chan struct{}) {
 			return rsocket.NewAbstractSocket(requestStreamHandler), nil
 		}).
 		// specify transport
-		Transport(tp).
+		Transport(rsocket.TcpServer().SetAddr(":7878").Build()).
 		// serve will block execution unless an error occurred
 		Serve(context.Background())
 
@@ -91,6 +85,7 @@ func server(readyCh chan struct{}) {
 
 func client() {
 	// Start a client connection
+	tp := rsocket.TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()
 	client, err := rsocket.Connect().Transport(tp).Start(context.Background())
 	if err != nil {
 		panic(err)

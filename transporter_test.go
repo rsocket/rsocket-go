@@ -51,7 +51,7 @@ func TestTcpServerBuilder(t *testing.T) {
 
 func TestWebsocketClient(t *testing.T) {
 	assert.NotPanics(t, func() {
-		h := make(http.Header, 0)
+		h := make(http.Header)
 		h.Set("x-foo-bar", "qux")
 		rsocket.WebsocketClient().
 			SetUrl("ws://127.0.0.1:8080/fake/path").

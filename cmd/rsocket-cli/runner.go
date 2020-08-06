@@ -354,20 +354,20 @@ func (r *Runner) newClientTransport() (transport.ClientTransportFunc, error) {
 	}
 }
 
-func (r *Runner) newServerTransport() (t transport.ServerTransportFunc, err error) {
+func (r *Runner) newServerTransport() (transport.ServerTransportFunc, error) {
 	u, err := url.Parse(r.URI)
 	if err != nil {
-		return
+		return nil, err
 	}
 	switch u.Scheme {
 	case "tcp":
 		port, err := strconv.Atoi(u.Port())
 		if err != nil {
-			return
+			return nil, err
 		}
-		t = rsocket.TcpServer().SetHostAndPort(u.Hostname(), port).Build()
+		return rsocket.TcpServer().SetHostAndPort(u.Hostname(), port).Build(), nil
 	case "unix":
-		t = rsocket.UnixServer().SetPath(u.Hostname()).Build()
+		return rsocket.UnixServer().SetPath(u.Hostname()).Build(), nil
 	case "ws", "wss":
 		var addr string
 		if port := u.Port(); port != "" {
@@ -375,9 +375,8 @@ func (r *Runner) newServerTransport() (t transport.ServerTransportFunc, err erro
 		} else {
 			addr = fmt.Sprintf("%s:%d", u.Hostname(), rsocket.DefaultPort)
 		}
-		t = rsocket.WebsocketServer().SetAddr(addr).SetPath(u.EscapedPath()).Build()
+		return rsocket.WebsocketServer().SetAddr(addr).SetPath(u.EscapedPath()).Build(), nil
 	default:
-		err = errors.Errorf("invalid transport %s", u.Scheme)
+		return nil, errors.Errorf("invalid transport %s", u.Scheme)
 	}
-	return
 }

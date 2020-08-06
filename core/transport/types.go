@@ -9,8 +9,8 @@ import (
 )
 
 type (
-	ClientTransportFunc = func(context.Context) (*Transport, error)
-	ServerTransportFunc = func(context.Context) (ServerTransport, error)
+	ClientTransportFunc func(context.Context) (*Transport, error)
+	ServerTransportFunc func(context.Context) (ServerTransport, error)
 )
 
 // Conn is connection for RSocket.

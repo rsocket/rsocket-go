@@ -13,16 +13,17 @@ import (
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
-var MyTransporter rsocket.Transporter
+var tp transport.ServerTransportFunc
 
 func init() {
-	MyTransporter = rsocket.Tcp().HostAndPort("127.0.0.1", 7878).Build()
+	tp = rsocket.TcpServer().SetHostAndPort("127.0.0.1", 7878).Build()
 }
 
 func main() {
@@ -64,7 +65,7 @@ func main() {
 			}
 			return responder(), nil
 		}).
-		Transport(MyTransporter).
+		Transport(tp).
 		Serve(context.Background())
 	if err != nil {
 		panic(err)

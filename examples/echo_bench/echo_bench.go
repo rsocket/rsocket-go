@@ -11,17 +11,18 @@ import (
 
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
-var tp rsocket.Transporter
+var tp transport.ClientTransportFunc
 
 func init() {
 	flag.Parse()
-	tp = rsocket.Tcp().HostAndPort("127.0.0.1", 7878).Build()
 	rand.Seed(time.Now().UnixNano())
+	tp = rsocket.TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()
 }
 
 func main() {
@@ -67,6 +68,7 @@ func main() {
 }
 
 func createClient(mtu int) (rsocket.Client, error) {
+
 	return rsocket.Connect().
 		Fragment(mtu).
 		SetupPayload(payload.NewString("你好", "世界")).
