@@ -379,14 +379,10 @@ loop:
 				break loop
 			}
 			count++
-		case err, ok := <-errChan:
-			if !ok {
-				break loop
-			}
+		case err := <-errChan:
 			assert.NoError(t, err)
 		}
 	}
-
 	assert.Equal(t, 10, count)
 }
 
