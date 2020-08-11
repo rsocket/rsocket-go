@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	fakeFormat = "fake format"
+	fakeFormat = "fake format: %v"
 	fakeArgs   = []interface{}{"fake args"}
 )
 

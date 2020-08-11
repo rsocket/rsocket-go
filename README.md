@@ -29,6 +29,7 @@ package main
 
 import (
 	"context"
+	"log"
 
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/payload"
@@ -47,10 +48,11 @@ func main() {
 				}),
 			), nil
 		}).
-		Transport(rsocket.Tcp().Addr(":7878").Build()).
+		Transport(rsocket.TcpServer().SetAddr(":7878").Build()).
 		Serve(context.Background())
-	panic(err)
+	log.Fatalln(err)
 }
+
 ```
 
 > Connect to echo server
@@ -72,7 +74,7 @@ func main() {
 		Resume().
 		Fragment(1024).
 		SetupPayload(payload.NewString("Hello", "World")).
-		Transport(rsocket.Tcp().HostAndPort("127.0.0.1", 7878).Build()).
+		Transport(rsocket.TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()).
 		Start(context.Background())
 	if err != nil {
 		panic(err)
@@ -132,10 +134,11 @@ func main() {
 		DoFinally(func(s rx.SignalType) {
 			close(done)
 		}).
-		DoOnSuccess(func(input payload.Payload) {
+		DoOnSuccess(func(input payload.Payload) error {
 			// Handle and consume payload.
 			// Do something here...
 			fmt.Println("bingo:", input)
+			return nil
 		}).
 		SubscribeOn(scheduler.Parallel()).
 		Subscribe(context.Background())
@@ -156,9 +159,9 @@ import (
 	"context"
 	"fmt"
 
-	flxx "github.com/jjeffcaii/reactor-go/flux"
 	"github.com/rsocket/rsocket-go/extension"
 	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 )
 
@@ -178,24 +181,27 @@ func main() {
 	//	payload.NewString("qux", extension.TextPlain.String()),
 	//)
 
-	f.
-		DoOnNext(func(elem payload.Payload) {
+	// Block
+	_, _ = f.
+		DoOnNext(func(elem payload.Payload) error {
 			// Handle and consume elements
 			// Do something here...
 			fmt.Println("bingo:", elem)
-		}).
-		Subscribe(context.Background())
-
-	// Or you can use Raw reactor-go API. :-D
-	f2 := flux.Raw(flxx.Range(0, 10).Map(func(i interface{}) interface{} {
-		return payload.NewString(fmt.Sprintf("Hello@%d", i.(int)), extension.TextPlain.String())
-	}))
-	f2.
-		DoOnNext(func(input payload.Payload) {
-			fmt.Println("bingo:", input)
+			return nil
 		}).
 		BlockLast(context.Background())
+
+	// Subscribe
+	f.Subscribe(context.Background(), rx.OnNext(func(input payload.Payload) error {
+		fmt.Println("bingo:", input)
+		return nil
+	}))
+
+	// Or implement your own subscriber
+	var s rx.Subscriber
+	f.SubscribeWith(context.Background(), s)
 }
+
 ```
 
 #### Backpressure & RequestN
@@ -238,61 +244,18 @@ func main() {
 				su = s
 				su.Request(1)
 			}),
-			rx.OnNext(func(elem payload.Payload) {
+			rx.OnNext(func(elem payload.Payload) error {
 				// Consume element, do something...
 				fmt.Println("bingo:", elem)
 				// Request for next one manually.
 				su.Request(1)
+				return nil
 			}),
 		)
 }
-
-```
-
-#### Logging
-
-We do not use a specific log implementation. You can register your own log implementation. For example:
-
-```go
-package main
-
-import (
-	"log"
-
-	"github.com/rsocket/rsocket-go/logger"
-)
-
-func init() {
-	logger.SetLevel(logger.LevelDebug)
-}
-
 ```
 
 #### Dependencies
  - [reactor-go](https://github.com/jjeffcaii/reactor-go)
  - [testify](https://github.com/stretchr/testify)
  - [websocket](https://github.com/gorilla/websocket)
-
-### TODO
-
-#### Transport
- - [x] TCP
- - [x] Websocket
-
-#### Duplex Socket
- - [x] MetadataPush
- - [x] RequestFNF
- - [x] RequestResponse
- - [x] RequestStream
- - [x] RequestChannel
-
-##### Others
- - [x] Resume
- - [x] Keepalive
- - [x] Fragmentation
- - [x] Thin Reactor
- - [x] Cancel
- - [x] Error
- - [x] Flow Control: RequestN
- - [x] Flow Control: Lease
- - [x] Load Balance
