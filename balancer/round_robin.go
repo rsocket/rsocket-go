@@ -2,139 +2,120 @@ package balancer
 
 import (
 	"context"
+	"runtime"
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/logger"
 	"go.uber.org/atomic"
 )
 
-type labelClient struct {
-	l string
-	c rsocket.Client
-}
+var errConflictSocket = errors.New("socket exists already")
 
 type balancerRoundRobin struct {
 	seq     *atomic.Uint32
-	mutex   sync.RWMutex
-	clients []*labelClient
+	keys    []string
+	sockets []rsocket.Client
 	done    chan struct{}
 	once    sync.Once
 	onLeave []func(string)
-	cond    *sync.Cond
+	c       *common.Cond
 }
 
-func (p *balancerRoundRobin) OnLeave(fn func(label string)) {
+func (b *balancerRoundRobin) OnLeave(fn func(label string)) {
 	if fn != nil {
-		p.onLeave = append(p.onLeave, fn)
+		b.onLeave = append(b.onLeave, fn)
 	}
 }
 
-func (p *balancerRoundRobin) Put(client rsocket.Client) {
-	label := uuid.New().String()
-	p.PutLabel(label, client)
+func (b *balancerRoundRobin) Put(client rsocket.Client) error {
+	return b.PutLabel(uuid.New().String(), client)
 }
 
-func (p *balancerRoundRobin) PutLabel(label string, client rsocket.Client) {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	p.clients = append(p.clients, &labelClient{
-		l: label,
-		c: client,
+func (b *balancerRoundRobin) PutLabel(label string, client rsocket.Client) error {
+	b.c.L.Lock()
+	defer b.c.L.Unlock()
+	for _, k := range b.keys {
+		if k == label {
+			return errConflictSocket
+		}
+	}
+	b.keys = append(b.keys, label)
+	b.sockets = append(b.sockets, client)
+	if n := len(b.sockets); n == 1 {
+		b.c.Broadcast()
+	}
+	client.OnClose(func(err error) {
+		b.remove(client)
 	})
-	client.OnClose(func(error) {
-		p.remove(client)
-	})
-	if len(p.clients) == 1 {
-		p.cond.Broadcast()
-	}
+	return nil
 }
 
-func (p *balancerRoundRobin) MustNext(ctx context.Context) rsocket.Client {
-	c, ok := p.Next(ctx)
-	if !ok {
-		panic("cannot get next client from current balancer")
+func (b *balancerRoundRobin) Next(ctx context.Context) (client rsocket.Client, ok bool) {
+	b.c.L.Lock()
+	for {
+		n := len(b.keys)
+		if n > 0 {
+			idx := int(b.seq.Inc() % uint32(n))
+			client = b.sockets[idx]
+			ok = true
+			break
+		}
+		if b.c.Wait(ctx) {
+			break
+		}
+		b.c.L.Unlock()
+		runtime.Gosched()
+		b.c.L.Lock()
 	}
-	return c
+	b.c.L.Unlock()
+	return
 }
 
-func (p *balancerRoundRobin) Next(ctx context.Context) (rsocket.Client, bool) {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-	if n := len(p.clients); n > 0 {
-		idx := int(p.seq.Inc() % uint32(n))
-		return p.clients[idx].c, true
-	}
-
-	ch := make(chan rsocket.Client, 1)
-	closed := atomic.NewBool(false)
-
-	go func() {
-		p.cond.L.Lock()
-		for len(p.clients) < 1 && !closed.Load() {
-			p.cond.Wait()
-		}
-		p.cond.L.Unlock()
-		if n := len(p.clients); n > 0 {
-			idx := int(p.seq.Inc() % uint32(n))
-			ch <- p.clients[idx].c
-		}
-	}()
-
-	select {
-	case <-ctx.Done():
-		closed.Store(true)
-		p.cond.Broadcast()
-		return nil, false
-	case c, ok := <-ch:
-		if !ok {
-			return nil, false
-		}
-		return c, true
-	}
-}
-
-func (p *balancerRoundRobin) Close() (err error) {
-	p.once.Do(func() {
-		if len(p.clients) < 1 {
+func (b *balancerRoundRobin) Close() (err error) {
+	b.once.Do(func() {
+		if len(b.sockets) < 1 {
 			return
 		}
-		clone := append([]*labelClient(nil), p.clients...)
-		close(p.done)
+		clone := append([]rsocket.Client(nil), b.sockets...)
+		close(b.done)
 		wg := &sync.WaitGroup{}
 		wg.Add(len(clone))
-		for _, value := range clone {
+		for i := 0; i < len(clone); i++ {
 			go func(c rsocket.Client, wg *sync.WaitGroup) {
 				defer wg.Done()
 				if err := c.Close(); err != nil {
 					logger.Warnf("close client failed: %s\n", err)
 				}
-			}(value.c, wg)
+			}(clone[i], wg)
 		}
 		wg.Wait()
 	})
 	return
 }
 
-func (p *balancerRoundRobin) remove(client rsocket.Client) (label string, ok bool) {
-	p.mutex.Lock()
+func (b *balancerRoundRobin) remove(client rsocket.Client) (label string, ok bool) {
+	b.c.L.Lock()
 	j := -1
-	for i, l := 0, len(p.clients); i < l; i++ {
-		if p.clients[i].c == client {
+	for i, l := 0, len(b.sockets); i < l; i++ {
+		if b.sockets[i] == client {
 			j = i
 			break
 		}
 	}
 	ok = j > -1
 	if ok {
-		label = p.clients[j].l
-		p.clients = append(p.clients[:j], p.clients[j+1:]...)
+		label = b.keys[j]
+		b.keys = append(b.keys[:j], b.keys[j+1:]...)
+		b.sockets = append(b.sockets[:j], b.sockets[j+1:]...)
 	}
-	p.mutex.Unlock()
-	if ok && len(p.onLeave) > 0 {
+	b.c.L.Unlock()
+	if ok && len(b.onLeave) > 0 {
 		go func(label string) {
-			for _, fn := range p.onLeave {
+			for _, fn := range b.onLeave {
 				fn(label)
 			}
 		}(label)
@@ -145,8 +126,8 @@ func (p *balancerRoundRobin) remove(client rsocket.Client) (label string, ok boo
 // NewRoundRobinBalancer returns a new Round-Robin Balancer.
 func NewRoundRobinBalancer() Balancer {
 	return &balancerRoundRobin{
-		cond: sync.NewCond(new(sync.Mutex)),
 		seq:  atomic.NewUint32(0),
 		done: make(chan struct{}),
+		c:    common.NewCond(&sync.Mutex{}),
 	}
 }

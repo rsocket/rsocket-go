@@ -3,19 +3,9 @@ default:
 lint:
         golangci-lint run ./...
 test:
-        go test -count=1 -coverprofile=coverage.out \
-        ./core/... \
-        ./extension/... \
-        ./internal/... \
-        ./lease/... \
-        ./logger/... \
-        ./payload/... \
-        ./rx/... \
-        .
+        go test -count=1 -race -coverprofile=coverage.out ./...
 test-no-cover:
-        go test -count=1 ./... -v
-test-race:
-        go test -race -count=1 ./... -v
+        go test -count=1 -race ./...
 fmt:
         @go fmt ./...
 cover:

@@ -44,6 +44,7 @@ func TestBaseSocket(t *testing.T) {
 		defer close(done)
 		_ = tp.Start(context.Background())
 	}()
+
 	assert.NotPanics(t, func() {
 		s.MetadataPush(fakeRequest)
 		s.FireAndForget(fakeRequest)
@@ -55,6 +56,5 @@ func TestBaseSocket(t *testing.T) {
 	<-done
 
 	_ = s.Close()
-
 	assert.Equal(t, true, onClosedCalled.Load())
 }

@@ -13,7 +13,8 @@ var errGroupClosed = errors.New("balancer group has been closed")
 // Group can be used to create a simple RSocket Broker.
 type Group struct {
 	g func() Balancer
-	m *sync.Map
+	l sync.Mutex
+	m map[string]Balancer
 }
 
 // Close close current RSocket group.
@@ -33,10 +34,12 @@ func (p *Group) Close() (err error) {
 			}
 		}
 	}(all, done)
-	p.m.Range(func(key, value interface{}) bool {
-		all <- value.(Balancer)
-		return true
-	})
+
+	p.l.Lock()
+	defer p.l.Unlock()
+	for _, b := range p.m {
+		all <- b
+	}
 	p.m = nil
 	close(all)
 	<-done
@@ -45,24 +48,23 @@ func (p *Group) Close() (err error) {
 
 // Get returns a Balancer with custom id.
 func (p *Group) Get(id string) Balancer {
+	p.l.Lock()
+	defer p.l.Unlock()
 	if p.m == nil {
 		panic(errGroupClosed)
 	}
-	if actual, ok := p.m.Load(id); ok {
-		return actual.(Balancer)
+	if actual, ok := p.m[id]; ok {
+		return actual
 	}
 	newborn := p.g()
-	actual, loaded := p.m.LoadOrStore(id, newborn)
-	if loaded {
-		_ = newborn.Close()
-	}
-	return actual.(Balancer)
+	p.m[id] = newborn
+	return newborn
 }
 
 // NewGroup returns a new Group.
 func NewGroup(gen func() Balancer) *Group {
 	return &Group{
 		g: gen,
-		m: &sync.Map{},
+		m: make(map[string]Balancer),
 	}
 }

@@ -20,7 +20,7 @@ type Conn interface {
 	// After this deadline, connection will be closed.
 	SetDeadline(deadline time.Time) error
 	// SetCounter bind a counter which can count r/w bytes.
-	SetCounter(c *core.Counter)
+	SetCounter(c *core.TrafficCounter)
 	// Read reads next frame from Conn.
 	Read() (core.Frame, error)
 	// Write writes a frame to Conn.

@@ -198,7 +198,7 @@ func TestTransport_Flush(t *testing.T) {
 
 	err := tp.Flush()
 	assert.NoError(t, err, "flush failed")
-	conn.SetCounter(core.NewCounter())
+	conn.SetCounter(core.NewTrafficCounter())
 }
 
 func TestTransport_Close(t *testing.T) {

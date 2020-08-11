@@ -64,7 +64,7 @@ func (mr *MockConnMockRecorder) SetDeadline(deadline interface{}) *gomock.Call {
 }
 
 // SetCounter mocks base method
-func (m *MockConn) SetCounter(c *core.Counter) {
+func (m *MockConn) SetCounter(c *core.TrafficCounter) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetCounter", c)
 }

@@ -2,13 +2,12 @@ package socket
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"sync"
 	"time"
 
 	"github.com/jjeffcaii/reactor-go/scheduler"
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/core/transport"
@@ -19,13 +18,13 @@ import (
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
-	"go.uber.org/atomic"
 )
 
 const _outChanSize = 64
 
+var errSocketClosed = errors.New("socket closed already")
+
 var (
-	errSocketClosed            = errors.New("socket closed already")
 	unsupportedRequestStream   = []byte("Request-Stream not implemented.")
 	unsupportedRequestResponse = []byte("Request-Response not implemented.")
 	unsupportedRequestChannel  = []byte("Request-Channel not implemented.")
@@ -38,7 +37,8 @@ func IsSocketClosedError(err error) bool {
 
 // DuplexConnection represents a socket of RSocket which can be a requester or a responder.
 type DuplexConnection struct {
-	counter         *core.Counter
+	l               *sync.RWMutex
+	counter         *core.TrafficCounter
 	tp              *transport.Transport
 	outs            chan core.WriteableFrame
 	outsPriority    []core.WriteableFrame
@@ -47,34 +47,38 @@ type DuplexConnection struct {
 	sids            StreamID
 	mtu             int
 	fragments       *sync.Map // common.U32Map // key=streamID, value=Joiner
-	closed          *atomic.Bool
-	done            chan struct{}
+	writeDone       chan struct{}
 	keepaliver      *Keepaliver
 	cond            *sync.Cond
 	singleScheduler scheduler.Scheduler
 	e               error
 	leases          lease.Leases
+	closeOnce       sync.Once
 }
 
 // SetError sets error for current socket.
-func (p *DuplexConnection) SetError(e error) {
-	p.e = e
+func (dc *DuplexConnection) SetError(err error) {
+	dc.l.Lock()
+	defer dc.l.Unlock()
+	dc.e = err
 }
 
 // GetError get the error set.
-func (p *DuplexConnection) GetError() error {
-	return p.e
+func (dc *DuplexConnection) GetError() error {
+	dc.l.RLock()
+	defer dc.l.RUnlock()
+	return dc.e
 }
 
-func (p *DuplexConnection) nextStreamID() (sid uint32) {
-	var lap1st bool
+func (dc *DuplexConnection) nextStreamID() (sid uint32) {
+	var firstLap bool
 	for {
 		// There's no required to check StreamID conflicts.
-		sid, lap1st = p.sids.Next()
-		if lap1st {
+		sid, firstLap = dc.sids.Next()
+		if firstLap {
 			return
 		}
-		_, ok := p.messages.Load(sid)
+		_, ok := dc.messages.Load(sid)
 		if !ok {
 			return
 		}
@@ -82,127 +86,127 @@ func (p *DuplexConnection) nextStreamID() (sid uint32) {
 }
 
 // Close close current socket.
-func (p *DuplexConnection) Close() error {
-	if !p.closed.CAS(false, true) {
-		return nil
-	}
-	if p.keepaliver != nil {
-		p.keepaliver.Stop()
-	}
-	_ = p.singleScheduler.(io.Closer).Close()
-	close(p.outs)
-	p.cond.L.Lock()
-	p.cond.Broadcast()
-	p.cond.L.Unlock()
+func (dc *DuplexConnection) Close() (err error) {
+	dc.closeOnce.Do(func() {
+		err = dc.innerClose()
+	})
+	return
+}
 
-	<-p.done
+func (dc *DuplexConnection) innerClose() error {
+	if dc.keepaliver != nil {
+		dc.keepaliver.Stop()
+	}
+	_ = dc.singleScheduler.Close()
+	close(dc.outs)
+	dc.cond.L.Lock()
+	dc.cond.Broadcast()
+	dc.cond.L.Unlock()
 
-	if p.tp != nil {
-		if p.e == nil {
-			p.e = p.tp.Close()
+	<-dc.writeDone
+
+	if dc.tp != nil {
+		if dc.e == nil {
+			dc.e = dc.tp.Close()
 		} else {
-			_ = p.tp.Close()
+			_ = dc.tp.Close()
 		}
 	}
-	p.messages.Range(func(key, value interface{}) bool {
-		if cc, ok := value.(callback); ok {
-			if p.e == nil {
-				go func() {
-					cc.Close(errSocketClosed)
-				}()
-			} else {
-				go func(e error) {
-					cc.Close(e)
-				}(p.e)
+	dc.messages.Range(func(_, v interface{}) bool {
+		if cb, ok := v.(callback); ok {
+			err := dc.e
+			if err == nil {
+				err = errSocketClosed
 			}
+			go cb.Close(err)
 		}
 		return true
 	})
-	return p.e
+	return dc.e
 }
 
 // FireAndForget start a request of FireAndForget.
-func (p *DuplexConnection) FireAndForget(sending payload.Payload) {
+func (dc *DuplexConnection) FireAndForget(sending payload.Payload) {
 	data := sending.Data()
 	size := core.FrameHeaderLen + len(sending.Data())
 	m, ok := sending.Metadata()
 	if ok {
 		size += 3 + len(m)
 	}
-	sid := p.nextStreamID()
-	if !p.shouldSplit(size) {
-		p.sendFrame(framing.NewWriteableFireAndForgetFrame(sid, data, m, 0))
+	sid := dc.nextStreamID()
+	if !dc.shouldSplit(size) {
+		dc.sendFrame(framing.NewWriteableFireAndForgetFrame(sid, data, m, 0))
 		return
 	}
-	p.doSplit(data, m, func(index int, result fragmentation.SplitResult) {
+	dc.doSplit(data, m, func(index int, result fragmentation.SplitResult) {
 		var f core.WriteableFrame
 		if index == 0 {
 			f = framing.NewWriteableFireAndForgetFrame(sid, result.Data, result.Metadata, result.Flag)
 		} else {
 			f = framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
 		}
-		p.sendFrame(f)
+		dc.sendFrame(f)
 	})
 }
 
 // MetadataPush start a request of MetadataPush.
-func (p *DuplexConnection) MetadataPush(payload payload.Payload) {
+func (dc *DuplexConnection) MetadataPush(payload payload.Payload) {
 	metadata, _ := payload.Metadata()
-	p.sendFrame(framing.NewWriteableMetadataPushFrame(metadata))
+	dc.sendFrame(framing.NewWriteableMetadataPushFrame(metadata))
 }
 
 // RequestResponse start a request of RequestResponse.
-func (p *DuplexConnection) RequestResponse(pl payload.Payload) (mo mono.Mono) {
-	sid := p.nextStreamID()
+func (dc *DuplexConnection) RequestResponse(pl payload.Payload) (mo mono.Mono) {
+	sid := dc.nextStreamID()
 	resp := mono.CreateProcessor()
 
-	p.register(sid, requestResponseCallback{pc: resp})
+	dc.register(sid, requestResponseCallback{pc: resp})
 
 	data := pl.Data()
 	metadata, _ := pl.Metadata()
+
 	mo = resp.
 		DoFinally(func(s rx.SignalType) {
 			if s == rx.SignalCancel {
-				p.sendFrame(framing.NewWriteableCancelFrame(sid))
+				dc.sendFrame(framing.NewWriteableCancelFrame(sid))
 			}
-			p.unregister(sid)
+			dc.unregister(sid)
 		})
 
-	p.singleScheduler.Worker().Do(func() {
-		// sending...
-		size := framing.CalcPayloadFrameSize(data, metadata)
-		if !p.shouldSplit(size) {
-			p.sendFrame(framing.NewWriteableRequestResponseFrame(sid, data, metadata, 0))
-			return
+	// sending...
+	size := framing.CalcPayloadFrameSize(data, metadata)
+	if !dc.shouldSplit(size) {
+		dc.sendFrame(framing.NewWriteableRequestResponseFrame(sid, data, metadata, 0))
+		return
+	}
+	dc.doSplit(data, metadata, func(index int, result fragmentation.SplitResult) {
+		var f core.WriteableFrame
+		if index == 0 {
+			f = framing.NewWriteableRequestResponseFrame(sid, result.Data, result.Metadata, result.Flag)
+		} else {
+			f = framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
 		}
-		p.doSplit(data, metadata, func(index int, result fragmentation.SplitResult) {
-			var f core.WriteableFrame
-			if index == 0 {
-				f = framing.NewWriteableRequestResponseFrame(sid, result.Data, result.Metadata, result.Flag)
-			} else {
-				f = framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
-			}
-			p.sendFrame(f)
-		})
+		dc.sendFrame(f)
 	})
+
 	return
 }
 
 // RequestStream start a request of RequestStream.
-func (p *DuplexConnection) RequestStream(sending payload.Payload) (ret flux.Flux) {
-	sid := p.nextStreamID()
+func (dc *DuplexConnection) RequestStream(sending payload.Payload) (ret flux.Flux) {
+	sid := dc.nextStreamID()
 	pc := flux.CreateProcessor()
 
-	p.register(sid, requestStreamCallback{pc: pc})
+	dc.register(sid, requestStreamCallback{pc: pc})
 
 	requested := make(chan struct{})
 
 	ret = pc.
 		DoFinally(func(sig rx.SignalType) {
 			if sig == rx.SignalCancel {
-				p.sendFrame(framing.NewWriteableCancelFrame(sid))
+				dc.sendFrame(framing.NewWriteableCancelFrame(sid))
 			}
-			p.unregister(sid)
+			dc.unregister(sid)
 		}).
 		DoOnRequest(func(n int) {
 			n32 := ToUint32RequestN(n)
@@ -217,7 +221,7 @@ func (p *DuplexConnection) RequestStream(sending payload.Payload) (ret flux.Flux
 
 			if !newborn {
 				frameN := framing.NewWriteableRequestNFrame(sid, n32, 0)
-				p.sendFrame(frameN)
+				dc.sendFrame(frameN)
 				<-frameN.DoneNotify()
 				return
 			}
@@ -226,27 +230,27 @@ func (p *DuplexConnection) RequestStream(sending payload.Payload) (ret flux.Flux
 			metadata, _ := sending.Metadata()
 
 			size := framing.CalcPayloadFrameSize(data, metadata) + 4
-			if !p.shouldSplit(size) {
-				p.sendFrame(framing.NewWriteableRequestStreamFrame(sid, n32, data, metadata, 0))
+			if !dc.shouldSplit(size) {
+				dc.sendFrame(framing.NewWriteableRequestStreamFrame(sid, n32, data, metadata, 0))
 				return
 			}
 
-			p.doSplitSkip(4, data, metadata, func(index int, result fragmentation.SplitResult) {
+			dc.doSplitSkip(4, data, metadata, func(index int, result fragmentation.SplitResult) {
 				var f core.WriteableFrame
 				if index == 0 {
 					f = framing.NewWriteableRequestStreamFrame(sid, n32, result.Data, result.Metadata, result.Flag)
 				} else {
 					f = framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
 				}
-				p.sendFrame(f)
+				dc.sendFrame(f)
 			})
 		})
 	return
 }
 
 // RequestChannel start a request of RequestChannel.
-func (p *DuplexConnection) RequestChannel(publisher rx.Publisher) (ret flux.Flux) {
-	sid := p.nextStreamID()
+func (dc *DuplexConnection) RequestChannel(publisher rx.Publisher) (ret flux.Flux) {
+	sid := dc.nextStreamID()
 
 	sending := publisher.(flux.Flux)
 	receiving := flux.CreateProcessor()
@@ -255,7 +259,7 @@ func (p *DuplexConnection) RequestChannel(publisher rx.Publisher) (ret flux.Flux
 
 	ret = receiving.
 		DoFinally(func(sig rx.SignalType) {
-			p.unregister(sid)
+			dc.unregister(sid)
 		}).
 		DoOnRequest(func(n int) {
 			n32 := ToUint32RequestN(n)
@@ -268,7 +272,7 @@ func (p *DuplexConnection) RequestChannel(publisher rx.Publisher) (ret flux.Flux
 			}
 			if !newborn {
 				frameN := framing.NewWriteableRequestNFrame(sid, n32, 0)
-				p.sendFrame(frameN)
+				dc.sendFrame(frameN)
 				<-frameN.DoneNotify()
 				return
 			}
@@ -284,32 +288,32 @@ func (p *DuplexConnection) RequestChannel(publisher rx.Publisher) (ret flux.Flux
 						close(sndRequested)
 					}
 					if !newborn {
-						p.sendPayload(sid, item, core.FlagNext)
+						dc.sendPayload(sid, item, core.FlagNext)
 						return
 					}
 
 					d := item.Data()
 					m, _ := item.Metadata()
 					size := framing.CalcPayloadFrameSize(d, m) + 4
-					if !p.shouldSplit(size) {
+					if !dc.shouldSplit(size) {
 						metadata, _ := item.Metadata()
-						p.sendFrame(framing.NewWriteableRequestChannelFrame(sid, n32, item.Data(), metadata, core.FlagNext))
+						dc.sendFrame(framing.NewWriteableRequestChannelFrame(sid, n32, item.Data(), metadata, core.FlagNext))
 						return
 					}
 
-					p.doSplitSkip(4, d, m, func(index int, result fragmentation.SplitResult) {
+					dc.doSplitSkip(4, d, m, func(index int, result fragmentation.SplitResult) {
 						var f core.WriteableFrame
 						if index == 0 {
 							f = framing.NewWriteableRequestChannelFrame(sid, n32, result.Data, result.Metadata, result.Flag|core.FlagNext)
 						} else {
 							f = framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
 						}
-						p.sendFrame(f)
+						dc.sendFrame(f)
 					})
 					return
 				}),
 				rx.OnSubscribe(func(s rx.Subscription) {
-					p.register(sid, requestChannelCallback{rcv: receiving, snd: s})
+					dc.register(sid, requestChannelCallback{rcv: receiving, snd: s})
 					s.Request(1)
 				}),
 			)
@@ -319,7 +323,7 @@ func (p *DuplexConnection) RequestChannel(publisher rx.Publisher) (ret flux.Flux
 					switch sig {
 					case rx.SignalComplete:
 						complete := framing.NewPayloadFrame(sid, nil, nil, core.FlagComplete)
-						p.sendFrame(complete)
+						dc.sendFrame(complete)
 						<-complete.DoneNotify()
 					default:
 						panic(fmt.Errorf("unsupported sending channel signal: %s", sig))
@@ -331,16 +335,16 @@ func (p *DuplexConnection) RequestChannel(publisher rx.Publisher) (ret flux.Flux
 	return ret
 }
 
-func (p *DuplexConnection) onFrameRequestResponse(frame core.Frame) error {
+func (dc *DuplexConnection) onFrameRequestResponse(frame core.Frame) error {
 	// fragment
-	receiving, ok := p.doFragment(frame.(*framing.RequestResponseFrame))
+	receiving, ok := dc.doFragment(frame.(*framing.RequestResponseFrame))
 	if !ok {
 		return nil
 	}
-	return p.respondRequestResponse(receiving)
+	return dc.respondRequestResponse(receiving)
 }
 
-func (p *DuplexConnection) respondRequestResponse(receiving fragmentation.HeaderAndPayload) error {
+func (dc *DuplexConnection) respondRequestResponse(receiving fragmentation.HeaderAndPayload) error {
 	sid := receiving.Header().StreamID()
 
 	// 1. execute socket handler
@@ -348,52 +352,52 @@ func (p *DuplexConnection) respondRequestResponse(receiving fragmentation.Header
 		defer func() {
 			err = tryRecover(recover())
 		}()
-		mono = p.responder.RequestResponse(receiving)
+		mono = dc.responder.RequestResponse(receiving)
 		return
 	}()
 	// 2. sending error with panic
 	if err != nil {
-		p.writeError(sid, err)
+		dc.writeError(sid, err)
 		return nil
 	}
 	// 3. sending error with unsupported handler
 	if sending == nil {
-		p.writeError(sid, framing.NewWriteableErrorFrame(sid, core.ErrorCodeApplicationError, unsupportedRequestResponse))
+		dc.writeError(sid, framing.NewWriteableErrorFrame(sid, core.ErrorCodeApplicationError, unsupportedRequestResponse))
 		return nil
 	}
 
 	// 4. async subscribe publisher
 	sub := rx.NewSubscriber(
 		rx.OnNext(func(input payload.Payload) error {
-			p.sendPayload(sid, input, core.FlagNext|core.FlagComplete)
+			dc.sendPayload(sid, input, core.FlagNext|core.FlagComplete)
 			return nil
 		}),
 		rx.OnError(func(e error) {
-			p.writeError(sid, e)
+			dc.writeError(sid, e)
 		}),
 		rx.OnSubscribe(func(s rx.Subscription) {
-			p.register(sid, requestResponseCallbackReverse{su: s})
+			dc.register(sid, requestResponseCallbackReverse{su: s})
 			s.Request(rx.RequestMax)
 		}),
 	)
 	sending.
 		DoFinally(func(sig rx.SignalType) {
-			p.unregister(sid)
+			dc.unregister(sid)
 		}).
 		SubscribeOn(scheduler.Parallel()).
 		SubscribeWith(context.Background(), sub)
 	return nil
 }
 
-func (p *DuplexConnection) onFrameRequestChannel(input core.Frame) error {
-	receiving, ok := p.doFragment(input.(*framing.RequestChannelFrame))
+func (dc *DuplexConnection) onFrameRequestChannel(input core.Frame) error {
+	receiving, ok := dc.doFragment(input.(*framing.RequestChannelFrame))
 	if !ok {
 		return nil
 	}
-	return p.respondRequestChannel(receiving)
+	return dc.respondRequestChannel(receiving)
 }
 
-func (p *DuplexConnection) respondRequestChannel(pl fragmentation.HeaderAndPayload) error {
+func (dc *DuplexConnection) respondRequestChannel(pl fragmentation.HeaderAndPayload) error {
 	// seek initRequestN
 	var initRequestN int
 	switch v := pl.(type) {
@@ -418,18 +422,18 @@ func (p *DuplexConnection) respondRequestChannel(pl fragmentation.HeaderAndPaylo
 			case _, ok := <-ch:
 				if ok {
 					close(ch)
-					p.unregister(sid)
+					dc.unregister(sid)
 				}
 			default:
 			}
 		}).
 		DoOnRequest(func(n int) {
 			frameN := framing.NewWriteableRequestNFrame(sid, ToUint32RequestN(n), 0)
-			p.sendFrame(frameN)
+			dc.sendFrame(frameN)
 			<-frameN.DoneNotify()
 		})
 
-	p.singleScheduler.Worker().Do(func() {
+	_ = dc.singleScheduler.Worker().Do(func() {
 		receivingProcessor.Next(pl)
 	})
 
@@ -438,7 +442,7 @@ func (p *DuplexConnection) respondRequestChannel(pl fragmentation.HeaderAndPaylo
 		defer func() {
 			err = tryRecover(recover())
 		}()
-		flux = p.responder.RequestChannel(receiving)
+		flux = dc.responder.RequestChannel(receiving)
 		if flux == nil {
 			err = framing.NewWriteableErrorFrame(sid, core.ErrorCodeApplicationError, unsupportedRequestChannel)
 		}
@@ -446,7 +450,7 @@ func (p *DuplexConnection) respondRequestChannel(pl fragmentation.HeaderAndPaylo
 	}()
 
 	if err != nil {
-		p.writeError(sid, err)
+		dc.writeError(sid, err)
 		return nil
 	}
 
@@ -455,20 +459,20 @@ func (p *DuplexConnection) respondRequestChannel(pl fragmentation.HeaderAndPaylo
 
 	sub := rx.NewSubscriber(
 		rx.OnError(func(e error) {
-			p.writeError(sid, e)
+			dc.writeError(sid, e)
 		}),
 		rx.OnComplete(func() {
 			complete := framing.NewPayloadFrame(sid, nil, nil, core.FlagComplete)
-			p.sendFrame(complete)
+			dc.sendFrame(complete)
 			<-complete.DoneNotify()
 		}),
 		rx.OnSubscribe(func(s rx.Subscription) {
-			p.register(sid, requestChannelCallbackReverse{rcv: receivingProcessor, snd: s})
+			dc.register(sid, requestChannelCallbackReverse{rcv: receivingProcessor, snd: s})
 			close(mustSub)
 			s.Request(initRequestN)
 		}),
 		rx.OnNext(func(elem payload.Payload) error {
-			p.sendPayload(sid, elem, core.FlagNext)
+			dc.sendPayload(sid, elem, core.FlagNext)
 			return nil
 		}),
 	)
@@ -481,7 +485,7 @@ func (p *DuplexConnection) respondRequestChannel(pl fragmentation.HeaderAndPaylo
 			case _, ok := <-ch:
 				if ok {
 					close(ch)
-					p.unregister(sid)
+					dc.unregister(sid)
 				}
 			default:
 			}
@@ -493,43 +497,43 @@ func (p *DuplexConnection) respondRequestChannel(pl fragmentation.HeaderAndPaylo
 	return nil
 }
 
-func (p *DuplexConnection) respondMetadataPush(input core.Frame) (err error) {
+func (dc *DuplexConnection) respondMetadataPush(input core.Frame) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			logger.Errorf("respond METADATA_PUSH failed: %s\n", e)
 		}
 	}()
-	p.responder.MetadataPush(input.(*framing.MetadataPushFrame))
+	dc.responder.MetadataPush(input.(*framing.MetadataPushFrame))
 	return
 }
 
-func (p *DuplexConnection) onFrameFNF(frame core.Frame) error {
-	receiving, ok := p.doFragment(frame.(*framing.FireAndForgetFrame))
+func (dc *DuplexConnection) onFrameFNF(frame core.Frame) error {
+	receiving, ok := dc.doFragment(frame.(*framing.FireAndForgetFrame))
 	if !ok {
 		return nil
 	}
-	return p.respondFNF(receiving)
+	return dc.respondFNF(receiving)
 }
 
-func (p *DuplexConnection) respondFNF(receiving fragmentation.HeaderAndPayload) (err error) {
+func (dc *DuplexConnection) respondFNF(receiving fragmentation.HeaderAndPayload) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			logger.Errorf("respond FireAndForget failed: %s\n", e)
 		}
 	}()
-	p.responder.FireAndForget(receiving)
+	dc.responder.FireAndForget(receiving)
 	return
 }
 
-func (p *DuplexConnection) onFrameRequestStream(frame core.Frame) error {
-	receiving, ok := p.doFragment(frame.(*framing.RequestStreamFrame))
+func (dc *DuplexConnection) onFrameRequestStream(frame core.Frame) error {
+	receiving, ok := dc.doFragment(frame.(*framing.RequestStreamFrame))
 	if !ok {
 		return nil
 	}
-	return p.respondRequestStream(receiving)
+	return dc.respondRequestStream(receiving)
 }
 
-func (p *DuplexConnection) respondRequestStream(receiving fragmentation.HeaderAndPayload) error {
+func (dc *DuplexConnection) respondRequestStream(receiving fragmentation.HeaderAndPayload) error {
 	sid := receiving.Header().StreamID()
 
 	// execute request stream handler
@@ -537,7 +541,7 @@ func (p *DuplexConnection) respondRequestStream(receiving fragmentation.HeaderAn
 		defer func() {
 			err = tryRecover(recover())
 		}()
-		resp = p.responder.RequestStream(receiving)
+		resp = dc.responder.RequestStream(receiving)
 		if resp == nil {
 			err = framing.NewWriteableErrorFrame(sid, core.ErrorCodeApplicationError, unsupportedRequestStream)
 		}
@@ -546,7 +550,7 @@ func (p *DuplexConnection) respondRequestStream(receiving fragmentation.HeaderAn
 
 	// send error with panic
 	if err != nil {
-		p.writeError(sid, err)
+		dc.writeError(sid, err)
 		return nil
 	}
 
@@ -563,65 +567,65 @@ func (p *DuplexConnection) respondRequestStream(receiving fragmentation.HeaderAn
 
 	sub := rx.NewSubscriber(
 		rx.OnNext(func(elem payload.Payload) error {
-			p.sendPayload(sid, elem, core.FlagNext)
+			dc.sendPayload(sid, elem, core.FlagNext)
 			return nil
 		}),
 		rx.OnSubscribe(func(s rx.Subscription) {
-			p.register(sid, requestStreamCallbackReverse{su: s})
+			dc.register(sid, requestStreamCallbackReverse{su: s})
 			s.Request(n32)
 		}),
 		rx.OnError(func(e error) {
-			p.writeError(sid, e)
+			dc.writeError(sid, e)
 		}),
 		rx.OnComplete(func() {
-			p.sendFrame(framing.NewPayloadFrame(sid, nil, nil, core.FlagComplete))
+			dc.sendFrame(framing.NewPayloadFrame(sid, nil, nil, core.FlagComplete))
 		}),
 	)
 
 	// async subscribe publisher
 	sending.
 		DoFinally(func(s rx.SignalType) {
-			p.unregister(sid)
+			dc.unregister(sid)
 		}).
 		SubscribeOn(scheduler.Parallel()).
 		SubscribeWith(context.Background(), sub)
 	return nil
 }
 
-func (p *DuplexConnection) writeError(sid uint32, e error) {
+func (dc *DuplexConnection) writeError(sid uint32, e error) {
 	// ignore sending error because current socket has been closed.
 	if IsSocketClosedError(e) {
 		return
 	}
 	switch err := e.(type) {
 	case *framing.ErrorFrame:
-		p.sendFrame(err)
+		dc.sendFrame(err)
 	case core.CustomError:
-		p.sendFrame(framing.NewWriteableErrorFrame(sid, err.ErrorCode(), err.ErrorData()))
+		dc.sendFrame(framing.NewWriteableErrorFrame(sid, err.ErrorCode(), err.ErrorData()))
 	default:
-		p.sendFrame(framing.NewWriteableErrorFrame(sid, core.ErrorCodeApplicationError, []byte(e.Error())))
+		dc.sendFrame(framing.NewWriteableErrorFrame(sid, core.ErrorCodeApplicationError, []byte(e.Error())))
 	}
 }
 
 // SetResponder sets a responder for current socket.
-func (p *DuplexConnection) SetResponder(responder Responder) {
-	p.responder = responder
+func (dc *DuplexConnection) SetResponder(responder Responder) {
+	dc.responder = responder
 }
 
-func (p *DuplexConnection) onFrameKeepalive(frame core.Frame) (err error) {
+func (dc *DuplexConnection) onFrameKeepalive(frame core.Frame) (err error) {
 	f := frame.(*framing.KeepaliveFrame)
 	if f.Header().Flag().Check(core.FlagRespond) {
 		k := framing.NewKeepaliveFrame(f.LastReceivedPosition(), f.Data(), false)
 		//f.SetHeader(framing.NewFrameHeader(0, framing.FrameTypeKeepalive))
-		p.sendFrame(k)
+		dc.sendFrame(k)
 	}
 	return
 }
 
-func (p *DuplexConnection) onFrameCancel(frame core.Frame) (err error) {
+func (dc *DuplexConnection) onFrameCancel(frame core.Frame) (err error) {
 	sid := frame.Header().StreamID()
 
-	v, ok := p.messages.Load(sid)
+	v, ok := dc.messages.Load(sid)
 	if !ok {
 		logger.Warnf("nothing cancelled: sid=%d\n", sid)
 		return
@@ -636,18 +640,18 @@ func (p *DuplexConnection) onFrameCancel(frame core.Frame) (err error) {
 		panic(fmt.Errorf("illegal cancel target: %v", vv))
 	}
 
-	if _, ok := p.fragments.Load(sid); ok {
-		p.fragments.Delete(sid)
+	if _, ok := dc.fragments.Load(sid); ok {
+		dc.fragments.Delete(sid)
 	}
 	return
 }
 
-func (p *DuplexConnection) onFrameError(input core.Frame) (err error) {
+func (dc *DuplexConnection) onFrameError(input core.Frame) (err error) {
 	f := input.(*framing.ErrorFrame)
 	logger.Errorf("handle error frame: %s\n", f)
 	sid := f.Header().StreamID()
 
-	v, ok := p.messages.Load(sid)
+	v, ok := dc.messages.Load(sid)
 	if !ok {
 		err = fmt.Errorf("invalid stream id: %d", sid)
 		return
@@ -666,10 +670,10 @@ func (p *DuplexConnection) onFrameError(input core.Frame) (err error) {
 	return
 }
 
-func (p *DuplexConnection) onFrameRequestN(input core.Frame) (err error) {
+func (dc *DuplexConnection) onFrameRequestN(input core.Frame) (err error) {
 	f := input.(*framing.RequestNFrame)
 	sid := f.Header().StreamID()
-	v, ok := p.messages.Load(sid)
+	v, ok := dc.messages.Load(sid)
 	if !ok {
 		if logger.IsDebugEnabled() {
 			logger.Debugf("ignore non-exists RequestN: id=%d\n", sid)
@@ -690,15 +694,15 @@ func (p *DuplexConnection) onFrameRequestN(input core.Frame) (err error) {
 	return
 }
 
-func (p *DuplexConnection) doFragment(input fragmentation.HeaderAndPayload) (out fragmentation.HeaderAndPayload, ok bool) {
+func (dc *DuplexConnection) doFragment(input fragmentation.HeaderAndPayload) (out fragmentation.HeaderAndPayload, ok bool) {
 	h := input.Header()
 	sid := h.StreamID()
-	v, exist := p.fragments.Load(sid)
+	v, exist := dc.fragments.Load(sid)
 	if exist {
 		joiner := v.(fragmentation.Joiner)
 		ok = joiner.Push(input)
 		if ok {
-			p.fragments.Delete(sid)
+			dc.fragments.Delete(sid)
 			out = joiner
 		}
 		return
@@ -708,34 +712,34 @@ func (p *DuplexConnection) doFragment(input fragmentation.HeaderAndPayload) (out
 		out = input
 		return
 	}
-	p.fragments.Store(sid, fragmentation.NewJoiner(input))
+	dc.fragments.Store(sid, fragmentation.NewJoiner(input))
 	return
 }
 
-func (p *DuplexConnection) onFramePayload(frame core.Frame) error {
-	pl, ok := p.doFragment(frame.(*framing.PayloadFrame))
+func (dc *DuplexConnection) onFramePayload(frame core.Frame) error {
+	pl, ok := dc.doFragment(frame.(*framing.PayloadFrame))
 	if !ok {
 		return nil
 	}
 	h := pl.Header()
 	t := h.Type()
 	if t == core.FrameTypeRequestFNF {
-		return p.respondFNF(pl)
+		return dc.respondFNF(pl)
 	}
 	if t == core.FrameTypeRequestResponse {
-		return p.respondRequestResponse(pl)
+		return dc.respondRequestResponse(pl)
 	}
 	if t == core.FrameTypeRequestStream {
-		return p.respondRequestStream(pl)
+		return dc.respondRequestStream(pl)
 	}
 	if t == core.FrameTypeRequestChannel {
-		return p.respondRequestChannel(pl)
+		return dc.respondRequestChannel(pl)
 	}
 
 	sid := h.StreamID()
-	v, ok := p.messages.Load(sid)
+	v, ok := dc.messages.Load(sid)
 	if !ok {
-		logger.Warnf("unoccupied Payload(id=%d), maybe it has been canceled(server=%T)\n", sid, p.sids)
+		logger.Warnf("unoccupied Payload(id=%d), maybe it has been canceled(server=%T)\n", sid, dc.sids)
 		return nil
 	}
 
@@ -776,44 +780,44 @@ func (p *DuplexConnection) onFramePayload(frame core.Frame) error {
 	return nil
 }
 
-func (p *DuplexConnection) clearTransport() {
-	p.cond.L.Lock()
-	p.tp = nil
-	p.cond.L.Unlock()
+func (dc *DuplexConnection) clearTransport() {
+	dc.cond.L.Lock()
+	dc.tp = nil
+	dc.cond.L.Unlock()
 }
 
 // SetTransport sets a transport for current socket.
-func (p *DuplexConnection) SetTransport(tp *transport.Transport) {
-	tp.RegisterHandler(transport.OnCancel, p.onFrameCancel)
-	tp.RegisterHandler(transport.OnError, p.onFrameError)
-	tp.RegisterHandler(transport.OnRequestN, p.onFrameRequestN)
-	tp.RegisterHandler(transport.OnPayload, p.onFramePayload)
-	tp.RegisterHandler(transport.OnKeepalive, p.onFrameKeepalive)
+func (dc *DuplexConnection) SetTransport(tp *transport.Transport) {
+	tp.RegisterHandler(transport.OnCancel, dc.onFrameCancel)
+	tp.RegisterHandler(transport.OnError, dc.onFrameError)
+	tp.RegisterHandler(transport.OnRequestN, dc.onFrameRequestN)
+	tp.RegisterHandler(transport.OnPayload, dc.onFramePayload)
+	tp.RegisterHandler(transport.OnKeepalive, dc.onFrameKeepalive)
 
-	if p.responder != nil {
-		tp.RegisterHandler(transport.OnRequestResponse, p.onFrameRequestResponse)
-		tp.RegisterHandler(transport.OnMetadataPush, p.respondMetadataPush)
-		tp.RegisterHandler(transport.OnFireAndForget, p.onFrameFNF)
-		tp.RegisterHandler(transport.OnRequestStream, p.onFrameRequestStream)
-		tp.RegisterHandler(transport.OnRequestChannel, p.onFrameRequestChannel)
+	if dc.responder != nil {
+		tp.RegisterHandler(transport.OnRequestResponse, dc.onFrameRequestResponse)
+		tp.RegisterHandler(transport.OnMetadataPush, dc.respondMetadataPush)
+		tp.RegisterHandler(transport.OnFireAndForget, dc.onFrameFNF)
+		tp.RegisterHandler(transport.OnRequestStream, dc.onFrameRequestStream)
+		tp.RegisterHandler(transport.OnRequestChannel, dc.onFrameRequestChannel)
 	}
 
-	p.cond.L.Lock()
-	p.tp = tp
-	p.cond.Signal()
-	p.cond.L.Unlock()
+	dc.cond.L.Lock()
+	dc.tp = tp
+	dc.cond.Signal()
+	dc.cond.L.Unlock()
 }
 
-func (p *DuplexConnection) sendFrame(f core.WriteableFrame) {
+func (dc *DuplexConnection) sendFrame(f core.WriteableFrame) {
 	defer func() {
 		if e := recover(); e != nil {
 			logger.Warnf("send frame failed: %s\n", e)
 		}
 	}()
-	p.outs <- f
+	dc.outs <- f
 }
 
-func (p *DuplexConnection) sendPayload(
+func (dc *DuplexConnection) sendPayload(
 	sid uint32,
 	sending payload.Payload,
 	frameFlag core.FrameFlag,
@@ -822,32 +826,33 @@ func (p *DuplexConnection) sendPayload(
 	m, _ := sending.Metadata()
 	size := framing.CalcPayloadFrameSize(d, m)
 
-	if !p.shouldSplit(size) {
-		p.sendFrame(framing.NewWriteablePayloadFrame(sid, d, m, frameFlag))
+	if !dc.shouldSplit(size) {
+		dc.sendFrame(framing.NewWriteablePayloadFrame(sid, d, m, frameFlag))
 		return
 	}
-	p.doSplit(d, m, func(index int, result fragmentation.SplitResult) {
+	dc.doSplit(d, m, func(index int, result fragmentation.SplitResult) {
 		flag := result.Flag
 		if index == 0 {
 			flag |= frameFlag
 		} else {
 			flag |= core.FlagNext
 		}
-		p.sendFrame(framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, flag))
+		dc.sendFrame(framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, flag))
 	})
+	return
 }
 
-func (p *DuplexConnection) drainWithKeepaliveAndLease(leaseChan <-chan lease.Lease) (ok bool) {
-	if len(p.outs) > 0 {
-		p.drain(nil)
+func (dc *DuplexConnection) drainWithKeepaliveAndLease(leaseChan <-chan lease.Lease) (ok bool) {
+	if len(dc.outs) > 0 {
+		dc.drain(nil)
 	}
 	var out core.WriteableFrame
 	select {
-	case <-p.keepaliver.C():
+	case <-dc.keepaliver.C():
 		ok = true
-		out = framing.NewKeepaliveFrame(p.counter.ReadBytes(), nil, true)
-		if p.tp != nil {
-			err := p.tp.Send(out, true)
+		out = framing.NewKeepaliveFrame(dc.counter.ReadBytes(), nil, true)
+		if dc.tp != nil {
+			err := dc.tp.Send(out, true)
 			if err != nil {
 				logger.Errorf("send keepalive frame failed: %s\n", err.Error())
 			}
@@ -858,59 +863,59 @@ func (p *DuplexConnection) drainWithKeepaliveAndLease(leaseChan <-chan lease.Lea
 			return
 		}
 		out = framing.NewWriteableLeaseFrame(ls.TimeToLive, ls.NumberOfRequests, ls.Metadata)
-		if p.tp == nil {
-			p.outsPriority = append(p.outsPriority, out)
-		} else if err := p.tp.Send(out, true); err != nil {
+		if dc.tp == nil {
+			dc.outsPriority = append(dc.outsPriority, out)
+		} else if err := dc.tp.Send(out, true); err != nil {
 			logger.Errorf("send frame failed: %s\n", err.Error())
-			p.outsPriority = append(p.outsPriority, out)
+			dc.outsPriority = append(dc.outsPriority, out)
 		}
-	case out, ok = <-p.outs:
+	case out, ok = <-dc.outs:
 		if !ok {
 			return
 		}
-		if p.tp == nil {
-			p.outsPriority = append(p.outsPriority, out)
-		} else if err := p.tp.Send(out, true); err != nil {
+		if dc.tp == nil {
+			dc.outsPriority = append(dc.outsPriority, out)
+		} else if err := dc.tp.Send(out, true); err != nil {
 			logger.Errorf("send frame failed: %s\n", err.Error())
-			p.outsPriority = append(p.outsPriority, out)
+			dc.outsPriority = append(dc.outsPriority, out)
 		}
 	}
 	return
 }
 
-func (p *DuplexConnection) drainWithKeepalive() (ok bool) {
-	if len(p.outs) > 0 {
-		p.drain(nil)
+func (dc *DuplexConnection) drainWithKeepalive() (ok bool) {
+	if len(dc.outs) > 0 {
+		dc.drain(nil)
 	}
 	var out core.WriteableFrame
 
 	select {
-	case <-p.keepaliver.C():
+	case <-dc.keepaliver.C():
 		ok = true
-		out = framing.NewKeepaliveFrame(p.counter.ReadBytes(), nil, true)
-		if p.tp != nil {
-			err := p.tp.Send(out, true)
+		out = framing.NewKeepaliveFrame(dc.counter.ReadBytes(), nil, true)
+		if dc.tp != nil {
+			err := dc.tp.Send(out, true)
 			if err != nil {
 				logger.Errorf("send keepalive frame failed: %s\n", err.Error())
 			}
 		}
-	case out, ok = <-p.outs:
+	case out, ok = <-dc.outs:
 		if !ok {
 			return
 		}
-		if p.tp == nil {
-			p.outsPriority = append(p.outsPriority, out)
-		} else if err := p.tp.Send(out, true); err != nil {
+		if dc.tp == nil {
+			dc.outsPriority = append(dc.outsPriority, out)
+		} else if err := dc.tp.Send(out, true); err != nil {
 			logger.Errorf("send frame failed: %s\n", err.Error())
-			p.outsPriority = append(p.outsPriority, out)
+			dc.outsPriority = append(dc.outsPriority, out)
 		}
 	}
 	return
 }
 
-func (p *DuplexConnection) drain(leaseChan <-chan lease.Lease) bool {
+func (dc *DuplexConnection) drain(leaseChan <-chan lease.Lease) bool {
 	var flush bool
-	cycle := len(p.outs)
+	cycle := len(dc.outs)
 	if cycle < 1 {
 		cycle = 1
 	}
@@ -920,34 +925,34 @@ func (p *DuplexConnection) drain(leaseChan <-chan lease.Lease) bool {
 			if !ok {
 				return false
 			}
-			if p.drainOne(framing.NewWriteableLeaseFrame(next.TimeToLive, next.NumberOfRequests, next.Metadata)) {
+			if dc.drainOne(framing.NewWriteableLeaseFrame(next.TimeToLive, next.NumberOfRequests, next.Metadata)) {
 				flush = true
 			}
-		case out, ok := <-p.outs:
+		case out, ok := <-dc.outs:
 			if !ok {
 				return false
 			}
-			if p.drainOne(out) {
+			if dc.drainOne(out) {
 				flush = true
 			}
 		}
 	}
 	if flush {
-		if err := p.tp.Flush(); err != nil {
+		if err := dc.tp.Flush(); err != nil {
 			logger.Errorf("flush failed: %v\n", err)
 		}
 	}
 	return true
 }
 
-func (p *DuplexConnection) drainOne(out core.WriteableFrame) (wrote bool) {
-	if p.tp == nil {
-		p.outsPriority = append(p.outsPriority, out)
+func (dc *DuplexConnection) drainOne(out core.WriteableFrame) (wrote bool) {
+	if dc.tp == nil {
+		dc.outsPriority = append(dc.outsPriority, out)
 		return
 	}
-	err := p.tp.Send(out, false)
+	err := dc.tp.Send(out, false)
 	if err != nil {
-		p.outsPriority = append(p.outsPriority, out)
+		dc.outsPriority = append(dc.outsPriority, out)
 		logger.Errorf("send frame failed: %s\n", err.Error())
 		return
 	}
@@ -955,50 +960,50 @@ func (p *DuplexConnection) drainOne(out core.WriteableFrame) (wrote bool) {
 	return
 }
 
-func (p *DuplexConnection) drainOutBack() {
-	if len(p.outsPriority) < 1 {
+func (dc *DuplexConnection) drainOutBack() {
+	if len(dc.outsPriority) < 1 {
 		return
 	}
 	defer func() {
-		p.outsPriority = p.outsPriority[:0]
+		dc.outsPriority = dc.outsPriority[:0]
 	}()
-	if p.tp == nil {
+	if dc.tp == nil {
 		return
 	}
 	var out core.WriteableFrame
-	for i := range p.outsPriority {
-		out = p.outsPriority[i]
-		if err := p.tp.Send(out, false); err != nil {
+	for i := range dc.outsPriority {
+		out = dc.outsPriority[i]
+		if err := dc.tp.Send(out, false); err != nil {
 			out.Done()
 			logger.Errorf("send frame failed: %v\n", err)
 		}
 	}
-	if err := p.tp.Flush(); err != nil {
+	if err := dc.tp.Flush(); err != nil {
 		logger.Errorf("flush failed: %v\n", err)
 	}
 }
 
-func (p *DuplexConnection) loopWriteWithKeepaliver(ctx context.Context, leaseChan <-chan lease.Lease) error {
+func (dc *DuplexConnection) loopWriteWithKeepaliver(ctx context.Context, leaseChan <-chan lease.Lease) error {
 	for {
-		if p.tp == nil {
-			p.cond.L.Lock()
-			p.cond.Wait()
-			p.cond.L.Unlock()
+		if dc.tp == nil {
+			dc.cond.L.Lock()
+			dc.cond.Wait()
+			dc.cond.L.Unlock()
 		}
 
 		select {
 		case <-ctx.Done():
-			p.cleanOuts()
+			dc.cleanOuts()
 			return ctx.Err()
 		default:
 			// ignore
 		}
 
 		select {
-		case <-p.keepaliver.C():
-			kf := framing.NewKeepaliveFrame(p.counter.ReadBytes(), nil, true)
-			if p.tp != nil {
-				err := p.tp.Send(kf, true)
+		case <-dc.keepaliver.C():
+			kf := framing.NewKeepaliveFrame(dc.counter.ReadBytes(), nil, true)
+			if dc.tp != nil {
+				err := dc.tp.Send(kf, true)
 				if err != nil {
 					logger.Errorf("send keepalive frame failed: %s\n", err.Error())
 				}
@@ -1006,117 +1011,106 @@ func (p *DuplexConnection) loopWriteWithKeepaliver(ctx context.Context, leaseCha
 		default:
 		}
 
-		p.drainOutBack()
-		if leaseChan == nil && !p.drainWithKeepalive() {
+		dc.drainOutBack()
+		if leaseChan == nil && !dc.drainWithKeepalive() {
 			break
 		}
-		if leaseChan != nil && !p.drainWithKeepaliveAndLease(leaseChan) {
+		if leaseChan != nil && !dc.drainWithKeepaliveAndLease(leaseChan) {
 			break
 		}
 	}
 	return nil
 }
 
-func (p *DuplexConnection) cleanOuts() {
-	p.outsPriority = nil
+func (dc *DuplexConnection) cleanOuts() {
+	dc.outsPriority = nil
 }
 
-func (p *DuplexConnection) LoopWrite(ctx context.Context) error {
-	defer close(p.done)
+func (dc *DuplexConnection) LoopWrite(ctx context.Context) error {
+	defer close(dc.writeDone)
 
 	var leaseChan chan lease.Lease
-	if p.leases != nil {
+	if dc.leases != nil {
 		leaseCtx, cancel := context.WithCancel(ctx)
 		defer func() {
 			cancel()
 		}()
-		if c, ok := p.leases.Next(leaseCtx); ok {
+		if c, ok := dc.leases.Next(leaseCtx); ok {
 			leaseChan = c
 		}
 	}
 
-	if p.keepaliver != nil {
-		defer p.keepaliver.Stop()
-		return p.loopWriteWithKeepaliver(ctx, leaseChan)
+	if dc.keepaliver != nil {
+		defer dc.keepaliver.Stop()
+		return dc.loopWriteWithKeepaliver(ctx, leaseChan)
 	}
 	for {
-		if p.tp == nil {
-			p.cond.L.Lock()
-			p.cond.Wait()
-			p.cond.L.Unlock()
+		if dc.tp == nil {
+			dc.cond.L.Lock()
+			dc.cond.Wait()
+			dc.cond.L.Unlock()
 		}
 
 		select {
 		case <-ctx.Done():
-			p.cleanOuts()
+			dc.cleanOuts()
 			return ctx.Err()
 		default:
 		}
 
-		p.drainOutBack()
-		if !p.drain(leaseChan) {
+		dc.drainOutBack()
+		if !dc.drain(leaseChan) {
 			break
 		}
 	}
 	return nil
 }
 
-func (p *DuplexConnection) doSplit(data, metadata []byte, handler fragmentation.HandleSplitResult) {
-	fragmentation.Split(p.mtu, data, metadata, handler)
+func (dc *DuplexConnection) doSplit(data, metadata []byte, handler fragmentation.HandleSplitResult) {
+	fragmentation.Split(dc.mtu, data, metadata, handler)
 }
 
-func (p *DuplexConnection) doSplitSkip(skip int, data, metadata []byte, handler fragmentation.HandleSplitResult) {
-	fragmentation.SplitSkip(p.mtu, skip, data, metadata, handler)
+func (dc *DuplexConnection) doSplitSkip(skip int, data, metadata []byte, handler fragmentation.HandleSplitResult) {
+	fragmentation.SplitSkip(dc.mtu, skip, data, metadata, handler)
 }
 
-func (p *DuplexConnection) shouldSplit(size int) bool {
-	return size > p.mtu
+func (dc *DuplexConnection) shouldSplit(size int) bool {
+	return size > dc.mtu
 }
 
-func (p *DuplexConnection) register(sid uint32, msg interface{}) {
-	p.messages.Store(sid, msg)
+func (dc *DuplexConnection) register(sid uint32, msg interface{}) {
+	dc.messages.Store(sid, msg)
 }
 
-func (p *DuplexConnection) unregister(sid uint32) {
-	p.messages.Delete(sid)
-	p.fragments.Delete(sid)
+func (dc *DuplexConnection) unregister(sid uint32) {
+	dc.messages.Delete(sid)
+	dc.fragments.Delete(sid)
 }
 
 // NewServerDuplexConnection creates a new server-side DuplexConnection.
 func NewServerDuplexConnection(mtu int, leases lease.Leases) *DuplexConnection {
+	return newDuplexConnection(mtu, nil, &serverStreamIDs{}, leases)
+}
+
+// NewClientDuplexConnection creates a new client-side DuplexConnection.
+func NewClientDuplexConnection(mtu int, keepaliveInterval time.Duration) *DuplexConnection {
+	return newDuplexConnection(mtu, NewKeepaliver(keepaliveInterval), &clientStreamIDs{}, nil)
+}
+
+func newDuplexConnection(mtu int, ka *Keepaliver, sids StreamID, leases lease.Leases) *DuplexConnection {
+	l := &sync.RWMutex{}
 	return &DuplexConnection{
-		closed:          atomic.NewBool(false),
+		l:               l,
 		leases:          leases,
 		outs:            make(chan core.WriteableFrame, _outChanSize),
 		mtu:             mtu,
 		messages:        &sync.Map{},
-		sids:            &serverStreamIDs{},
+		sids:            sids,
 		fragments:       &sync.Map{},
-		done:            make(chan struct{}),
-		cond:            sync.NewCond(&sync.Mutex{}),
-		counter:         core.NewCounter(),
-		singleScheduler: scheduler.NewSingle(64),
-	}
-}
-
-// NewClientDuplexConnection creates a new client-side DuplexConnection.
-func NewClientDuplexConnection(
-	mtu int,
-	keepaliveInterval time.Duration,
-) (s *DuplexConnection) {
-	ka := NewKeepaliver(keepaliveInterval)
-	s = &DuplexConnection{
-		closed:          atomic.NewBool(false),
-		outs:            make(chan core.WriteableFrame, _outChanSize),
-		mtu:             mtu,
-		messages:        &sync.Map{},
-		sids:            &clientStreamIDs{},
-		fragments:       &sync.Map{},
-		done:            make(chan struct{}),
-		cond:            sync.NewCond(&sync.Mutex{}),
-		counter:         core.NewCounter(),
+		writeDone:       make(chan struct{}),
+		cond:            sync.NewCond(l),
+		counter:         core.NewTrafficCounter(),
 		keepaliver:      ka,
 		singleScheduler: scheduler.NewSingle(64),
 	}
-	return
 }

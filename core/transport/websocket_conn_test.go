@@ -36,7 +36,7 @@ func TestWsConn_Read(t *testing.T) {
 	ctrl, rc, wc := InitMockWsConn(t)
 	defer ctrl.Finish()
 
-	c := core.NewCounter()
+	c := core.NewTrafficCounter()
 	wc.SetCounter(c)
 
 	toBeWritten := []core.WriteableFrame{
@@ -105,7 +105,7 @@ func TestWsConn_Flush_Nothing(t *testing.T) {
 	ctrl, mc, wc := InitMockWsConn(t)
 	defer ctrl.Finish()
 
-	c := core.NewCounter()
+	c := core.NewTrafficCounter()
 	wc.SetCounter(c)
 
 	mc.EXPECT().WriteMessage(websocket.BinaryMessage, gomock.Any()).Times(0)
@@ -132,7 +132,7 @@ func TestWsConn_Write(t *testing.T) {
 	ctrl, mc, wc := InitMockWsConn(t)
 	defer ctrl.Finish()
 
-	c := core.NewCounter()
+	c := core.NewTrafficCounter()
 	wc.SetCounter(c)
 
 	toBeWritten := []core.WriteableFrame{

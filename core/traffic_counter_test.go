@@ -8,12 +8,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestCounter(t *testing.T) {
+func TestTrafficCounter(t *testing.T) {
 	const cycle = 1000
 	const amount = 1000
 	wg := sync.WaitGroup{}
 	wg.Add(amount)
-	c := core.NewCounter()
+	c := core.NewTrafficCounter()
 	for range [amount]struct{}{} {
 		go func() {
 			for range [cycle]struct{}{} {

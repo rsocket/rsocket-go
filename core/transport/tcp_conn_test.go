@@ -36,7 +36,7 @@ func TestTcpConn_Read(t *testing.T) {
 	defer ctrl.Finish()
 
 	bf := &bytes.Buffer{}
-	c := core.NewCounter()
+	c := core.NewTrafficCounter()
 	tc.SetCounter(c)
 
 	toBeWritten := []core.WriteableFrame{
@@ -91,7 +91,7 @@ func TestTcpConn_Flush_Nothing(t *testing.T) {
 	ctrl, nc, tc := InitMockTcpConn(t)
 	defer ctrl.Finish()
 
-	c := core.NewCounter()
+	c := core.NewTrafficCounter()
 	tc.SetCounter(c)
 
 	nc.EXPECT().Write(gomock.Any()).Times(0)
@@ -119,7 +119,7 @@ func TestTcpConn_WriteAndFlush(t *testing.T) {
 	ctrl, nc, tc := InitMockTcpConn(t)
 	defer ctrl.Finish()
 
-	c := core.NewCounter()
+	c := core.NewTrafficCounter()
 	tc.SetCounter(c)
 
 	nc.EXPECT().

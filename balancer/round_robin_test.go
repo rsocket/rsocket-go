@@ -72,7 +72,9 @@ func TestRoundRobin(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(n * len(ports))
 	for i := 0; i < n*len(ports); i++ {
-		b.MustNext(context.Background()).RequestResponse(req).
+		c, ok := b.Next(context.Background())
+		assert.True(t, ok, "get next client failed")
+		c.RequestResponse(req).
 			DoFinally(func(s rx.SignalType) {
 				wg.Done()
 			}).
@@ -100,7 +102,9 @@ func TestRoundRobin(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// then send a request
-	_, err := b.MustNext(context.Background()).RequestResponse(req).Block(context.Background())
+	c, ok := b.Next(context.Background())
+	assert.True(t, ok, "get next client failed")
+	_, err := c.RequestResponse(req).Block(context.Background())
 	assert.NoError(t, err)
 
 	var total int
@@ -111,7 +115,9 @@ func TestRoundRobin(t *testing.T) {
 	assert.Equal(t, n*len(ports)+1, total)
 	assert.Equal(t, int32(0), ac0.(*atomic.Int32).Load()-amount0)
 
-	_, err = b.MustNext(context.Background()).RequestResponse(req).Block(context.Background())
+	c, ok = b.Next(context.Background())
+	assert.True(t, ok, "get next client failed")
+	_, err = c.RequestResponse(req).Block(context.Background())
 	assert.NoError(t, err)
 	total++
 
@@ -122,7 +128,9 @@ func TestRoundRobin(t *testing.T) {
 	const extra = 10
 
 	for i := 0; i < extra; i++ {
-		_, err = b.MustNext(context.Background()).RequestResponse(req).Block(context.Background())
+		c, ok = b.Next(context.Background())
+		assert.True(t, ok, "get next client failed")
+		_, err = c.RequestResponse(req).Block(context.Background())
 		assert.NoError(t, err)
 	}
 	total += 10

@@ -26,10 +26,10 @@ type RawWsConn interface {
 
 type WsConn struct {
 	c       RawWsConn
-	counter *core.Counter
+	counter *core.TrafficCounter
 }
 
-func (p *WsConn) SetCounter(c *core.Counter) {
+func (p *WsConn) SetCounter(c *core.TrafficCounter) {
 	p.counter = c
 }
 

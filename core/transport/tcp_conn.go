@@ -17,10 +17,10 @@ type TcpConn struct {
 	conn    net.Conn
 	writer  *bufio.Writer
 	decoder *LengthBasedFrameDecoder
-	counter *core.Counter
+	counter *core.TrafficCounter
 }
 
-func (p *TcpConn) SetCounter(c *core.Counter) {
+func (p *TcpConn) SetCounter(c *core.TrafficCounter) {
 	p.counter = c
 }
 
