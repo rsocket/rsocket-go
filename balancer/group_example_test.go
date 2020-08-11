@@ -24,7 +24,7 @@ func ExampleNewGroup() {
 		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			// Register service using Setup Metadata as service ID.
 			if serviceID, ok := setup.MetadataUTF8(); ok {
-				group.Get(serviceID).Put(sendingSocket)
+				_ = group.Get(serviceID).Put(sendingSocket)
 			}
 			// Proxy requests by group.
 			return rsocket.NewAbstractSocket(rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {

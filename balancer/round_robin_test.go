@@ -63,7 +63,7 @@ func TestRoundRobin(t *testing.T) {
 			Transport(rsocket.TcpClient().SetHostAndPort("127.0.0.1", ports[i]).Build()).
 			Start(context.Background())
 		assert.NoError(t, err)
-		b.PutLabel(fmt.Sprintf("test-client-%d", ports[i]), client)
+		_ = b.PutLabel(fmt.Sprintf("test-client-%d", ports[i]), client)
 	}
 
 	req := payload.NewString("foo", "bar")

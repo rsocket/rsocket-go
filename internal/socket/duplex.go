@@ -839,7 +839,6 @@ func (dc *DuplexConnection) sendPayload(
 		}
 		dc.sendFrame(framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, flag))
 	})
-	return
 }
 
 func (dc *DuplexConnection) drainWithKeepaliveAndLease(leaseChan <-chan lease.Lease) (ok bool) {
