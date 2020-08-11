@@ -13,7 +13,6 @@ import (
 	"github.com/rsocket/rsocket-go/rx/flux"
 )
 
-const transportString = "tcp://127.0.0.1:7878"
 const number = 13
 
 func main() {
@@ -34,9 +33,10 @@ func server(readyCh chan struct{}) {
 	// create a handler that will be called when the server receives the RequestChannel frame (FrameTypeRequestChannel - 0x07)
 	requestChannelHandler := rsocket.RequestChannel(func(msgs rx.Publisher) flux.Flux {
 		return flux.Create(func(ctx context.Context, s flux.Sink) {
-			msgs.(flux.Flux).DoOnNext(func(elem payload.Payload) {
+			msgs.(flux.Flux).DoOnNext(func(elem payload.Payload) error {
 				// for each payload in a flux stream respond with a word count
 				s.Next(payload.NewString(fmt.Sprintf("%d", wordCount(elem.DataUTF8())), ""))
+				return nil
 			}).DoOnComplete(func() {
 				// signal completion of the response stream
 				s.Complete()
@@ -54,7 +54,7 @@ func server(readyCh chan struct{}) {
 			return rsocket.NewAbstractSocket(requestChannelHandler), nil
 		}).
 		// specify transport
-		Transport(transportString).
+		Transport(rsocket.TcpServer().SetAddr(":7878").Build()).
 		// serve will block execution unless an error occurred
 		Serve(context.Background())
 
@@ -63,21 +63,21 @@ func server(readyCh chan struct{}) {
 
 func client() {
 	// Start a client connection
-	client, err := rsocket.Connect().Transport(transportString).Start(context.Background())
+	client, err := rsocket.Connect().Transport(rsocket.TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()).Start(context.Background())
 	if err != nil {
 		panic(err)
 	}
 	defer client.Close()
 
 	// strings to count the words
-	strings := []payload.Payload{
+	sentences := []payload.Payload{
 		payload.NewString("", extension.TextPlain.String()),
 		payload.NewString("qux", extension.TextPlain.String()),
 		payload.NewString("The quick brown fox jumps over the lazy dog", extension.TextPlain.String()),
 		payload.NewString("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.", extension.TextPlain.String()),
 	}
 
-	f := flux.FromSlice(strings)
+	f := flux.FromSlice(sentences)
 
 	// create a wait group so that the function does not return until the stream completes
 	wg := sync.WaitGroup{}
@@ -86,12 +86,13 @@ func client() {
 	counter := 0
 
 	// register handler for RequestChannel
-	client.RequestChannel(f).DoOnNext(func(input payload.Payload) {
+	client.RequestChannel(f).DoOnNext(func(input payload.Payload) error {
 		// print word count
-		fmt.Println(strings[counter].DataUTF8(), ":", input.DataUTF8())
+		fmt.Println(sentences[counter].DataUTF8(), ":", input.DataUTF8())
 		counter = counter + 1
+		return nil
 	}).DoOnComplete(func() {
-		// will be called on successfull completion of the stream
+		// will be called on successful completion of the stream
 		fmt.Println("Word counter ended.")
 	}).DoOnError(func(err error) {
 		// will be called if a error occurs

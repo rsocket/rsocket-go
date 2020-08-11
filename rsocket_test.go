@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	. "github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/logger"
+	"github.com/rsocket/rsocket-go/core/transport"
 	. "github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -21,36 +21,29 @@ const (
 	channelElements          = int32(2)
 )
 
-func init() {
-	//logger.SetLevel(logger.LevelDebug)
-	logger.SetFunc(logger.LevelInfo, func(s string, i ...interface{}) {
-		fmt.Printf(s, i...)
-	})
-	logger.SetFunc(logger.LevelDebug, func(s string, i ...interface{}) {
-		fmt.Printf(s, i...)
-	})
-	logger.SetFunc(logger.LevelWarn, func(s string, i ...interface{}) {
-		fmt.Printf(s, i...)
-	})
-	logger.SetFunc(logger.LevelError, func(s string, i ...interface{}) {
-		fmt.Printf(s, i...)
-	})
-}
-
 var testData = "Hello World!"
 
 func TestSuite(t *testing.T) {
-	addresses := map[string]string{
-		//"unix":      "unix:///tmp/rsocket.test.sock",
-		"tcp":       "tcp://localhost:7878",
-		"websocket": "ws://localhost:8080/test",
+	m := []string{
+		"tcp",
+		"websocket",
 	}
-	for k, v := range addresses {
-		testAll(k, v, t)
+	c := []transport.ClientTransportFunc{
+		TcpClient().SetHostAndPort("127.0.0.1", 7878).Build(),
+		WebsocketClient().SetUrl("ws://127.0.0.1:8080/test").Build(),
 	}
+	s := []transport.ServerTransportFunc{
+		TcpServer().SetAddr(":7878").Build(),
+		WebsocketServer().SetAddr("127.0.0.1:8080").SetPath("/test").Build(),
+	}
+
+	for i := 0; i < len(m); i++ {
+		testAll(t, m[i], c[i], s[i])
+	}
+
 }
 
-func testAll(proto string, addr string, t *testing.T) {
+func testAll(t *testing.T, proto string, clientTp transport.ClientTransportFunc, serverTp transport.ServerTransportFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -98,9 +91,10 @@ func testAll(proto string, addr string, t *testing.T) {
 
 						inputs.(flux.Flux).DoFinally(func(s rx.SignalType) {
 							close(receives)
-						}).Subscribe(context.Background(), rx.OnNext(func(input Payload) {
+						}).Subscribe(context.Background(), rx.OnNext(func(input Payload) error {
 							//fmt.Println("rcv from channel:", input)
 							receives <- input
+							return nil
 						}))
 
 						return flux.Create(func(ctx context.Context, s flux.Sink) {
@@ -112,7 +106,7 @@ func testAll(proto string, addr string, t *testing.T) {
 					}),
 				), nil
 			}).
-			Transport(addr).
+			Transport(serverTp).
 			Serve(ctx)
 		fmt.Println("SERVER STOPPED!!!!!")
 		if err != nil {
@@ -126,7 +120,7 @@ func testAll(proto string, addr string, t *testing.T) {
 	cli, err := Connect().
 		Fragment(192).
 		SetupPayload(NewString(setupData, setupMetadata)).
-		Transport(addr).
+		Transport(clientTp).
 		Start(context.Background())
 	assert.NoError(t, err, "connect failed")
 	defer func() {
@@ -167,11 +161,12 @@ func testRequestStream(ctx context.Context, cli Client, t *testing.T) {
 		DoFinally(func(s rx.SignalType) {
 			close(done)
 		}).
-		DoOnNext(func(elem Payload) {
+		DoOnNext(func(elem Payload) error {
 			m, _ := elem.MetadataUTF8()
 			assert.Equal(t, fmt.Sprintf("%d", atomic.LoadInt32(&seq)), m, "bad stream metadata")
 			assert.Equal(t, testData, elem.DataUTF8(), "bad stream data")
 			atomic.AddInt32(&seq, 1)
+			return nil
 		}).
 		BlockLast(ctx)
 	<-done
@@ -187,12 +182,13 @@ func testRequestStreamOneByOne(ctx context.Context, cli Client, t *testing.T) {
 		DoFinally(func(s rx.SignalType) {
 			close(done)
 		}).
-		DoOnNext(func(elem Payload) {
+		DoOnNext(func(elem Payload) error {
 			m, _ := elem.MetadataUTF8()
 			assert.Equal(t, fmt.Sprintf("%d", atomic.LoadInt32(&seq)), m, "bad stream metadata")
 			assert.Equal(t, testData, elem.DataUTF8(), "bad stream data")
 			atomic.AddInt32(&seq, 1)
 			su.Request(1)
+			return nil
 		}).
 		Subscribe(ctx, rx.OnSubscribe(func(s rx.Subscription) {
 			su = s
@@ -214,12 +210,13 @@ func testRequestChannel(ctx context.Context, cli Client, t *testing.T) {
 	var seq int
 
 	_, err := cli.RequestChannel(send).
-		DoOnNext(func(elem Payload) {
+		DoOnNext(func(elem Payload) error {
 			//fmt.Println(elem)
 			m, _ := elem.MetadataUTF8()
 			assert.Equal(t, fmt.Sprintf("%d_from_server", seq), m, "bad channel metadata")
 			assert.Equal(t, testData, elem.DataUTF8(), "bad channel data")
 			seq++
+			return nil
 		}).
 		BlockLast(ctx)
 	assert.NoError(t, err, "block last failed")
@@ -245,15 +242,17 @@ func testRequestChannelOneByOne(ctx context.Context, cli Client, t *testing.T) {
 			assert.Equal(t, rx.SignalComplete, s, "bad signal type")
 			close(done)
 		}).
-		DoOnNext(func(elem Payload) {
+		DoOnNext(func(elem Payload) error {
 			fmt.Println(elem)
 			m, _ := elem.MetadataUTF8()
 			assert.Equal(t, fmt.Sprintf("%d_from_server", seq), m, "bad channel metadata")
 			assert.Equal(t, testData, elem.DataUTF8(), "bad channel data")
 			seq++
+			return nil
 		}).
-		Subscribe(ctx, rx.OnNext(func(elem Payload) {
+		Subscribe(ctx, rx.OnNext(func(elem Payload) error {
 			su.Request(1)
+			return nil
 		}), rx.OnSubscribe(func(s rx.Subscription) {
 			su = s
 			su.Request(1)

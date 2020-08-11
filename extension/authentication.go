@@ -15,7 +15,10 @@ const (
 	_authenticationBearer wellKnownAuthenticationType = 0x01
 )
 
-var errInvalidAuthBytes = errors.New("invalid authentication bytes")
+var (
+	_errInvalidAuthBytes     = errors.New("invalid authentication bytes")
+	_errAuthTypeLengthExceed = errors.New("invalid authType length: exceed 127 bytes")
+)
 
 type wellKnownAuthenticationType uint8
 
@@ -55,14 +58,23 @@ func (a Authentication) IsWellKnown() (ok bool) {
 }
 
 // NewAuthentication creates a new Authentication
-func NewAuthentication(authType string, payload []byte) Authentication {
+func NewAuthentication(authType string, payload []byte) (*Authentication, error) {
 	if len(authType) > 0x7F {
-		panic("illegal authType length: exceed 127 bytes")
+		return nil, _errAuthTypeLengthExceed
 	}
-	return Authentication{
+	return &Authentication{
 		typ:     authType,
 		payload: payload,
+	}, nil
+}
+
+// MustNewAuthentication creates a new Authentication
+func MustNewAuthentication(authType string, payload []byte) *Authentication {
+	auth, err := NewAuthentication(authType, payload)
+	if err != nil {
+		panic(err)
 	}
+	return auth
 }
 
 // Bytes encodes current Authentication to byte slice.
@@ -78,26 +90,40 @@ func (a Authentication) Bytes() (raw []byte) {
 }
 
 // ParseAuthentication parse Authentication from raw bytes.
-func ParseAuthentication(raw []byte) (auth Authentication, err error) {
+func ParseAuthentication(raw []byte) (auth *Authentication, err error) {
 	totals := len(raw)
 	if totals < 1 {
-		err = errInvalidAuthBytes
+		err = _errInvalidAuthBytes
 		return
 	}
 	first := raw[0]
 	n := 0x7F & first
 	if first&0x80 != 0 {
-		auth.typ = wellKnownAuthenticationType(n).String()
-		auth.payload = raw[1:]
+		auth = &Authentication{
+			typ:     wellKnownAuthenticationType(n).String(),
+			payload: raw[1:],
+		}
 		return
 	}
 	if totals < int(n+1) {
-		err = errInvalidAuthBytes
+		err = _errInvalidAuthBytes
 		return
 	}
-	auth.typ = string(raw[1 : 1+n])
-	auth.payload = raw[n+1:]
+	auth = &Authentication{
+		typ:     string(raw[1 : 1+n]),
+		payload: raw[n+1:],
+	}
 	return
+}
+
+// IsInvalidAuthenticationBytes returns true if input error is for invalid bytes.
+func IsInvalidAuthenticationBytes(err error) bool {
+	return err == _errInvalidAuthBytes
+}
+
+// IsAuthTypeLengthExceed returns true if input error is for AuthType length exceed.
+func IsAuthTypeLengthExceed(err error) bool {
+	return err == _errAuthTypeLengthExceed
 }
 
 func parseWellKnownAuthenticateType(typ string) (au wellKnownAuthenticationType, ok bool) {

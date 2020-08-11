@@ -14,7 +14,6 @@ import (
 	"github.com/rsocket/rsocket-go/rx/flux"
 )
 
-const transportString = "tcp://127.0.0.1:7878"
 const number = 13
 
 func main() {
@@ -77,7 +76,7 @@ func server(readyCh chan struct{}) {
 			return rsocket.NewAbstractSocket(requestStreamHandler), nil
 		}).
 		// specify transport
-		Transport(transportString).
+		Transport(rsocket.TcpServer().SetAddr(":7878").Build()).
 		// serve will block execution unless an error occurred
 		Serve(context.Background())
 
@@ -86,7 +85,8 @@ func server(readyCh chan struct{}) {
 
 func client() {
 	// Start a client connection
-	client, err := rsocket.Connect().Transport(transportString).Start(context.Background())
+	tp := rsocket.TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()
+	client, err := rsocket.Connect().Transport(tp).Start(context.Background())
 	if err != nil {
 		panic(err)
 	}
@@ -103,11 +103,12 @@ func client() {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	f.DoOnNext(func(input payload.Payload) {
+	f.DoOnNext(func(input payload.Payload) error {
 		// print each number in a stream
 		fmt.Println(input.DataUTF8())
+		return nil
 	}).DoOnComplete(func() {
-		// will be called on successfull completion of the stream
+		// will be called on successful completion of the stream
 		fmt.Println("Fibonacci sequence done")
 	}).DoOnError(func(err error) {
 		// will be called if a error occurs

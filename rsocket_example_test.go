@@ -17,8 +17,6 @@ import (
 func Example() {
 	// Serve a server
 	err := rsocket.Receive().
-		Resume(). // Enable RESUME
-		//Lease().
 		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			return rsocket.NewAbstractSocket(
 				rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
@@ -27,7 +25,7 @@ func Example() {
 				}),
 			), nil
 		}).
-		Transport("tcp://127.0.0.1:7878").
+		Transport(rsocket.TcpServer().SetAddr(":7878").Build()).
 		Serve(context.Background())
 	if err != nil {
 		panic(err)
@@ -36,17 +34,16 @@ func Example() {
 	// Connect to a server.
 	cli, err := rsocket.Connect().
 		SetupPayload(payload.NewString("Hello World", "From Golang")).
-		Transport("tcp://127.0.0.1:7878").
+		Transport(rsocket.TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()).
 		Start(context.Background())
 	if err != nil {
 		panic(err)
 	}
-	defer func() {
-		_ = cli.Close()
-	}()
+	defer cli.Close()
 	cli.RequestResponse(payload.NewString("Ping", time.Now().String())).
-		DoOnSuccess(func(elem payload.Payload) {
+		DoOnSuccess(func(elem payload.Payload) error {
 			log.Println("incoming response:", elem)
+			return nil
 		}).
 		Subscribe(context.Background())
 }
@@ -66,10 +63,11 @@ func ExampleReceive() {
 
 			// Request to client.
 			sendingSocket.RequestResponse(payload.NewString("Ping", time.Now().String())).
-				DoOnSuccess(func(elem payload.Payload) {
+				DoOnSuccess(func(elem payload.Payload) error {
 					log.Println("response of Ping from client:", elem)
+					return nil
 				}).
-				SubscribeOn(scheduler.Elastic()).
+				SubscribeOn(scheduler.Parallel()).
 				Subscribe(context.Background())
 			// Return responser which just echo.
 			return rsocket.NewAbstractSocket(
@@ -92,7 +90,7 @@ func ExampleReceive() {
 				}),
 			), nil
 		}).
-		Transport("tcp://0.0.0.0:7878").
+		Transport(rsocket.TcpServer().SetHostAndPort("127.0.0.1", 7878).Build()).
 		Serve(context.Background())
 	panic(err)
 }
@@ -100,7 +98,7 @@ func ExampleReceive() {
 func ExampleConnect() {
 	cli, err := rsocket.Connect().
 		Resume(). // Enable RESUME.
-		Lease().  // Enable LEASE.
+		Lease(). // Enable LEASE.
 		Fragment(4096).
 		SetupPayload(payload.NewString("Hello", "World")).
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
@@ -110,7 +108,7 @@ func ExampleConnect() {
 				}),
 			)
 		}).
-		Transport("tcp://127.0.0.1:7878").
+		Transport(rsocket.TcpClient().SetAddr("127.0.0.1:7878").Build()).
 		Start(context.Background())
 	if err != nil {
 		panic(err)
@@ -122,16 +120,18 @@ func ExampleConnect() {
 	cli.FireAndForget(payload.NewString("This is a FNF message.", ""))
 	// Simple RequestResponse.
 	cli.RequestResponse(payload.NewString("This is a RequestResponse message.", "")).
-		DoOnSuccess(func(elem payload.Payload) {
+		DoOnSuccess(func(elem payload.Payload) error {
 			log.Println("response:", elem)
+			return nil
 		}).
 		Subscribe(context.Background())
 	var s rx.Subscription
 	// RequestStream with backpressure. (one by one)
 	cli.RequestStream(payload.NewString("This is a RequestStream message.", "")).
-		DoOnNext(func(elem payload.Payload) {
+		DoOnNext(func(elem payload.Payload) error {
 			log.Println("next element in stream:", elem)
 			s.Request(1)
+			return nil
 		}).
 		Subscribe(context.Background(), rx.OnSubscribe(func(s rx.Subscription) {
 			s.Request(1)
@@ -144,8 +144,9 @@ func ExampleConnect() {
 		s.Complete()
 	})
 	cli.RequestChannel(sendFlux).
-		DoOnNext(func(elem payload.Payload) {
+		DoOnNext(func(elem payload.Payload) error {
 			log.Println("next element in channel:", elem)
+			return nil
 		}).
 		Subscribe(context.Background())
 }

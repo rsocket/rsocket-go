@@ -53,20 +53,25 @@ func Create(gen func(ctx context.Context, s Sink)) Flux {
 
 // CreateProcessor creates a new Processor.
 func CreateProcessor() Processor {
-	proc := flux.NewUnicastProcessor()
-	return newProxy(proc)
+	p := flux.NewUnicastProcessor()
+	return newProxy(p)
 }
 
 // Clone clones a Publisher to a Flux.
 func Clone(source rx.Publisher) Flux {
 	return Create(func(ctx context.Context, s Sink) {
-		source.Subscribe(ctx, rx.OnNext(func(input payload.Payload) {
-			s.Next(input)
-		}), rx.OnComplete(func() {
-			s.Complete()
-		}), rx.OnError(func(e error) {
-			s.Error(e)
-		}))
+		source.Subscribe(ctx,
+			rx.OnNext(func(input payload.Payload) error {
+				s.Next(input)
+				return nil
+			}),
+			rx.OnComplete(func() {
+				s.Complete()
+			}),
+			rx.OnError(func(e error) {
+				s.Error(e)
+			}),
+		)
 	})
 
 }

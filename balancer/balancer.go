@@ -2,6 +2,7 @@
 package balancer
 
 import (
+	"context"
 	"io"
 
 	"github.com/rsocket/rsocket-go"
@@ -11,11 +12,11 @@ import (
 type Balancer interface {
 	io.Closer
 	// Put puts a new client.
-	Put(client rsocket.Client)
+	Put(client rsocket.Client) error
 	// PutLabel puts a new client with a label.
-	PutLabel(label string, client rsocket.Client)
+	PutLabel(label string, client rsocket.Client) error
 	// Next returns next balanced RSocket client.
-	Next() rsocket.Client
+	Next(context.Context) (rsocket.Client, bool)
 	// OnLeave handle events when a client exit.
 	OnLeave(fn func(label string))
 }

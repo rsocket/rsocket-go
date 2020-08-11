@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/rsocket/rsocket-go/internal/framing"
+	"github.com/rsocket/rsocket-go/core"
 )
 
 var errNoFrameInJoiner = errors.New("no frames in current joiner")
@@ -14,15 +14,15 @@ type implJoiner struct {
 	root *list.List // list of HeaderAndPayload
 }
 
-func (p *implJoiner) First() framing.Frame {
+func (p *implJoiner) First() core.Frame {
 	first := p.root.Front()
 	if first == nil {
 		panic(errNoFrameInJoiner)
 	}
-	return first.Value.(framing.Frame)
+	return first.Value.(core.Frame)
 }
 
-func (p *implJoiner) Header() framing.FrameHeader {
+func (p *implJoiner) Header() core.FrameHeader {
 	return p.First().Header()
 }
 
@@ -34,7 +34,7 @@ func (p *implJoiner) String() string {
 func (p *implJoiner) Metadata() (metadata []byte, ok bool) {
 	for cur := p.root.Front(); cur != nil; cur = cur.Next() {
 		f := cur.Value.(HeaderAndPayload)
-		if !f.Header().Flag().Check(framing.FlagMetadata) {
+		if !f.Header().Flag().Check(core.FlagMetadata) {
 			break
 		}
 		if m, has := f.Metadata(); has {
@@ -74,6 +74,6 @@ func (p *implJoiner) DataUTF8() (data string) {
 func (p *implJoiner) Push(elem HeaderAndPayload) (end bool) {
 	p.root.PushBack(elem)
 	h := elem.Header()
-	end = !h.Flag().Check(framing.FlagFollow)
+	end = !h.Flag().Check(core.FlagFollow)
 	return
 }

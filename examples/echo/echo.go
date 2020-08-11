@@ -11,20 +11,24 @@ import (
 	"strings"
 
 	"github.com/jjeffcaii/reactor-go/scheduler"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
-const ListenAt = "tcp://127.0.0.1:7878"
+var tp transport.ServerTransportFunc
 
-//const ListenAt = "unix:///tmp/rsocket.echo.sock"
-//const ListenAt = "ws://127.0.0.1:7878/echo"
+func init() {
+	tp = rsocket.TcpServer().SetHostAndPort("127.0.0.1", 7878).Build()
+}
 
 func main() {
 	go func() {
+		http.Handle("/metrics", promhttp.Handler())
 		log.Println(http.ListenAndServe(":4444", nil))
 	}()
 	//logger.SetLevel(logger.LevelDebug)
@@ -32,7 +36,7 @@ func main() {
 		//Fragment(65535).
 		//Resume().
 		OnStart(func() {
-			log.Println("server is listening:", ListenAt)
+			log.Println("server start success!")
 		}).
 		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			//log.Println("SETUP BEGIN:----------------")
@@ -61,7 +65,7 @@ func main() {
 			}
 			return responder(), nil
 		}).
-		Transport(ListenAt).
+		Transport(tp).
 		Serve(context.Background())
 	if err != nil {
 		panic(err)
@@ -139,9 +143,10 @@ func responder() rsocket.RSocket {
 			//return payloads.(flux.Flux)
 			payloads.(flux.Flux).
 				//LimitRate(1).
-				SubscribeOn(scheduler.Elastic()).
-				DoOnNext(func(elem payload.Payload) {
+				SubscribeOn(scheduler.Parallel()).
+				DoOnNext(func(elem payload.Payload) error {
 					log.Println("receiving:", elem)
+					return nil
 				}).
 				Subscribe(context.Background())
 			return flux.Create(func(i context.Context, sink flux.Sink) {

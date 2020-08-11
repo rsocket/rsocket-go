@@ -3,11 +3,10 @@ package flux
 import (
 	"context"
 
-	reactor "github.com/jjeffcaii/reactor-go"
+	"github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/flux"
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
-	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -20,20 +19,12 @@ func (p proxy) Raw() flux.Flux {
 	return p.Flux
 }
 
-func (p proxy) mustProcessor() flux.Processor {
-	processor, ok := p.Flux.(flux.Processor)
-	if !ok {
-		panic(errors.New("require flux.Processor"))
-	}
-	return processor
-}
-
 func (p proxy) Next(v payload.Payload) {
 	p.mustProcessor().Next(v)
 }
 
-func (p proxy) Map(fn func(in payload.Payload) payload.Payload) Flux {
-	return newProxy(p.Flux.Map(func(i interface{}) interface{} {
+func (p proxy) Map(fn func(in payload.Payload) (payload.Payload, error)) Flux {
+	return newProxy(p.Flux.Map(func(i reactor.Any) (reactor.Any, error) {
 		return fn(i.(payload.Payload))
 	}))
 }
@@ -65,37 +56,28 @@ func (p proxy) DoOnError(fn rx.FnOnError) Flux {
 }
 
 func (p proxy) DoOnNext(fn rx.FnOnNext) Flux {
-	return newProxy(p.Flux.DoOnNext(func(v interface{}) {
-		fn(v.(payload.Payload))
+	return newProxy(p.Flux.DoOnNext(func(v reactor.Any) error {
+		return fn(v.(payload.Payload))
 	}))
 }
 
-func (p proxy) ToChan(ctx context.Context, cap int) (c <-chan payload.Payload, e <-chan error) {
+func (p proxy) ToChan(ctx context.Context, cap int) (<-chan payload.Payload, <-chan error) {
 	if cap < 1 {
 		cap = 1
 	}
 	ch := make(chan payload.Payload, cap)
 	err := make(chan error, 1)
-	p.
-		DoFinally(func(s rx.SignalType) {
-			if s == rx.SignalCancel {
+	p.Flux.
+		DoFinally(func(s reactor.SignalType) {
+			defer func() {
+				close(ch)
+				close(err)
+			}()
+			if s == reactor.SignalTypeCancel {
 				err <- reactor.ErrSubscribeCancelled
 			}
-			close(ch)
-			close(err)
 		}).
-		Subscribe(ctx,
-			rx.OnNext(func(v payload.Payload) {
-				if _, ok := v.(framing.Frame); ok {
-					ch <- payload.Clone(v)
-				} else {
-					ch <- v
-				}
-			}),
-			rx.OnError(func(e error) {
-				err <- e
-			}),
-		)
+		SubscribeWithChan(ctx, ch, err)
 	return ch, err
 }
 
@@ -115,9 +97,37 @@ func (p proxy) BlockLast(ctx context.Context) (last payload.Payload, err error) 
 	if err != nil {
 		return
 	}
-	if v != nil {
-		last = v.(payload.Payload)
+	if v == nil {
+		return
 	}
+	last = v.(payload.Payload)
+	return
+}
+
+func (p proxy) SubscribeWithChan(ctx context.Context, payloads chan<- payload.Payload, err chan<- error) {
+	p.Flux.SubscribeWithChan(ctx, payloads, err)
+}
+
+func (p proxy) BlockSlice(ctx context.Context) (results []payload.Payload, err error) {
+	done := make(chan struct{})
+	p.Flux.
+		DoFinally(func(s reactor.SignalType) {
+			defer close(done)
+			if s == reactor.SignalTypeCancel {
+				err = reactor.ErrSubscribeCancelled
+			}
+		}).
+		Subscribe(
+			ctx,
+			reactor.OnNext(func(v reactor.Any) error {
+				results = append(results, v.(payload.Payload))
+				return nil
+			}),
+			reactor.OnError(func(e error) {
+				err = e
+			}),
+		)
+	<-done
 	return
 }
 
@@ -157,8 +167,8 @@ func (p proxy) SubscribeWith(ctx context.Context, s rx.Subscriber) {
 		sub = rx.EmptyRawSubscriber
 	} else {
 		sub = reactor.NewSubscriber(
-			reactor.OnNext(func(v interface{}) {
-				s.OnNext(v.(payload.Payload))
+			reactor.OnNext(func(v reactor.Any) error {
+				return s.OnNext(v.(payload.Payload))
 			}),
 			reactor.OnError(func(e error) {
 				s.OnError(e)
@@ -172,6 +182,14 @@ func (p proxy) SubscribeWith(ctx context.Context, s rx.Subscriber) {
 		)
 	}
 	p.Flux.SubscribeWith(ctx, sub)
+}
+
+func (p proxy) mustProcessor() flux.Processor {
+	processor, ok := p.Flux.(flux.Processor)
+	if !ok {
+		panic(errors.New("require flux.Processor"))
+	}
+	return processor
 }
 
 type sinkProxy struct {

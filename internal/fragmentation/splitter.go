@@ -1,24 +1,29 @@
 package fragmentation
 
 import (
+	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/common"
-	"github.com/rsocket/rsocket-go/internal/framing"
 )
 
-type splitResult struct {
-	f framing.FrameFlag
-	b *common.ByteBuff
+// HandleSplitResult is callback for fragmentation result.
+type HandleSplitResult = func(index int, result SplitResult)
+
+// SplitResult defines fragmentation result struct.
+type SplitResult struct {
+	Flag     core.FrameFlag
+	Metadata []byte
+	Data     []byte
 }
 
 // Split split data and metadata in frame.
-func Split(mtu int, data []byte, metadata []byte, onFrame func(idx int, fg framing.FrameFlag, body *common.ByteBuff)) {
+func Split(mtu int, data []byte, metadata []byte, onFrame HandleSplitResult) {
 	SplitSkip(mtu, 0, data, metadata, onFrame)
 }
 
 // SplitSkip skip some bytes and split data and metadata in frame.
-func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame func(idx int, fg framing.FrameFlag, body *common.ByteBuff)) {
-	ch := make(chan splitResult, 3)
-	go func(mtu int, skip int, data []byte, metadata []byte, ch chan splitResult) {
+func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame HandleSplitResult) {
+	ch := make(chan SplitResult, 3)
+	go func(mtu int, skip int, data []byte, metadata []byte, ch chan SplitResult) {
 		defer func() {
 			close(ch)
 		}()
@@ -28,8 +33,7 @@ func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame func(idx
 		var follow bool
 		for {
 			bf = common.NewByteBuff()
-			var wroteM int
-			left := mtu - framing.HeaderLen
+			left := mtu - core.FrameHeaderLen
 			if idx == 0 && skip > 0 {
 				left -= skip
 				for i := 0; i < skip; i++ {
@@ -41,51 +45,35 @@ func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame func(idx
 			hasMetadata := cursor1 < lenM
 			if hasMetadata {
 				left -= 3
-				// write metadata length placeholder
-				if err := bf.WriteUint24(0); err != nil {
-					panic(err)
-				}
 			}
 			begin1, begin2 := cursor1, cursor2
 			for wrote := 0; wrote < left; wrote++ {
 				if cursor1 < lenM {
-					wroteM++
 					cursor1++
 				} else if cursor2 < lenD {
 					cursor2++
 				}
 			}
-			if _, err := bf.Write(metadata[begin1:cursor1]); err != nil {
-				panic(err)
-			}
-			if _, err := bf.Write(data[begin2:cursor2]); err != nil {
-				panic(err)
-			}
+			curMetadata := metadata[begin1:cursor1]
+			curData := data[begin2:cursor2]
 			follow = cursor1+cursor2 < lenM+lenD
-			var fg framing.FrameFlag
+			var flag core.FrameFlag
 			if follow {
-				fg |= framing.FlagFollow
+				flag |= core.FlagFollow
 			} else {
-				fg &= ^framing.FlagFollow
+				flag &= ^core.FlagFollow
 			}
-			if wroteM > 0 {
-				// set metadata length
-				x := common.NewUint24(wroteM)
-				for i := 0; i < len(x); i++ {
-					if idx == 0 {
-						bf.Bytes()[i+skip] = x[i]
-					} else {
-						bf.Bytes()[i] = x[i]
-					}
-				}
-				fg |= framing.FlagMetadata
+			if hasMetadata {
+				// metadata
+				flag |= core.FlagMetadata
 			} else {
 				// non-metadata
-				fg &= ^framing.FlagMetadata
+				flag &= ^core.FlagMetadata
 			}
-			ch <- splitResult{
-				f: fg,
-				b: bf,
+			ch <- SplitResult{
+				Flag:     flag,
+				Metadata: curMetadata,
+				Data:     curData,
 			}
 			if !follow {
 				break
@@ -96,7 +84,7 @@ func SplitSkip(mtu int, skip int, data []byte, metadata []byte, onFrame func(idx
 	var idx int
 	for v := range ch {
 		if onFrame != nil {
-			onFrame(idx, v.f, v.b)
+			onFrame(idx, v)
 		}
 		idx++
 	}

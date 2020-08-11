@@ -1,30 +1,11 @@
 package logger
 
-import (
-	"fmt"
-	"log"
+import "log"
+
+var (
+	_level         = LevelInfo
+	_logger Logger = simpleLogger{}
 )
-
-// Func is alias of logger function.
-type Func = func(string, ...interface{})
-
-// Level is level of logger.
-type Level int8
-
-func (s Level) String() string {
-	switch s {
-	case LevelDebug:
-		return "DEBUG"
-	case LevelInfo:
-		return "INFO"
-	case LevelWarn:
-		return "WARN"
-	case LevelError:
-		return "ERROR"
-	default:
-		return "UNKNOWN"
-	}
-}
 
 const (
 	// LevelDebug is DEBUG level.
@@ -37,93 +18,90 @@ const (
 	LevelError
 )
 
-var (
-	lvl        = LevelInfo
-	i, d, w, e = log.Printf, log.Printf, log.Printf, log.Printf
-	prefix     = true
-)
-
-// SetLevel set global RSocket log level.
-// Available levels are `LogLevelDebug`, `LogLevelInfo`, `LogLevelWarn` and `LogLevelError`.
-func SetLevel(level Level) {
-	lvl = level
+// Logger is used to print logs.
+type Logger interface {
+	// Debugf print to the debug level logs.
+	Debugf(format string, args ...interface{})
+	// Infof print to the info level logs.
+	Infof(format string, args ...interface{})
+	// Warnf print to the info level logs.
+	Warnf(format string, args ...interface{})
+	// Errorf print to the info level logs.
+	Errorf(format string, args ...interface{})
 }
 
-// DisablePrefix disable print level prefix.
-func DisablePrefix() {
-	prefix = false
+// Level is level of logger.
+type Level int8
+
+// SetLevel set global RSocket log level.
+// Available levels are `LevelDebug`, `LevelInfo`, `LevelWarn` and `LevelError`.
+func SetLevel(level Level) {
+	_level = level
+}
+
+// SetLogger customize the global logger.
+// A standard log implementation will be used by default.
+func SetLogger(logger Logger) {
+	_logger = logger
 }
 
 // GetLevel returns current logger level.
 func GetLevel() Level {
-	return lvl
-}
-
-// SetFunc set logger func for custom level.
-func SetFunc(level Level, fn Func) {
-	if fn == nil {
-		return
-	}
-	if level&LevelDebug != 0 {
-		d = fn
-	}
-	if level&LevelInfo != 0 {
-		i = fn
-	}
-	if level&LevelWarn != 0 {
-		w = fn
-	}
-	if level&LevelError != 0 {
-		e = fn
-	}
+	return _level
 }
 
 // IsDebugEnabled returns true if debug level is open.
 func IsDebugEnabled() bool {
-	return lvl <= LevelDebug
+	return _level <= LevelDebug
 }
 
 // Debugf prints debug level log.
-func Debugf(format string, v ...interface{}) {
-	if lvl > LevelDebug {
+func Debugf(format string, args ...interface{}) {
+	if _logger == nil || _level > LevelDebug {
 		return
 	}
-	if prefix {
-		d(fmt.Sprintf("[%s] %s", LevelDebug, format), v...)
-	} else {
-		d(format, v...)
-	}
+	_logger.Debugf(format, args...)
 }
 
 // Infof prints info level log.
-func Infof(format string, v ...interface{}) {
-	if lvl > LevelInfo {
+func Infof(format string, args ...interface{}) {
+	if _logger == nil || _level > LevelInfo {
 		return
 	}
-	if prefix {
-		i(fmt.Sprintf("[%s] %s", LevelInfo, format), v...)
-	} else {
-		i(format, v...)
-	}
+	_logger.Infof(format, args...)
 }
 
 // Warnf prints warn level log.
-func Warnf(format string, v ...interface{}) {
-	if lvl > LevelWarn {
+func Warnf(format string, args ...interface{}) {
+	if _logger == nil || _level > LevelWarn {
 		return
 	}
-	if prefix {
-		w(fmt.Sprintf("[%s] %s", LevelWarn, format), v...)
-	} else {
-		w(format, v...)
-	}
+	_logger.Warnf(format, args...)
 }
 
 // Errorf prints error level log.
-func Errorf(format string, v ...interface{}) {
-	if prefix {
-		e(fmt.Sprintf("[%s] %s", LevelError, format), v...)
-	} else {
-		e(format, v...)
+func Errorf(format string, args ...interface{}) {
+	if _logger == nil || _level > LevelError {
+		return
 	}
+	_logger.Errorf(format, args...)
+}
+
+type simpleLogger struct {
+}
+
+func (s simpleLogger) Debugf(format string, args ...interface{}) {
+	log.Printf("[DEBUG] "+format, args...)
+}
+
+func (s simpleLogger) Infof(format string, args ...interface{}) {
+	log.Printf("[INFO] "+format, args...)
+}
+
+func (s simpleLogger) Warnf(format string, args ...interface{}) {
+	log.Printf("[WARN] "+format, args...)
+}
+
+func (s simpleLogger) Errorf(format string, args ...interface{}) {
+	log.Printf("[ERROR] "+format, args...)
 }

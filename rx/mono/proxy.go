@@ -35,26 +35,42 @@ func (p proxy) Error(e error) {
 	p.mustProcessor().Error(e)
 }
 
-func (p proxy) ToChan(ctx context.Context) (c <-chan payload.Payload, e <-chan error) {
-	errorChannel := make(chan error, 1)
-	payloadChannel := make(chan payload.Payload, 1)
-	p.
-		DoOnSuccess(func(input payload.Payload) {
-			payloadChannel <- input
-		}).
-		DoOnError(func(e error) {
-			errorChannel <- e
-		}).
-		DoFinally(func(s rx.SignalType) {
-			close(payloadChannel)
-			close(errorChannel)
-		}).
-		Subscribe(ctx)
-	return payloadChannel, errorChannel
+func (p proxy) ToChan(ctx context.Context) (<-chan payload.Payload, <-chan error) {
+	value := make(chan payload.Payload, 1)
+	err := make(chan error, 1)
+	p.subscribeWithChan(ctx, value, err, true)
+	return value, err
 }
 
 func (p proxy) SubscribeOn(sc scheduler.Scheduler) Mono {
 	return newProxy(p.Mono.SubscribeOn(sc))
+}
+
+func (p proxy) subscribeWithChan(ctx context.Context, valueChan chan<- payload.Payload, errChan chan<- error, autoClose bool) {
+	p.Mono.
+		DoFinally(func(s reactor.SignalType) {
+			if autoClose {
+				defer close(valueChan)
+				defer close(errChan)
+			}
+			if s == reactor.SignalTypeCancel {
+				errChan <- reactor.ErrSubscribeCancelled
+			}
+		}).
+		Subscribe(
+			ctx,
+			reactor.OnNext(func(v reactor.Any) error {
+				valueChan <- v.(payload.Payload)
+				return nil
+			}),
+			reactor.OnError(func(e error) {
+				errChan <- e
+			}),
+		)
+}
+
+func (p proxy) SubscribeWithChan(ctx context.Context, valueChan chan<- payload.Payload, errChan chan<- error) {
+	p.subscribeWithChan(ctx, valueChan, errChan, false)
 }
 
 func (p proxy) Block(ctx context.Context) (pa payload.Payload, err error) {
@@ -75,7 +91,7 @@ func (p proxy) Filter(fn rx.FnPredicate) Mono {
 }
 
 func (p proxy) DoFinally(fn rx.FnFinally) Mono {
-	return newProxy(p.Mono.DoFinally(func(signal rs.SignalType) {
+	return newProxy(p.Mono.DoFinally(func(signal reactor.SignalType) {
 		fn(rx.SignalType(signal))
 	}))
 }
@@ -86,13 +102,13 @@ func (p proxy) DoOnError(fn rx.FnOnError) Mono {
 	}))
 }
 func (p proxy) DoOnSuccess(next rx.FnOnNext) Mono {
-	return newProxy(p.Mono.DoOnNext(func(v interface{}) {
-		next(v.(payload.Payload))
+	return newProxy(p.Mono.DoOnNext(func(v reactor.Any) error {
+		return next(v.(payload.Payload))
 	}))
 }
 
 func (p proxy) DoOnSubscribe(fn rx.FnOnSubscribe) Mono {
-	return newProxy(p.Mono.DoOnSubscribe(func(su rs.Subscription) {
+	return newProxy(p.Mono.DoOnSubscribe(func(su reactor.Subscription) {
 		fn(su)
 	}))
 }
@@ -110,21 +126,21 @@ func (p proxy) Subscribe(ctx context.Context, options ...rx.SubscriberOption) {
 }
 
 func (p proxy) SubscribeWith(ctx context.Context, actual rx.Subscriber) {
-	var sub rs.Subscriber
+	var sub reactor.Subscriber
 	if actual == rx.EmptySubscriber {
 		sub = rx.EmptyRawSubscriber
 	} else {
-		sub = rs.NewSubscriber(
-			rs.OnNext(func(v interface{}) {
-				actual.OnNext(v.(payload.Payload))
+		sub = reactor.NewSubscriber(
+			reactor.OnNext(func(v reactor.Any) error {
+				return actual.OnNext(v.(payload.Payload))
 			}),
-			rs.OnComplete(func() {
+			reactor.OnComplete(func() {
 				actual.OnComplete()
 			}),
-			rs.OnSubscribe(func(su rs.Subscription) {
+			reactor.OnSubscribe(func(su reactor.Subscription) {
 				actual.OnSubscribe(su)
 			}),
-			rs.OnError(func(e error) {
+			reactor.OnError(func(e error) {
 				actual.OnError(e)
 			}),
 		)

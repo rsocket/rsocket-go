@@ -5,23 +5,24 @@ import (
 	"log"
 	"testing"
 
-	"github.com/rsocket/rsocket-go/internal/framing"
+	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/core/framing"
 )
 
 func TestFragmentPayload(t *testing.T) {
 	const totals = 10
 	const sid = uint32(1)
-	fr := NewJoiner(framing.NewFramePayload(sid, []byte("(ROOT)"), []byte("(ROOT)"), framing.FlagFollow, framing.FlagMetadata))
+	fr := NewJoiner(framing.NewPayloadFrame(sid, []byte("(ROOT)"), []byte("(ROOT)"), core.FlagFollow|core.FlagMetadata))
 	for i := 0; i < totals; i++ {
 		data := fmt.Sprintf("(data%04d)", i)
-		var frame *framing.FramePayload
+		var frame *framing.PayloadFrame
 		if i < 3 {
 			meta := fmt.Sprintf("(meta%04d)", i)
-			frame = framing.NewFramePayload(sid, []byte(data), []byte(meta), framing.FlagFollow, framing.FlagMetadata)
+			frame = framing.NewPayloadFrame(sid, []byte(data), []byte(meta), core.FlagFollow|core.FlagMetadata)
 		} else if i != totals-1 {
-			frame = framing.NewFramePayload(sid, []byte(data), nil, framing.FlagFollow)
+			frame = framing.NewPayloadFrame(sid, []byte(data), nil, core.FlagFollow)
 		} else {
-			frame = framing.NewFramePayload(sid, []byte(data), nil)
+			frame = framing.NewPayloadFrame(sid, []byte(data), nil, 0)
 		}
 		fr.Push(frame)
 	}

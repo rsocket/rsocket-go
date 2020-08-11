@@ -1,68 +1,18 @@
 package socket
 
 import (
-	"sync"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rsocket/rsocket-go/internal/common"
-	"github.com/rsocket/rsocket-go/internal/framing"
+	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/rx"
 )
-
-type u32map struct {
-	k sync.RWMutex
-	m map[uint32]interface{}
-}
-
-func (p *u32map) Close() error {
-	p.k.Lock()
-	p.m = nil
-	p.k.Unlock()
-	return nil
-}
-
-func (p *u32map) Range(fn func(uint32, interface{}) bool) {
-	p.k.RLock()
-	for key, value := range p.m {
-		if !fn(key, value) {
-			break
-		}
-	}
-	p.k.RUnlock()
-}
-
-func (p *u32map) Load(key uint32) (v interface{}, ok bool) {
-	p.k.RLock()
-	v, ok = p.m[key]
-	p.k.RUnlock()
-	return
-}
-
-func (p *u32map) Store(key uint32, value interface{}) {
-	p.k.Lock()
-	if p.m != nil {
-		p.m[key] = value
-	}
-	p.k.Unlock()
-}
-
-func (p *u32map) Delete(key uint32) {
-	p.k.Lock()
-	delete(p.m, key)
-	p.k.Unlock()
-}
-
-func newU32Map() *u32map {
-	return &u32map{
-		m: make(map[uint32]interface{}),
-	}
-}
 
 // SetupInfo represents basic info of setup.
 type SetupInfo struct {
 	Lease             bool
-	Version           common.Version
+	Version           core.Version
 	KeepaliveInterval time.Duration
 	KeepaliveLifetime time.Duration
 	Token             []byte
@@ -72,8 +22,8 @@ type SetupInfo struct {
 	Metadata          []byte
 }
 
-func (p *SetupInfo) toFrame() *framing.FrameSetup {
-	return framing.NewFrameSetup(
+func (p *SetupInfo) toFrame() core.WriteableFrame {
+	return framing.NewWriteableSetupFrame(
 		p.Version,
 		p.KeepaliveInterval,
 		p.KeepaliveLifetime,
@@ -101,14 +51,17 @@ func tryRecover(e interface{}) (err error) {
 	return
 }
 
-func toIntN(n uint32) int {
+func ToIntRequestN(n uint32) int {
 	if n > rx.RequestMax {
 		return rx.RequestMax
 	}
 	return int(n)
 }
 
-func toU32N(n int) uint32 {
+func ToUint32RequestN(n int) uint32 {
+	if n < 0 {
+		panic("invalid negative int")
+	}
 	if n > rx.RequestMax {
 		return rx.RequestMax
 	}

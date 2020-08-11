@@ -1,10 +1,11 @@
 package payload
 
 import (
+	"bytes"
 	"io/ioutil"
 	"time"
 
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/core"
 )
 
 type (
@@ -36,24 +37,45 @@ type (
 		// MaxLifetime returns max lifetime of RSocket connection.
 		MaxLifetime() time.Duration
 		// Version return RSocket protocol version.
-		Version() common.Version
+		Version() core.Version
 	}
 )
 
 // Clone create a copy of original payload.
 func Clone(payload Payload) Payload {
-	ret := &rawPayload{}
-	if d := payload.Data(); len(d) > 0 {
-		clone := make([]byte, len(d))
-		copy(clone, d)
-		ret.data = clone
+	if payload == nil {
+		return nil
 	}
-	if m, ok := payload.Metadata(); ok && len(m) > 0 {
-		clone := make([]byte, len(m))
-		copy(clone, m)
-		ret.metadata = clone
+	switch v := payload.(type) {
+	case *rawPayload:
+		var data []byte
+		if v.data != nil {
+			data = make([]byte, len(v.data))
+			copy(data, v.data)
+		}
+		var metadata []byte
+		if v.metadata != nil {
+			metadata = make([]byte, len(v.metadata))
+			copy(metadata, v.metadata)
+		}
+		return &rawPayload{data: data, metadata: metadata}
+	case *strPayload:
+		return &strPayload{data: v.data, metadata: v.metadata}
+	default:
+		ret := &rawPayload{}
+		if d := payload.Data(); len(d) > 0 {
+			clone := make([]byte, len(d))
+			copy(clone, d)
+			ret.data = clone
+		}
+		if m, ok := payload.Metadata(); ok && len(m) > 0 {
+			clone := make([]byte, len(m))
+			copy(clone, m)
+			ret.metadata = clone
+		}
+		return ret
 	}
-	return ret
+
 }
 
 // New create a new payload with bytes.
@@ -88,4 +110,21 @@ func MustNewFile(filename string, metadata []byte) Payload {
 		panic(err)
 	}
 	return foo
+}
+
+func Equal(a Payload, b Payload) bool {
+	if a == b {
+		return true
+	}
+	if !bytes.Equal(a.Data(), b.Data()) {
+		return false
+	}
+
+	m1, ok1 := a.Metadata()
+	m2, ok2 := b.Metadata()
+	if ok1 != ok2 {
+		return false
+	}
+
+	return bytes.Equal(m1, m2)
 }

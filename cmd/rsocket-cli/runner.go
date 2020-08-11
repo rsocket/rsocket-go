@@ -4,14 +4,18 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go"
+	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
@@ -43,17 +47,17 @@ type Runner struct {
 	N                int
 	Resume           bool
 	URI              string
-	wsHeaders        map[string][]string
+	wsHeaders        http.Header
 }
 
-func (p *Runner) preflight() (err error) {
-	if p.Debug {
+func (r *Runner) preflight() (err error) {
+	if r.Debug {
 		logger.SetLevel(logger.LevelDebug)
 	}
 
-	headers := p.Headers.Value()
+	headers := r.Headers.Value()
 
-	if len(headers) > 0 && len(p.Metadata) > 0 {
+	if len(headers) > 0 && len(r.Metadata) > 0 {
 		return errConflictHeadersAndMetadata
 	}
 	if len(headers) > 0 {
@@ -68,55 +72,57 @@ func (p *Runner) preflight() (err error) {
 			headers[strings.TrimSpace(k)] = strings.TrimSpace(v)
 		}
 		bs, _ := json.Marshal(headers)
-		p.Metadata = string(bs)
+		r.Metadata = string(bs)
 	}
-
-	tpHeaders := p.TransportHeaders.Value()
-	if len(tpHeaders) > 0 {
-		headers := make(map[string][]string)
-		for _, it := range tpHeaders {
+	if v := r.TransportHeaders.Value(); len(v) > 0 {
+		r.wsHeaders = make(http.Header)
+		for _, it := range v {
 			idx := strings.Index(it, ":")
 			if idx < 0 {
 				return fmt.Errorf("invalid transport header: %s", it)
 			}
 			k := strings.TrimSpace(it[:idx])
 			v := strings.TrimSpace(it[idx+1:])
-			headers[k] = append(headers[k], v)
+			r.wsHeaders.Add(k, v)
 		}
-		p.wsHeaders = headers
 	}
 	return
 }
 
-func (p *Runner) Run() error {
-	if err := p.preflight(); err != nil {
+func (r *Runner) Run() error {
+	if err := r.preflight(); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if p.ServerMode {
-		return p.runServerMode(ctx)
+	if r.ServerMode {
+		return r.runServerMode(ctx)
 	}
-	return p.runClientMode(ctx)
+	return r.runClientMode(ctx)
 }
 
-func (p *Runner) runClientMode(ctx context.Context) (err error) {
+func (r *Runner) runClientMode(ctx context.Context) (err error) {
 	cb := rsocket.Connect()
-	if p.Resume {
+	if r.Resume {
 		cb = cb.Resume()
 	}
-	setupData, err := p.readData(p.Setup)
+	setupData, err := r.readData(r.Setup)
 	if err != nil {
 		return
 	}
 	setupPayload := payload.New(setupData, nil)
-	sendingPayloads := p.createPayload()
+	sendingPayloads := r.createPayload()
+
+	tp, err := r.newClientTransport()
+	if err != nil {
+		return
+	}
 	c, err := cb.
-		DataMimeType(p.DataFormat).
-		MetadataMimeType(p.MetadataFormat).
+		DataMimeType(r.DataFormat).
+		MetadataMimeType(r.MetadataFormat).
 		SetupPayload(setupPayload).
-		Transport(p.URI, rsocket.WithWebsocketHeaders(p.wsHeaders)).
+		Transport(tp).
 		Start(ctx)
 	if err != nil {
 		return
@@ -125,30 +131,30 @@ func (p *Runner) runClientMode(ctx context.Context) (err error) {
 		_ = c.Close()
 	}()
 
-	for i := 0; i < p.Ops; i++ {
+	for i := 0; i < r.Ops; i++ {
 		if i > 0 {
 			logger.Infof("\n")
 		}
 		var first payload.Payload
-		if !p.Channel {
+		if !r.Channel {
 			first, err = sendingPayloads.BlockFirst(ctx)
 			if err != nil {
 				return
 			}
 		}
 
-		if p.Request {
-			err = p.execRequestResponse(ctx, c, first)
-		} else if p.FNF {
-			err = p.execFireAndForget(ctx, c, first)
-		} else if p.Stream {
-			err = p.execRequestStream(ctx, c, first)
-		} else if p.Channel {
-			err = p.execRequestChannel(ctx, c, sendingPayloads)
-		} else if p.MetadataPush {
-			err = p.execMetadataPush(ctx, c, first)
+		if r.Request {
+			err = r.execRequestResponse(ctx, c, first)
+		} else if r.FNF {
+			err = r.execFireAndForget(ctx, c, first)
+		} else if r.Stream {
+			err = r.execRequestStream(ctx, c, first)
+		} else if r.Channel {
+			err = r.execRequestChannel(ctx, c, sendingPayloads)
+		} else if r.MetadataPush {
+			err = r.execMetadataPush(ctx, c, first)
 		} else {
-			err = p.execRequestResponse(ctx, c, first)
+			err = r.execRequestResponse(ctx, c, first)
 		}
 		if err != nil {
 			break
@@ -157,31 +163,38 @@ func (p *Runner) runClientMode(ctx context.Context) (err error) {
 	return
 }
 
-func (p *Runner) runServerMode(ctx context.Context) error {
+func (r *Runner) runServerMode(ctx context.Context) error {
 	var sb rsocket.ServerBuilder
-	if p.Resume {
+	if r.Resume {
 		sb = rsocket.Receive().Resume()
 	} else {
 		sb = rsocket.Receive()
 	}
 	ch := make(chan error)
+
+	tp, err := r.newServerTransport()
+	if err != nil {
+		return err
+	}
+
 	go func() {
-		sendingPayloads := p.createPayload()
+		sendingPayloads := r.createPayload()
 		ch <- sb.
 			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 				var options []rsocket.OptAbstractSocket
 				options = append(options, rsocket.RequestStream(func(message payload.Payload) flux.Flux {
-					p.showPayload(message)
+					r.showPayload(message)
 					return sendingPayloads
 				}))
 				options = append(options, rsocket.RequestChannel(func(messages rx.Publisher) flux.Flux {
-					messages.Subscribe(ctx, rx.OnNext(func(input payload.Payload) {
-						p.showPayload(input)
+					messages.Subscribe(ctx, rx.OnNext(func(input payload.Payload) error {
+						r.showPayload(input)
+						return nil
 					}))
 					return sendingPayloads
 				}))
 				options = append(options, rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
-					p.showPayload(msg)
+					r.showPayload(msg)
 					return mono.Create(func(i context.Context, sink mono.Sink) {
 						first, err := sendingPayloads.BlockFirst(i)
 						if err != nil {
@@ -192,7 +205,7 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 					})
 				}))
 				options = append(options, rsocket.FireAndForget(func(msg payload.Payload) {
-					p.showPayload(msg)
+					r.showPayload(msg)
 				}))
 				options = append(options, rsocket.MetadataPush(func(msg payload.Payload) {
 					metadata, _ := msg.MetadataUTF8()
@@ -200,92 +213,93 @@ func (p *Runner) runServerMode(ctx context.Context) error {
 				}))
 				return rsocket.NewAbstractSocket(options...), nil
 			}).
-			Transport(p.URI).
+			Transport(tp).
 			Serve(ctx)
 		close(ch)
 	}()
 	return <-ch
 }
 
-func (p *Runner) execMetadataPush(_ context.Context, c rsocket.Client, send payload.Payload) (err error) {
+func (r *Runner) execMetadataPush(_ context.Context, c rsocket.Client, send payload.Payload) (err error) {
 	c.MetadataPush(send)
 	m, _ := send.MetadataUTF8()
 	logger.Infof("%s\n", m)
 	return
 }
 
-func (p *Runner) execFireAndForget(_ context.Context, c rsocket.Client, send payload.Payload) (err error) {
+func (r *Runner) execFireAndForget(_ context.Context, c rsocket.Client, send payload.Payload) (err error) {
 	c.FireAndForget(send)
 	return
 }
 
-func (p *Runner) execRequestResponse(ctx context.Context, c rsocket.Client, send payload.Payload) (err error) {
+func (r *Runner) execRequestResponse(ctx context.Context, c rsocket.Client, send payload.Payload) (err error) {
 	res, err := c.RequestResponse(send).Block(ctx)
 	if err != nil {
 		return
 	}
-	p.showPayload(res)
+	r.showPayload(res)
 	return
 }
 
-func (p *Runner) execRequestChannel(ctx context.Context, c rsocket.Client, send flux.Flux) error {
+func (r *Runner) execRequestChannel(ctx context.Context, c rsocket.Client, send flux.Flux) error {
 	var f flux.Flux
-	if p.N < rx.RequestMax {
-		f = c.RequestChannel(send).Take(p.N)
+	if r.N < rx.RequestMax {
+		f = c.RequestChannel(send).Take(r.N)
 	} else {
 		f = c.RequestChannel(send)
 	}
-	return p.printFlux(ctx, f)
+	return r.printFlux(ctx, f)
 }
 
-func (p *Runner) execRequestStream(ctx context.Context, c rsocket.Client, send payload.Payload) error {
+func (r *Runner) execRequestStream(ctx context.Context, c rsocket.Client, send payload.Payload) error {
 	var f flux.Flux
-	if p.N < rx.RequestMax {
-		f = c.RequestStream(send).Take(p.N)
+	if r.N < rx.RequestMax {
+		f = c.RequestStream(send).Take(r.N)
 	} else {
 		f = c.RequestStream(send)
 	}
-	return p.printFlux(ctx, f)
+	return r.printFlux(ctx, f)
 }
 
-func (p *Runner) printFlux(ctx context.Context, f flux.Flux) (err error) {
+func (r *Runner) printFlux(ctx context.Context, f flux.Flux) (err error) {
 	_, err = f.
-		DoOnNext(func(input payload.Payload) {
-			p.showPayload(input)
+		DoOnNext(func(input payload.Payload) error {
+			r.showPayload(input)
+			return nil
 		}).
 		BlockLast(ctx)
 	return
 }
 
-func (p *Runner) showPayload(pa payload.Payload) {
+func (r *Runner) showPayload(pa payload.Payload) {
 	logger.Infof("%s\n", pa.DataUTF8())
 }
 
-func (p *Runner) createPayload() flux.Flux {
+func (r *Runner) createPayload() flux.Flux {
 	var md []byte
-	if strings.HasPrefix(p.Metadata, "@") {
+	if strings.HasPrefix(r.Metadata, "@") {
 		var err error
-		md, err = ioutil.ReadFile(p.Metadata[1:])
+		md, err = ioutil.ReadFile(r.Metadata[1:])
 		if err != nil {
 			return flux.Error(err)
 		}
 	} else {
-		md = []byte(p.Metadata)
+		md = []byte(r.Metadata)
 	}
 
-	if p.Input == "-" {
+	if r.Input == "-" {
 		fmt.Println("Type commands to send to the server......")
 		reader := bufio.NewReader(os.Stdin)
 		text, _ := reader.ReadString('\n')
 		return flux.Just(payload.New([]byte(strings.Trim(text, "\n")), md))
 	}
 
-	if !strings.HasPrefix(p.Input, "@") {
-		return flux.Just(payload.New([]byte(p.Input), md))
+	if !strings.HasPrefix(r.Input, "@") {
+		return flux.Just(payload.New([]byte(r.Input), md))
 	}
 
 	return flux.Create(func(ctx context.Context, s flux.Sink) {
-		f, err := os.Open(p.Input[1:])
+		f, err := os.Open(r.Input[1:])
 		if err != nil {
 			fmt.Println("error:", err)
 			s.Error(err)
@@ -309,7 +323,7 @@ func (p *Runner) createPayload() flux.Flux {
 	})
 }
 
-func (p *Runner) readData(input string) (data []byte, err error) {
+func (r *Runner) readData(input string) (data []byte, err error) {
 	switch {
 	case strings.HasPrefix(input, "@"):
 		data, err = ioutil.ReadFile(input[1:])
@@ -317,4 +331,52 @@ func (p *Runner) readData(input string) (data []byte, err error) {
 		data = []byte(input)
 	}
 	return
+}
+
+func (r *Runner) newClientTransport() (transport.ClientTransportFunc, error) {
+	u, err := url.Parse(r.URI)
+	if err != nil {
+		return nil, err
+	}
+	switch u.Scheme {
+	case "tcp":
+		port, err := strconv.Atoi(u.Port())
+		if err != nil {
+			return nil, err
+		}
+		return rsocket.TcpClient().SetHostAndPort(u.Hostname(), port).Build(), nil
+	case "unix":
+		return rsocket.UnixClient().SetPath(u.Hostname()).Build(), nil
+	case "ws", "wss":
+		return rsocket.WebsocketClient().SetUrl(r.URI).SetHeader(r.wsHeaders).Build(), nil
+	default:
+		return nil, fmt.Errorf("invalid transport %s", u.Scheme)
+	}
+}
+
+func (r *Runner) newServerTransport() (transport.ServerTransportFunc, error) {
+	u, err := url.Parse(r.URI)
+	if err != nil {
+		return nil, err
+	}
+	switch u.Scheme {
+	case "tcp":
+		port, err := strconv.Atoi(u.Port())
+		if err != nil {
+			return nil, err
+		}
+		return rsocket.TcpServer().SetHostAndPort(u.Hostname(), port).Build(), nil
+	case "unix":
+		return rsocket.UnixServer().SetPath(u.Hostname()).Build(), nil
+	case "ws", "wss":
+		var addr string
+		if port := u.Port(); port != "" {
+			addr = fmt.Sprintf("%s:%s", u.Hostname(), port)
+		} else {
+			addr = fmt.Sprintf("%s:%d", u.Hostname(), rsocket.DefaultPort)
+		}
+		return rsocket.WebsocketServer().SetAddr(addr).SetPath(u.EscapedPath()).Build(), nil
+	default:
+		return nil, errors.Errorf("invalid transport %s", u.Scheme)
+	}
 }

@@ -44,12 +44,14 @@ type Flux interface {
 	// DoOnSubscribe add behavior triggered when the Flux is done being subscribed.
 	DoOnSubscribe(rx.FnOnSubscribe) Flux
 	// Map transform the items emitted by this Flux by applying a synchronous function to each item.
-	Map(func(payload.Payload) payload.Payload) Flux
+	Map(func(payload.Payload) (payload.Payload, error)) Flux
 	// SwitchOnFirst transform the current Flux once it emits its first element, making a conditional transformation possible.
 	SwitchOnFirst(FnSwitchOnFirst) Flux
 	// SubscribeOn run subscribe, onSubscribe and request on a specified scheduler.
 	SubscribeOn(scheduler.Scheduler) Flux
-	// Raw returns Native Flux in reactor-go.
+	// SubscribeWithChan subscribe to this Flux and puts items/error into a chan.
+	SubscribeWithChan(ctx context.Context, values chan<- payload.Payload, err chan<- error)
+	// Raw returns low-level reactor.Flux which defined in reactor-go library.
 	Raw() flux.Flux
 	// BlockFirst subscribe to this Flux and block indefinitely until the upstream signals its first value or completes.
 	// Returns that value, error if Flux completes error, or nil if the Flux completes empty.
@@ -60,6 +62,8 @@ type Flux interface {
 	// ToChan subscribe to this Flux and puts items into a chan.
 	// It also puts errors into another chan.
 	ToChan(ctx context.Context, cap int) (c <-chan payload.Payload, e <-chan error)
+	// BlockSlice subscribe to this Flux and convert to payload slice.
+	BlockSlice(context.Context) ([]payload.Payload, error)
 }
 
 // Processor represent a base processor that exposes Flux API for Processor.

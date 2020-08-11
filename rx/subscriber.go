@@ -1,7 +1,7 @@
 package rx
 
 import (
-	reactor "github.com/jjeffcaii/reactor-go"
+	"github.com/jjeffcaii/reactor-go"
 	"github.com/rsocket/rsocket-go/payload"
 )
 
@@ -9,7 +9,8 @@ var (
 	// EmptySubscriber is a blank Subscriber.
 	EmptySubscriber Subscriber = &subscriber{}
 	// EmptyRawSubscriber is a blank native Subscriber in reactor-go.
-	EmptyRawSubscriber = reactor.NewSubscriber(reactor.OnNext(func(v interface{}) {
+	EmptyRawSubscriber = reactor.NewSubscriber(reactor.OnNext(func(v reactor.Any) error {
+		return nil
 	}))
 )
 
@@ -19,7 +20,7 @@ type Subscription reactor.Subscription
 // Subscriber will receive call to OnSubscribe(Subscription) once after passing an instance of Subscriber to Publisher#SubscribeWith
 type Subscriber interface {
 	// OnNext represents data notification sent by the Publisher in response to requests to Subscription#Request.
-	OnNext(payload payload.Payload)
+	OnNext(payload payload.Payload) error
 	// OnError represents failed terminal state.
 	OnError(error)
 	// OnComplete represents successful terminal state.
@@ -36,10 +37,11 @@ type subscriber struct {
 	fnOnError     FnOnError
 }
 
-func (s *subscriber) OnNext(payload payload.Payload) {
-	if s != nil && s.fnOnNext != nil {
-		s.fnOnNext(payload)
+func (s *subscriber) OnNext(payload payload.Payload) error {
+	if s == nil || s.fnOnNext == nil {
+		return nil
 	}
+	return s.fnOnNext(payload)
 }
 
 func (s *subscriber) OnError(err error) {

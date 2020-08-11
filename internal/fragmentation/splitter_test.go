@@ -3,8 +3,9 @@ package fragmentation
 import (
 	"testing"
 
+	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/internal/common"
-	"github.com/rsocket/rsocket-go/internal/framing"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,17 +24,14 @@ func TestSplitter_Split(t *testing.T) {
 }
 
 func split2joiner(mtu int, data, metadata []byte) (joiner Joiner, err error) {
-	fn := func(idx int, fg framing.FrameFlag, body *common.ByteBuff) {
+	fn := func(idx int, result SplitResult) {
+		sid := uint32(77778888)
 		if idx == 0 {
-			h := framing.NewFrameHeader(77778888, framing.FrameTypePayload, framing.FlagComplete|fg)
-			joiner = NewJoiner(&framing.FramePayload{
-				BaseFrame: framing.NewBaseFrame(h, body),
-			})
+			f := framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, core.FlagComplete|result.Flag)
+			joiner = NewJoiner(f)
 		} else {
-			h := framing.NewFrameHeader(77778888, framing.FrameTypePayload, fg)
-			joiner.Push(&framing.FramePayload{
-				BaseFrame: framing.NewBaseFrame(h, body),
-			})
+			f := framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag)
+			joiner.Push(f)
 		}
 	}
 	Split(mtu, data, metadata, fn)

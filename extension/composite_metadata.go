@@ -120,7 +120,7 @@ func (c *CompositeMetadataBuilder) Build() (CompositeMetadata, error) {
 		}
 		metadata := c.v[i]
 		metadataLen := len(metadata)
-		bf.Write(common.NewUint24(metadataLen).Bytes())
+		bf.Write(common.MustNewUint24(metadataLen).Bytes())
 		if metadataLen > 0 {
 			bf.Write(metadata)
 		}

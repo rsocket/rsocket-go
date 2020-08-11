@@ -1,17 +1,8 @@
 package payload
 
-import (
-	"fmt"
-)
-
 type rawPayload struct {
 	data     []byte
 	metadata []byte
-}
-
-func (p *rawPayload) String() string {
-	m, _ := p.MetadataUTF8()
-	return fmt.Sprintf("Payload{data=%s,metadata=%s}", p.DataUTF8(), m)
 }
 
 func (p *rawPayload) Metadata() (metadata []byte, ok bool) {
