@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const _sid uint32 = 1
+const _sid uint32 = 1234
 
 func TestFromBytes(t *testing.T) {
 	// empty

@@ -5,13 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
-	_ "net/http/pprof"
 	"strconv"
 	"strings"
 
 	"github.com/jjeffcaii/reactor-go/scheduler"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/payload"
@@ -27,10 +24,6 @@ func init() {
 }
 
 func main() {
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		log.Println(http.ListenAndServe(":4444", nil))
-	}()
 	//logger.SetLevel(logger.LevelDebug)
 	err := rsocket.Receive().
 		//Fragment(65535).

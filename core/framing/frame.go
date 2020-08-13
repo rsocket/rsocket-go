@@ -1,9 +1,12 @@
 package framing
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/common"
@@ -140,6 +143,82 @@ func FromBytes(b []byte) (core.Frame, error) {
 }
 
 func PrintFrame(f core.WriteableFrame) string {
-	// TODO: print frame
-	return fmt.Sprintf("%+v", f)
+	var initN, reqN uint32
+	var metadata, data []byte
+
+	switch it := f.(type) {
+	case *PayloadFrame:
+		metadata, _ = it.Metadata()
+		data = it.Data()
+	case *WriteablePayloadFrame:
+		metadata, data = it.metadata, it.data
+	case *MetadataPushFrame:
+		metadata, _ = it.Metadata()
+	case *FireAndForgetFrame:
+		metadata, _ = it.Metadata()
+		data = it.Data()
+	case *RequestResponseFrame:
+		metadata, _ = it.Metadata()
+		data = it.Data()
+	case *RequestStreamFrame:
+		metadata, _ = it.Metadata()
+		data = it.Data()
+		initN = it.InitialRequestN()
+	case *RequestChannelFrame:
+		metadata, _ = it.Metadata()
+		data = it.Data()
+		initN = it.InitialRequestN()
+	case *SetupFrame:
+		metadata, _ = it.Metadata()
+		data = it.Data()
+	case *RequestNFrame:
+		reqN = it.N()
+	case *WriteableMetadataPushFrame:
+		metadata = it.metadata
+	case *WriteableFireAndForgetFrame:
+		metadata, data = it.metadata, it.data
+	case *WriteableRequestResponseFrame:
+		metadata, data = it.metadata, it.data
+	case *WriteableRequestStreamFrame:
+		metadata, data = it.metadata, it.data
+		reqN = binary.BigEndian.Uint32(it.n[:])
+	case *WriteableRequestChannelFrame:
+		metadata, data = it.metadata, it.data
+		reqN = binary.BigEndian.Uint32(it.n[:])
+	case *WriteableSetupFrame:
+		metadata, data = it.metadata, it.data
+	case *WriteableRequestNFrame:
+		reqN = binary.BigEndian.Uint32(it.n[:])
+	}
+
+	b := &strings.Builder{}
+	b.WriteString("\nFrame => Stream ID: ")
+	h := f.Header()
+	b.WriteString(strconv.Itoa(int(h.StreamID())))
+	b.WriteString(" Type: ")
+	b.WriteString(h.Type().String())
+	b.WriteString(" Flags: 0b")
+	_, _ = fmt.Fprintf(b, "%010b", h.Flag())
+	b.WriteString(" Length: ")
+	b.WriteString(strconv.Itoa(f.Len()))
+	if initN > 0 {
+		b.WriteString(" InitialRequestN: ")
+		_, _ = fmt.Fprintf(b, "%d", initN)
+	}
+
+	if reqN > 0 {
+		b.WriteString(" RequestN: ")
+		_, _ = fmt.Fprintf(b, "%d", reqN)
+	}
+
+	if metadata != nil {
+		b.WriteString("\nMetadata:\n")
+		_ = common.AppendPrettyHexDump(b, metadata)
+	}
+
+	if data != nil {
+		b.WriteString("\nData:\n")
+		_ = common.AppendPrettyHexDump(b, data)
+	}
+	return b.String()
 }

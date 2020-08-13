@@ -75,7 +75,7 @@ func (p *WsConn) Read() (f core.Frame, err error) {
 		return
 	}
 	if logger.IsDebugEnabled() {
-		logger.Debugf("<--- rcv: %s\n", f)
+		logger.Debugf("%s\n", framing.PrintFrame(f))
 	}
 	return
 }
@@ -107,7 +107,7 @@ func (p *WsConn) Write(frame core.WriteableFrame) (err error) {
 		p.counter.IncWriteBytes(size)
 	}
 	if logger.IsDebugEnabled() {
-		logger.Debugf("---> snd: %s\n", frame)
+		logger.Debugf("%s\n", framing.PrintFrame(frame))
 	}
 	return
 }
