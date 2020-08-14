@@ -42,132 +42,66 @@ func init() {
 	}
 }
 
-func PrettyHexDump(b []byte) (s string, err error) {
+func PrettyHexDump(b []byte) string {
 	sb := &strings.Builder{}
-	err = AppendPrettyHexDump(sb, b)
-	if err != nil {
-		return
-	}
-	s = sb.String()
-	return
+	AppendPrettyHexDump(sb, b)
+	return sb.String()
 }
 
-func AppendPrettyHexDump(dump *strings.Builder, b []byte) (err error) {
+func AppendPrettyHexDump(dump *strings.Builder, b []byte) {
 	if len(b) < 1 {
 		return
 	}
-	_, err = dump.WriteString("         +-------------------------------------------------+")
-	if err != nil {
-		return
-	}
-	_, err = dump.WriteString(_newLine)
-	if err != nil {
-		return
-	}
-	_, err = dump.WriteString("         |  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f |")
-	if err != nil {
-		return
-	}
-	_, err = dump.WriteString(_newLine)
-	if err != nil {
-		return
-	}
-	_, err = dump.WriteString("+--------+-------------------------------------------------+----------------+")
-	if err != nil {
-		return
-	}
+	dump.WriteString("         +-------------------------------------------------+")
+	dump.WriteString(_newLine)
+	dump.WriteString("         |  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f |")
+	dump.WriteString(_newLine)
+	dump.WriteString("+--------+-------------------------------------------------+----------------+")
 	length := len(b)
 	startIndex := 0
 	fullRows := length >> 4
 	remainder := length & 0xF
 	for row := 0; row < fullRows; row++ {
 		rowStartIndex := row<<4 + startIndex
-		err = appendHexDumpRowPrefix(dump, row, rowStartIndex)
-		if err != nil {
-			return
-		}
+		appendHexDumpRowPrefix(dump, row, rowStartIndex)
 		rowEndIndex := rowStartIndex + 16
 		for j := rowStartIndex; j < rowEndIndex; j++ {
-			_, err = fmt.Fprintf(dump, " %02x", b[j])
-			if err != nil {
-				return
-			}
+			_, _ = fmt.Fprintf(dump, " %02x", b[j])
 		}
-		_, err = dump.WriteString(" |")
-		if err != nil {
-			return
-		}
+		dump.WriteString(" |")
 		for j := rowStartIndex; j < rowEndIndex; j++ {
-			err = dump.WriteByte(byte2char(b[j]))
-			if err != nil {
-				return
-			}
+			dump.WriteByte(byte2char(b[j]))
 		}
-		err = dump.WriteByte('|')
-		if err != nil {
-			return
-		}
+		dump.WriteByte('|')
 	}
 	if remainder != 0 {
 		rowStartIndex := fullRows<<4 + startIndex
-		err = appendHexDumpRowPrefix(dump, fullRows, rowStartIndex)
-		if err != nil {
-			return
-		}
+		appendHexDumpRowPrefix(dump, fullRows, rowStartIndex)
 		rowEndIndex := rowStartIndex + remainder
 		for j := rowStartIndex; j < rowEndIndex; j++ {
-			_, err = fmt.Fprintf(dump, " %02x", b[j])
-			if err != nil {
-				return
-			}
+			_, _ = fmt.Fprintf(dump, " %02x", b[j])
 		}
-		_, err = dump.WriteString(_hexPadding[remainder])
-		if err != nil {
-			return
-		}
-		_, err = dump.WriteString(" |")
-		if err != nil {
-			return
-		}
+		dump.WriteString(_hexPadding[remainder])
+		dump.WriteString(" |")
 		for j := rowStartIndex; j < rowEndIndex; j++ {
-			err = dump.WriteByte(byte2char(b[j]))
-			if err != nil {
-				return
-			}
+			dump.WriteByte(byte2char(b[j]))
 		}
-		_, err = dump.WriteString(_bytePadding[remainder])
-		if err != nil {
-			return
-		}
-		err = dump.WriteByte('|')
-		if err != nil {
-			return
-		}
+		dump.WriteString(_bytePadding[remainder])
+		dump.WriteByte('|')
 	}
-	_, err = dump.WriteString(_newLine)
-	if err != nil {
-		return
-	}
-	_, err = dump.WriteString("+--------+-------------------------------------------------+----------------+")
-	return
+	dump.WriteString(_newLine)
+	dump.WriteString("+--------+-------------------------------------------------+----------------+")
 }
 
-func appendHexDumpRowPrefix(dump *strings.Builder, row int, rowStartIndex int) (err error) {
+func appendHexDumpRowPrefix(dump *strings.Builder, row int, rowStartIndex int) {
 	if row < len(_hexDumpRowPrefixes) {
-		_, err = dump.WriteString(_hexDumpRowPrefixes[row])
+		dump.WriteString(_hexDumpRowPrefixes[row])
 		return
 	}
-	_, err = dump.WriteString(_newLine)
-	if err != nil {
-		return
-	}
+	dump.WriteString(_newLine)
 	n := rowStartIndex&0xFFFFFFFF | 0x100000000
-	_, err = dump.WriteString(strconv.FormatInt(int64(n), 16))
-	if err != nil {
-		return
-	}
-	err = dump.WriteByte('|')
-	return
+	dump.WriteString(strconv.FormatInt(int64(n), 16))
+	dump.WriteByte('|')
 }
 
 func byte2char(b byte) byte {

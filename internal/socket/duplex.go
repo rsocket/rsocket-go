@@ -118,7 +118,7 @@ func (dc *DuplexConnection) innerClose() error {
 			if err == nil {
 				err = errSocketClosed
 			}
-			go cb.Close(err)
+			go cb.stopWithError(err)
 		}
 		return true
 	})

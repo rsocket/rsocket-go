@@ -18,7 +18,7 @@ func TestSession(t *testing.T) {
 		deadline := time.Now().Add(time.Duration(i+1) * time.Second)
 		token := fmt.Sprintf("token_%d", i)
 		tokens = append(tokens, token)
-		manager.Push(session.NewSession(deadline, socket.NewServerResume(nil, []byte(token))))
+		manager.Push(session.NewSession(deadline, socket.NewResumableServerSocket(nil, []byte(token))))
 	}
 
 	for _, token := range tokens {

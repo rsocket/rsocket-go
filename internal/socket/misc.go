@@ -36,21 +36,6 @@ func (p *SetupInfo) toFrame() core.WriteableFrame {
 	)
 }
 
-func tryRecover(e interface{}) (err error) {
-	if e == nil {
-		return
-	}
-	switch v := e.(type) {
-	case error:
-		err = v
-	case string:
-		err = errors.New(v)
-	default:
-		err = errors.Errorf("error: %s", v)
-	}
-	return
-}
-
 func ToIntRequestN(n uint32) int {
 	if n > rx.RequestMax {
 		return rx.RequestMax
@@ -66,4 +51,19 @@ func ToUint32RequestN(n int) uint32 {
 		return rx.RequestMax
 	}
 	return uint32(n)
+}
+
+func tryRecover(e interface{}) (err error) {
+	if e == nil {
+		return
+	}
+	switch v := e.(type) {
+	case error:
+		err = v
+	case string:
+		err = errors.New(v)
+	default:
+		err = errors.Errorf("error: %s", v)
+	}
+	return
 }
