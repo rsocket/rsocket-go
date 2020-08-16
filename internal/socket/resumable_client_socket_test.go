@@ -126,7 +126,6 @@ func TestResumeClientSocket_Setup(t *testing.T) {
 
 		// For test
 		readChan := make(chan core.Frame, 64)
-		readChanChan <- readChan
 
 		conn.EXPECT().Close().AnyTimes()
 		conn.EXPECT().SetCounter(gomock.Any()).Times(1)
@@ -140,6 +139,8 @@ func TestResumeClientSocket_Setup(t *testing.T) {
 			return next, nil
 		}).AnyTimes()
 		conn.EXPECT().SetDeadline(gomock.Any()).AnyTimes()
+
+		readChanChan <- readChan
 
 		return tp, nil
 	}, ds)
@@ -159,7 +160,6 @@ func TestResumeClientSocket_Setup(t *testing.T) {
 	err := rcs.Setup(context.Background(), fakeResumableSetup)
 	assert.NoError(t, err)
 
-	time.Sleep(1 * time.Second)
 	readChan := <-readChanChan
 	close(readChan)
 
@@ -167,5 +167,4 @@ func TestResumeClientSocket_Setup(t *testing.T) {
 	readChan <- framing.NewResumeOKFrame(0)
 	readChan <- framing.NewErrorFrame(0, core.ErrorCodeRejectedResume, []byte("fake reject error"))
 	close(readChan)
-	time.Sleep(1 * time.Second)
 }
