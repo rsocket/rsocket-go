@@ -18,6 +18,7 @@ import (
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
+	"go.uber.org/atomic"
 )
 
 const (
@@ -38,6 +39,7 @@ type DuplexConnection struct {
 	locker       sync.RWMutex
 	counter      *core.TrafficCounter
 	tp           *transport.Transport
+	tpReady      *atomic.Bool
 	outs         chan core.WriteableFrame
 	outsPriority []core.WriteableFrame
 	responder    Responder
@@ -120,8 +122,8 @@ func (dc *DuplexConnection) innerClose() error {
 		}
 		return true
 	})
-	dc.messages = nil
-	dc.fragments = nil
+	dc.messages.Destroy()
+	dc.fragments.Destroy()
 	return dc.e
 }
 
@@ -783,11 +785,14 @@ func (dc *DuplexConnection) onFramePayload(frame core.Frame) error {
 func (dc *DuplexConnection) clearTransport() {
 	dc.locker.Lock()
 	dc.tp = nil
+	dc.tpReady.Store(false)
 	dc.locker.Unlock()
 }
 
 // SetTransport sets a transport for current socket.
 func (dc *DuplexConnection) SetTransport(tp *transport.Transport) {
+	dc.locker.Lock()
+	defer dc.locker.Unlock()
 
 	tp.RegisterHandler(transport.OnCancel, dc.onFrameCancel)
 	tp.RegisterHandler(transport.OnError, dc.onFrameError)
@@ -802,10 +807,10 @@ func (dc *DuplexConnection) SetTransport(tp *transport.Transport) {
 		tp.RegisterHandler(transport.OnRequestChannel, dc.onFrameRequestChannel)
 	}
 
-	dc.locker.Lock()
-	dc.tp = tp
-	dc.cond.Signal()
-	dc.locker.Unlock()
+	if dc.tpReady.CAS(false, true) {
+		dc.tp = tp
+		dc.cond.Signal()
+	}
 }
 
 func (dc *DuplexConnection) sendFrame(f core.WriteableFrame) {
@@ -984,7 +989,7 @@ func (dc *DuplexConnection) drainOutBack() {
 
 func (dc *DuplexConnection) loopWriteWithKeepaliver(ctx context.Context, leaseChan <-chan lease.Lease) error {
 	for {
-		if dc.tp == nil {
+		if !dc.tpReady.Load() {
 			dc.locker.Lock()
 			dc.cond.Wait()
 			dc.locker.Unlock()
@@ -1043,7 +1048,7 @@ func (dc *DuplexConnection) LoopWrite(ctx context.Context) error {
 		return dc.loopWriteWithKeepaliver(ctx, leaseChan)
 	}
 	for {
-		if dc.tp == nil {
+		if !dc.tpReady.Load() {
 			dc.cond.L.Lock()
 			dc.cond.Wait()
 			dc.cond.L.Unlock()
@@ -1112,6 +1117,7 @@ func newDuplexConnection(mtu int, ka *Keepaliver, sids StreamID, leases lease.Le
 		counter:    core.NewTrafficCounter(),
 		keepaliver: ka,
 		sc:         scheduler.NewSingle(_schedulerSize),
+		tpReady:    atomic.NewBool(false),
 	}
 	c.cond.L = &c.locker
 	return c
