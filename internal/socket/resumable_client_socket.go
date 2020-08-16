@@ -14,6 +14,7 @@ import (
 )
 
 const reconnectDelay = 1 * time.Second
+const _resumeTimeout = 10 * time.Second
 
 type resumeClientSocket struct {
 	*BaseSocket
@@ -22,52 +23,52 @@ type resumeClientSocket struct {
 	tp       transport.ClientTransportFunc
 }
 
-func (p *resumeClientSocket) Setup(ctx context.Context, setup *SetupInfo) error {
-	p.setup = setup
+func (r *resumeClientSocket) Setup(ctx context.Context, setup *SetupInfo) error {
+	r.setup = setup
 	go func(ctx context.Context) {
-		_ = p.socket.LoopWrite(ctx)
+		_ = r.socket.LoopWrite(ctx)
 	}(ctx)
-	return p.connect(ctx)
+	return r.connect(ctx)
 }
 
-func (p *resumeClientSocket) Close() (err error) {
-	p.once.Do(func() {
-		p.markClosing()
-		err = p.socket.Close()
-		for i, l := 0, len(p.closers); i < l; i++ {
-			p.closers[l-i-1](err)
+func (r *resumeClientSocket) Close() (err error) {
+	r.once.Do(func() {
+		r.markAsClosing()
+		err = r.socket.Close()
+		for i, l := 0, len(r.closers); i < l; i++ {
+			r.closers[l-i-1](err)
 		}
 	})
 	return
 }
 
-func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
-	connects := p.connects.Inc()
+func (r *resumeClientSocket) connect(ctx context.Context) (err error) {
+	connects := r.connects.Inc()
 	if connects < 0 {
-		_ = p.Close()
+		_ = r.Close()
 		return
 	}
-	tp, err := p.tp(ctx)
+	tp, err := r.tp(ctx)
 	if err != nil {
 		if connects == 1 {
 			return
 		}
 		time.Sleep(reconnectDelay)
-		_ = p.connect(ctx)
+		_ = r.connect(ctx)
 		return
 	}
-	tp.Connection().SetCounter(p.socket.counter)
-	tp.SetLifetime(p.setup.KeepaliveLifetime)
+	tp.Connection().SetCounter(r.socket.counter)
+	tp.SetLifetime(r.setup.KeepaliveLifetime)
 
 	go func(ctx context.Context, tp *transport.Transport) {
 		defer func() {
-			p.socket.clearTransport()
-			if p.isClosed() {
-				_ = p.Close()
+			r.socket.clearTransport()
+			if r.isClosed() {
+				_ = r.Close()
 				return
 			}
 			time.Sleep(reconnectDelay)
-			_ = p.connect(ctx)
+			_ = r.connect(ctx)
 		}()
 		err := tp.Start(ctx)
 		if err != nil {
@@ -78,23 +79,23 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 	var f core.WriteableFrame
 
 	// connect first time.
-	if len(p.setup.Token) < 1 || connects == 1 {
+	if len(r.setup.Token) < 1 || connects == 1 {
 		tp.RegisterHandler(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
-			p.socket.SetError(frame.(*framing.ErrorFrame))
-			p.markClosing()
+			r.socket.SetError(frame.(*framing.ErrorFrame))
+			r.markAsClosing()
 			return
 		})
-		f = p.setup.toFrame()
+		f = r.setup.toFrame()
 		err = tp.Send(f, true)
-		p.socket.SetTransport(tp)
+		r.socket.SetTransport(tp)
 		return
 	}
 
 	f = framing.NewWriteableResumeFrame(
 		core.DefaultVersion,
-		p.setup.Token,
-		p.socket.counter.WriteBytes(),
-		p.socket.counter.ReadBytes(),
+		r.setup.Token,
+		r.socket.counter.WriteBytes(),
+		r.socket.counter.ReadBytes(),
 	)
 
 	resumeErr := make(chan string)
@@ -104,14 +105,19 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		return
 	})
 
-	tp.RegisterHandler(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
+	tp.RegisterHandler(transport.OnErrorWithZeroStreamID, func(frame core.Frame) error {
 		// TODO: process other error with zero StreamID
 		f := frame.(*framing.ErrorFrame)
 		if f.ErrorCode() == core.ErrorCodeRejectedResume {
+			defer func() {
+				if err := recover(); err != nil {
+					logger.Warnf("handle reject resume failed: %s\n", err)
+				}
+			}()
 			resumeErr <- f.Error()
 			close(resumeErr)
 		}
-		return
+		return nil
 	})
 
 	err = tp.Send(f, true)
@@ -119,29 +125,29 @@ func (p *resumeClientSocket) connect(ctx context.Context) (err error) {
 		return err
 	}
 
-	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, _resumeTimeout)
 	defer cancel()
 
 	select {
-	case <-ctx2.Done():
-		err = ctx2.Err()
+	case <-timeoutCtx.Done():
+		err = timeoutCtx.Err()
 	case reject, ok := <-resumeErr:
 		if ok {
 			err = errors.New(reject)
-			p.markClosing()
+			r.markAsClosing()
 		} else {
-			p.socket.SetTransport(tp)
+			r.socket.SetTransport(tp)
 		}
 	}
 	return
 }
 
-func (p *resumeClientSocket) markClosing() {
-	p.connects.Store(math.MinInt32)
+func (r *resumeClientSocket) markAsClosing() {
+	r.connects.Store(math.MinInt32)
 }
 
-func (p *resumeClientSocket) isClosed() bool {
-	return p.connects.Load() < 0
+func (r *resumeClientSocket) isClosed() bool {
+	return r.connects.Load() < 0
 }
 
 // NewResumableClientSocket creates a client-side socket with resume support.
