@@ -28,8 +28,8 @@ func TestAppendPrettyHexDump_Empty(t *testing.T) {
 }
 
 func TestAppendPrettyHexDump_Big(t *testing.T) {
-	// 16MB
-	b := make([]byte, 16*1024*1024)
+	// 512KB
+	b := make([]byte, 512*1024)
 	rand.Read(b)
 	sb := &strings.Builder{}
 	AppendPrettyHexDump(sb, b)

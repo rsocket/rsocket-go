@@ -13,7 +13,7 @@ import (
 	"go.uber.org/atomic"
 )
 
-const reconnectDelay = 1 * time.Second
+const _resumeReconnectDelay = 1 * time.Second
 const _resumeTimeout = 10 * time.Second
 
 type resumeClientSocket struct {
@@ -53,7 +53,7 @@ func (r *resumeClientSocket) connect(ctx context.Context) (err error) {
 		if connects == 1 {
 			return
 		}
-		time.Sleep(reconnectDelay)
+		time.Sleep(_resumeReconnectDelay)
 		_ = r.connect(ctx)
 		return
 	}
@@ -67,7 +67,7 @@ func (r *resumeClientSocket) connect(ctx context.Context) (err error) {
 				_ = r.Close()
 				return
 			}
-			time.Sleep(reconnectDelay)
+			time.Sleep(_resumeReconnectDelay)
 			_ = r.connect(ctx)
 		}()
 		err := tp.Start(ctx)

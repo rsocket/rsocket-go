@@ -39,7 +39,6 @@ type DuplexConnection struct {
 	locker       sync.RWMutex
 	counter      *core.TrafficCounter
 	tp           *transport.Transport
-	tpReady      *atomic.Bool
 	outs         chan core.WriteableFrame
 	outsPriority []core.WriteableFrame
 	responder    Responder
@@ -53,7 +52,8 @@ type DuplexConnection struct {
 	sc           scheduler.Scheduler
 	e            error
 	leases       lease.Leases
-	closeOnce    sync.Once
+	closed       *atomic.Bool
+	ready        *atomic.Bool
 }
 
 // SetError sets error for current socket.
@@ -86,14 +86,10 @@ func (dc *DuplexConnection) nextStreamID() (sid uint32) {
 }
 
 // Close close current socket.
-func (dc *DuplexConnection) Close() (err error) {
-	dc.closeOnce.Do(func() {
-		err = dc.innerClose()
-	})
-	return
-}
-
-func (dc *DuplexConnection) innerClose() error {
+func (dc *DuplexConnection) Close() error {
+	if !dc.closed.CAS(false, true) {
+		return nil
+	}
 	if dc.keepaliver != nil {
 		dc.keepaliver.Stop()
 	}
@@ -784,16 +780,13 @@ func (dc *DuplexConnection) onFramePayload(frame core.Frame) error {
 
 func (dc *DuplexConnection) clearTransport() {
 	dc.locker.Lock()
+	defer dc.locker.Unlock()
 	dc.tp = nil
-	dc.tpReady.Store(false)
-	dc.locker.Unlock()
+	dc.ready.Store(false)
 }
 
 // SetTransport sets a transport for current socket.
-func (dc *DuplexConnection) SetTransport(tp *transport.Transport) {
-	dc.locker.Lock()
-	defer dc.locker.Unlock()
-
+func (dc *DuplexConnection) SetTransport(tp *transport.Transport) (ok bool) {
 	tp.RegisterHandler(transport.OnCancel, dc.onFrameCancel)
 	tp.RegisterHandler(transport.OnError, dc.onFrameError)
 	tp.RegisterHandler(transport.OnRequestN, dc.onFrameRequestN)
@@ -807,10 +800,16 @@ func (dc *DuplexConnection) SetTransport(tp *transport.Transport) {
 		tp.RegisterHandler(transport.OnRequestChannel, dc.onFrameRequestChannel)
 	}
 
-	if dc.tpReady.CAS(false, true) {
-		dc.tp = tp
-		dc.cond.Signal()
+	ok = dc.ready.CAS(false, true)
+	if !ok {
+		return
 	}
+
+	dc.locker.Lock()
+	dc.tp = tp
+	dc.cond.Signal()
+	dc.locker.Unlock()
+	return
 }
 
 func (dc *DuplexConnection) sendFrame(f core.WriteableFrame) {
@@ -989,7 +988,10 @@ func (dc *DuplexConnection) drainOutBack() {
 
 func (dc *DuplexConnection) loopWriteWithKeepaliver(ctx context.Context, leaseChan <-chan lease.Lease) error {
 	for {
-		if !dc.tpReady.Load() {
+		if dc.closed.Load() {
+			break
+		}
+		if !dc.ready.Load() {
 			dc.locker.Lock()
 			dc.cond.Wait()
 			dc.locker.Unlock()
@@ -1048,12 +1050,14 @@ func (dc *DuplexConnection) LoopWrite(ctx context.Context) error {
 		return dc.loopWriteWithKeepaliver(ctx, leaseChan)
 	}
 	for {
-		if !dc.tpReady.Load() {
+		if dc.closed.Load() {
+			break
+		}
+		if !dc.ready.Load() {
 			dc.cond.L.Lock()
 			dc.cond.Wait()
 			dc.cond.L.Unlock()
 		}
-
 		select {
 		case <-ctx.Done():
 			dc.cleanOuts()
@@ -1117,7 +1121,8 @@ func newDuplexConnection(mtu int, ka *Keepaliver, sids StreamID, leases lease.Le
 		counter:    core.NewTrafficCounter(),
 		keepaliver: ka,
 		sc:         scheduler.NewSingle(_schedulerSize),
-		tpReady:    atomic.NewBool(false),
+		closed:     atomic.NewBool(false),
+		ready:      atomic.NewBool(false),
 	}
 	c.cond.L = &c.locker
 	return c

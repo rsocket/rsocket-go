@@ -108,6 +108,16 @@ func TestNewResumableClientSocket(t *testing.T) {
 	assert.Equal(t, fatalErr, err.(core.CustomError).ErrorData())
 }
 
+func TestResumeClientSocket_Setup_Broken(t *testing.T) {
+	c := socket.NewClientDuplexConnection(fragmentation.MaxFragment, 90*time.Second)
+	s := socket.NewResumableClientSocket(func(ctx context.Context) (*transport.Transport, error) {
+		return nil, fakeErr
+	}, c)
+	defer s.Close()
+	err := s.Setup(context.Background(), fakeResumableSetup)
+	assert.Error(t, err)
+}
+
 func TestResumeClientSocket_Setup(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -160,11 +170,17 @@ func TestResumeClientSocket_Setup(t *testing.T) {
 	err := rcs.Setup(context.Background(), fakeResumableSetup)
 	assert.NoError(t, err)
 
+	time.Sleep(100 * time.Millisecond)
+
 	readChan := <-readChanChan
 	close(readChan)
 
+	time.Sleep(100 * time.Millisecond)
+
 	readChan = <-readChanChan
 	readChan <- framing.NewResumeOKFrame(0)
+	time.Sleep(100 * time.Millisecond)
 	readChan <- framing.NewErrorFrame(0, core.ErrorCodeRejectedResume, []byte("fake reject error"))
 	close(readChan)
+	time.Sleep(100 * time.Millisecond)
 }

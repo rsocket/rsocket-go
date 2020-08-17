@@ -11,7 +11,7 @@ import (
 )
 
 func TestSimpleLease_Next(t *testing.T) {
-	l, err := lease.NewSimpleLease(3*time.Second, 1*time.Second, 1*time.Second, 1)
+	l, err := lease.NewSimpleLease(300*time.Millisecond, 100*time.Millisecond, 100*time.Millisecond, 1)
 	assert.NoError(t, err, "create simple lease failed")
 	lease, ok := l.Next(context.Background())
 	assert.True(t, ok, "get next lease chan failed")
