@@ -42,8 +42,8 @@ func TestByteBuff_WriteTo(t *testing.T) {
 	f, err := os.OpenFile("/dev/null", os.O_WRONLY, os.ModeAppend)
 	assert.NoError(t, err, "open /dev/null failed")
 	defer f.Close()
-	// 16MB
-	s := common.RandAlphanumeric(16 * 1024 * 1024)
+	// 1MB
+	s := common.RandAlphanumeric(1 * 1024 * 1024)
 	err = b.WriteString(s)
 	assert.NoError(t, err)
 	n, err := b.WriteTo(f)

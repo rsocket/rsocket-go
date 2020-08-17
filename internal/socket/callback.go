@@ -8,14 +8,14 @@ import (
 )
 
 type callback interface {
-	Close(error)
+	stopWithError(error)
 }
 
 type requestStreamCallback struct {
 	pc flux.Processor
 }
 
-func (s requestStreamCallback) Close(err error) {
+func (s requestStreamCallback) stopWithError(err error) {
 	s.pc.Error(err)
 }
 
@@ -23,7 +23,7 @@ type requestResponseCallback struct {
 	pc mono.Processor
 }
 
-func (s requestResponseCallback) Close(err error) {
+func (s requestResponseCallback) stopWithError(err error) {
 	s.pc.Error(err)
 }
 
@@ -32,7 +32,7 @@ type requestChannelCallback struct {
 	rcv flux.Processor
 }
 
-func (s requestChannelCallback) Close(err error) {
+func (s requestChannelCallback) stopWithError(err error) {
 	s.snd.Cancel()
 	s.rcv.Error(err)
 }
@@ -41,7 +41,7 @@ type requestResponseCallbackReverse struct {
 	su reactor.Subscription
 }
 
-func (s requestResponseCallbackReverse) Close(err error) {
+func (s requestResponseCallbackReverse) stopWithError(err error) {
 	s.su.Cancel()
 	// TODO: fill err
 }
@@ -50,7 +50,7 @@ type requestStreamCallbackReverse struct {
 	su rx.Subscription
 }
 
-func (s requestStreamCallbackReverse) Close(err error) {
+func (s requestStreamCallbackReverse) stopWithError(err error) {
 	s.su.Cancel()
 	// TODO: fill error
 }
@@ -60,7 +60,7 @@ type requestChannelCallbackReverse struct {
 	rcv flux.Processor
 }
 
-func (s requestChannelCallbackReverse) Close(err error) {
+func (s requestChannelCallbackReverse) stopWithError(err error) {
 	s.rcv.Error(err)
 	s.snd.Cancel()
 }

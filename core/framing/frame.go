@@ -2,7 +2,6 @@ package framing
 
 import (
 	"errors"
-	"fmt"
 	"io"
 
 	"github.com/rsocket/rsocket-go/core"
@@ -139,7 +138,3 @@ func FromBytes(b []byte) (core.Frame, error) {
 	return FromRawFrame(raw)
 }
 
-func PrintFrame(f core.WriteableFrame) string {
-	// TODO: print frame
-	return fmt.Sprintf("%+v", f)
-}

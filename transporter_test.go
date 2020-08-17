@@ -2,6 +2,7 @@ package rsocket_test
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,9 +15,11 @@ import (
 )
 
 var fakeSockFile string
+var fakeTlsConfig = &tls.Config{
+	InsecureSkipVerify: true,
+}
 
 func init() {
-	fmt.Println(os.TempDir())
 	fakeSockFile = fmt.Sprintf("%s/test-rsocket-%s.sock", strings.TrimRight(os.TempDir(), "/"), uuid.New().String())
 }
 
@@ -39,6 +42,7 @@ func TestTcpClient(t *testing.T) {
 		rsocket.TcpClient().
 			SetAddr(":7878").
 			SetHostAndPort("127.0.0.1", 7878).
+			SetTlsConfig(fakeTlsConfig).
 			Build()
 	})
 }
@@ -46,6 +50,7 @@ func TestTcpClient(t *testing.T) {
 func TestTcpServerBuilder(t *testing.T) {
 	assert.NotPanics(t, func() {
 		rsocket.TcpServer().SetAddr(":7878").Build()
+		rsocket.TcpServer().SetHostAndPort("127.0.0.1", 7878).SetTlsConfig(fakeTlsConfig).Build()
 	})
 }
 
@@ -56,6 +61,7 @@ func TestWebsocketClient(t *testing.T) {
 		rsocket.WebsocketClient().
 			SetUrl("ws://127.0.0.1:8080/fake/path").
 			SetHeader(h).
+			SetTlsConfig(fakeTlsConfig).
 			Build()
 	})
 }
@@ -65,6 +71,7 @@ func TestWebsocketServer(t *testing.T) {
 		tp := rsocket.WebsocketServer().
 			SetAddr(":7878").
 			SetPath("/fake").
+			SetTlsConfig(fakeTlsConfig).
 			Build()
 		assert.NotNil(t, tp)
 	})

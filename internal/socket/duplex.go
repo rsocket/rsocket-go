@@ -18,9 +18,13 @@ import (
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
+	"go.uber.org/atomic"
 )
 
-const _outChanSize = 64
+const (
+	_outChanSize   = 64
+	_schedulerSize = 64
+)
 
 var errSocketClosed = errors.New("socket closed already")
 
@@ -30,43 +34,39 @@ var (
 	unsupportedRequestChannel  = []byte("Request-Channel not implemented.")
 )
 
-// IsSocketClosedError returns true if input error is for socket closed.
-func IsSocketClosedError(err error) bool {
-	return err == errSocketClosed
-}
-
 // DuplexConnection represents a socket of RSocket which can be a requester or a responder.
 type DuplexConnection struct {
-	l               *sync.RWMutex
-	counter         *core.TrafficCounter
-	tp              *transport.Transport
-	outs            chan core.WriteableFrame
-	outsPriority    []core.WriteableFrame
-	responder       Responder
-	messages        *sync.Map
-	sids            StreamID
-	mtu             int
-	fragments       *sync.Map // common.U32Map // key=streamID, value=Joiner
-	writeDone       chan struct{}
-	keepaliver      *Keepaliver
-	cond            *sync.Cond
-	singleScheduler scheduler.Scheduler
-	e               error
-	leases          lease.Leases
-	closeOnce       sync.Once
+	locker       sync.RWMutex
+	counter      *core.TrafficCounter
+	tp           *transport.Transport
+	outs         chan core.WriteableFrame
+	outsPriority []core.WriteableFrame
+	responder    Responder
+	messages     *map32
+	sids         StreamID
+	mtu          int
+	fragments    *map32 // key=streamID, value=Joiner
+	writeDone    chan struct{}
+	keepaliver   *Keepaliver
+	cond         sync.Cond
+	sc           scheduler.Scheduler
+	e            error
+	leases       lease.Leases
+	closed       *atomic.Bool
+	ready        *atomic.Bool
 }
 
 // SetError sets error for current socket.
 func (dc *DuplexConnection) SetError(err error) {
-	dc.l.Lock()
-	defer dc.l.Unlock()
+	dc.locker.Lock()
+	defer dc.locker.Unlock()
 	dc.e = err
 }
 
 // GetError get the error set.
 func (dc *DuplexConnection) GetError() error {
-	dc.l.RLock()
-	defer dc.l.RUnlock()
+	dc.locker.RLock()
+	defer dc.locker.RUnlock()
 	return dc.e
 }
 
@@ -86,18 +86,14 @@ func (dc *DuplexConnection) nextStreamID() (sid uint32) {
 }
 
 // Close close current socket.
-func (dc *DuplexConnection) Close() (err error) {
-	dc.closeOnce.Do(func() {
-		err = dc.innerClose()
-	})
-	return
-}
-
-func (dc *DuplexConnection) innerClose() error {
+func (dc *DuplexConnection) Close() error {
+	if !dc.closed.CAS(false, true) {
+		return nil
+	}
 	if dc.keepaliver != nil {
 		dc.keepaliver.Stop()
 	}
-	_ = dc.singleScheduler.Close()
+	_ = dc.sc.Close()
 	close(dc.outs)
 	dc.cond.L.Lock()
 	dc.cond.Broadcast()
@@ -112,16 +108,18 @@ func (dc *DuplexConnection) innerClose() error {
 			_ = dc.tp.Close()
 		}
 	}
-	dc.messages.Range(func(_, v interface{}) bool {
+	dc.messages.Range(func(_ uint32, v interface{}) bool {
 		if cb, ok := v.(callback); ok {
 			err := dc.e
 			if err == nil {
 				err = errSocketClosed
 			}
-			go cb.Close(err)
+			go cb.stopWithError(err)
 		}
 		return true
 	})
+	dc.messages.Destroy()
+	dc.fragments.Destroy()
 	return dc.e
 }
 
@@ -433,7 +431,7 @@ func (dc *DuplexConnection) respondRequestChannel(pl fragmentation.HeaderAndPayl
 			<-frameN.DoneNotify()
 		})
 
-	_ = dc.singleScheduler.Worker().Do(func() {
+	_ = dc.sc.Worker().Do(func() {
 		receivingProcessor.Next(pl)
 	})
 
@@ -781,19 +779,19 @@ func (dc *DuplexConnection) onFramePayload(frame core.Frame) error {
 }
 
 func (dc *DuplexConnection) clearTransport() {
-	dc.cond.L.Lock()
+	dc.locker.Lock()
+	defer dc.locker.Unlock()
 	dc.tp = nil
-	dc.cond.L.Unlock()
+	dc.ready.Store(false)
 }
 
 // SetTransport sets a transport for current socket.
-func (dc *DuplexConnection) SetTransport(tp *transport.Transport) {
+func (dc *DuplexConnection) SetTransport(tp *transport.Transport) (ok bool) {
 	tp.RegisterHandler(transport.OnCancel, dc.onFrameCancel)
 	tp.RegisterHandler(transport.OnError, dc.onFrameError)
 	tp.RegisterHandler(transport.OnRequestN, dc.onFrameRequestN)
 	tp.RegisterHandler(transport.OnPayload, dc.onFramePayload)
 	tp.RegisterHandler(transport.OnKeepalive, dc.onFrameKeepalive)
-
 	if dc.responder != nil {
 		tp.RegisterHandler(transport.OnRequestResponse, dc.onFrameRequestResponse)
 		tp.RegisterHandler(transport.OnMetadataPush, dc.respondMetadataPush)
@@ -802,10 +800,16 @@ func (dc *DuplexConnection) SetTransport(tp *transport.Transport) {
 		tp.RegisterHandler(transport.OnRequestChannel, dc.onFrameRequestChannel)
 	}
 
-	dc.cond.L.Lock()
+	ok = dc.ready.CAS(false, true)
+	if !ok {
+		return
+	}
+
+	dc.locker.Lock()
 	dc.tp = tp
 	dc.cond.Signal()
-	dc.cond.L.Unlock()
+	dc.locker.Unlock()
+	return
 }
 
 func (dc *DuplexConnection) sendFrame(f core.WriteableFrame) {
@@ -984,12 +988,14 @@ func (dc *DuplexConnection) drainOutBack() {
 
 func (dc *DuplexConnection) loopWriteWithKeepaliver(ctx context.Context, leaseChan <-chan lease.Lease) error {
 	for {
-		if dc.tp == nil {
-			dc.cond.L.Lock()
-			dc.cond.Wait()
-			dc.cond.L.Unlock()
+		if dc.closed.Load() {
+			break
 		}
-
+		if !dc.ready.Load() {
+			dc.locker.Lock()
+			dc.cond.Wait()
+			dc.locker.Unlock()
+		}
 		select {
 		case <-ctx.Done():
 			dc.cleanOuts()
@@ -1044,12 +1050,14 @@ func (dc *DuplexConnection) LoopWrite(ctx context.Context) error {
 		return dc.loopWriteWithKeepaliver(ctx, leaseChan)
 	}
 	for {
-		if dc.tp == nil {
+		if dc.closed.Load() {
+			break
+		}
+		if !dc.ready.Load() {
 			dc.cond.L.Lock()
 			dc.cond.Wait()
 			dc.cond.L.Unlock()
 		}
-
 		select {
 		case <-ctx.Done():
 			dc.cleanOuts()
@@ -1086,6 +1094,11 @@ func (dc *DuplexConnection) unregister(sid uint32) {
 	dc.fragments.Delete(sid)
 }
 
+// IsSocketClosedError returns true if input error is for socket closed.
+func IsSocketClosedError(err error) bool {
+	return err == errSocketClosed
+}
+
 // NewServerDuplexConnection creates a new server-side DuplexConnection.
 func NewServerDuplexConnection(mtu int, leases lease.Leases) *DuplexConnection {
 	return newDuplexConnection(mtu, nil, &serverStreamIDs{}, leases)
@@ -1097,19 +1110,20 @@ func NewClientDuplexConnection(mtu int, keepaliveInterval time.Duration) *Duplex
 }
 
 func newDuplexConnection(mtu int, ka *Keepaliver, sids StreamID, leases lease.Leases) *DuplexConnection {
-	l := &sync.RWMutex{}
-	return &DuplexConnection{
-		l:               l,
-		leases:          leases,
-		outs:            make(chan core.WriteableFrame, _outChanSize),
-		mtu:             mtu,
-		messages:        &sync.Map{},
-		sids:            sids,
-		fragments:       &sync.Map{},
-		writeDone:       make(chan struct{}),
-		cond:            sync.NewCond(l),
-		counter:         core.NewTrafficCounter(),
-		keepaliver:      ka,
-		singleScheduler: scheduler.NewSingle(64),
+	c := &DuplexConnection{
+		leases:     leases,
+		outs:       make(chan core.WriteableFrame, _outChanSize),
+		mtu:        mtu,
+		messages:   newMap32(),
+		sids:       sids,
+		fragments:  newMap32(),
+		writeDone:  make(chan struct{}),
+		counter:    core.NewTrafficCounter(),
+		keepaliver: ka,
+		sc:         scheduler.NewSingle(_schedulerSize),
+		closed:     atomic.NewBool(false),
+		ready:      atomic.NewBool(false),
 	}
+	c.cond.L = &c.locker
+	return c
 }

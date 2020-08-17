@@ -87,110 +87,110 @@ type clientBuilder struct {
 	onCloses []func(error)
 }
 
-func (p *clientBuilder) Lease() ClientBuilder {
-	p.setup.Lease = true
-	return p
+func (cb *clientBuilder) Lease() ClientBuilder {
+	cb.setup.Lease = true
+	return cb
 }
 
-func (p *clientBuilder) Resume(opts ...ClientResumeOptions) ClientBuilder {
-	if p.resume == nil {
-		p.resume = newResumeOpts()
+func (cb *clientBuilder) Resume(opts ...ClientResumeOptions) ClientBuilder {
+	if cb.resume == nil {
+		cb.resume = newResumeOpts()
 	}
 	for _, it := range opts {
-		it(p.resume)
+		it(cb.resume)
 	}
-	return p
+	return cb
 }
 
-func (p *clientBuilder) Fragment(mtu int) ClientBuilder {
+func (cb *clientBuilder) Fragment(mtu int) ClientBuilder {
 	if mtu == 0 {
-		p.fragment = fragmentation.MaxFragment
+		cb.fragment = fragmentation.MaxFragment
 	} else {
-		p.fragment = mtu
+		cb.fragment = mtu
 	}
-	return p
+	return cb
 }
 
-func (p *clientBuilder) OnClose(fn func(error)) ClientBuilder {
-	p.onCloses = append(p.onCloses, fn)
-	return p
+func (cb *clientBuilder) OnClose(fn func(error)) ClientBuilder {
+	cb.onCloses = append(cb.onCloses, fn)
+	return cb
 }
 
-func (p *clientBuilder) KeepAlive(tickPeriod, ackTimeout time.Duration, missedAcks int) ClientBuilder {
-	p.setup.KeepaliveInterval = tickPeriod
-	p.setup.KeepaliveLifetime = time.Duration(missedAcks) * ackTimeout
-	return p
+func (cb *clientBuilder) KeepAlive(tickPeriod, ackTimeout time.Duration, missedAcks int) ClientBuilder {
+	cb.setup.KeepaliveInterval = tickPeriod
+	cb.setup.KeepaliveLifetime = time.Duration(missedAcks) * ackTimeout
+	return cb
 }
 
-func (p *clientBuilder) DataMimeType(mime string) ClientBuilder {
-	p.setup.DataMimeType = []byte(mime)
-	return p
+func (cb *clientBuilder) DataMimeType(mime string) ClientBuilder {
+	cb.setup.DataMimeType = []byte(mime)
+	return cb
 }
 
-func (p *clientBuilder) MetadataMimeType(mime string) ClientBuilder {
-	p.setup.MetadataMimeType = []byte(mime)
-	return p
+func (cb *clientBuilder) MetadataMimeType(mime string) ClientBuilder {
+	cb.setup.MetadataMimeType = []byte(mime)
+	return cb
 }
 
-func (p *clientBuilder) SetupPayload(setup payload.Payload) ClientBuilder {
-	p.setup.Data = nil
-	p.setup.Metadata = nil
+func (cb *clientBuilder) SetupPayload(setup payload.Payload) ClientBuilder {
+	cb.setup.Data = nil
+	cb.setup.Metadata = nil
 
 	if data := setup.Data(); len(data) > 0 {
-		p.setup.Data = make([]byte, len(data))
-		copy(p.setup.Data, data)
+		cb.setup.Data = make([]byte, len(data))
+		copy(cb.setup.Data, data)
 	}
 	if metadata, ok := setup.Metadata(); ok {
-		p.setup.Metadata = make([]byte, len(metadata))
-		copy(p.setup.Metadata, metadata)
+		cb.setup.Metadata = make([]byte, len(metadata))
+		copy(cb.setup.Metadata, metadata)
 	}
-	return p
+	return cb
 }
 
-func (p *clientBuilder) Acceptor(acceptor ClientSocketAcceptor) ToClientStarter {
-	p.acceptor = acceptor
-	return p
+func (cb *clientBuilder) Acceptor(acceptor ClientSocketAcceptor) ToClientStarter {
+	cb.acceptor = acceptor
+	return cb
 }
 
-func (p *clientBuilder) Transport(t transport.ClientTransportFunc) ClientStarter {
-	p.tpGen = t
-	return p
+func (cb *clientBuilder) Transport(t transport.ClientTransportFunc) ClientStarter {
+	cb.tpGen = t
+	return cb
 }
 
-func (p *clientBuilder) Start(ctx context.Context) (client Client, err error) {
+func (cb *clientBuilder) Start(ctx context.Context) (client Client, err error) {
 	// create a blank socket.
-	err = fragmentation.IsValidFragment(p.fragment)
+	err = fragmentation.IsValidFragment(cb.fragment)
 	if err != nil {
 		return nil, err
 	}
 
-	sk := socket.NewClientDuplexConnection(
-		p.fragment,
-		p.setup.KeepaliveInterval,
+	conn := socket.NewClientDuplexConnection(
+		cb.fragment,
+		cb.setup.KeepaliveInterval,
 	)
 	// create a client.
 	var cs setupClientSocket
-	if p.resume != nil {
-		p.setup.Token = p.resume.tokenGen()
-		cs = socket.NewResumableClientSocket(p.tpGen, sk)
+	if cb.resume != nil {
+		cb.setup.Token = cb.resume.tokenGen()
+		cs = socket.NewResumableClientSocket(cb.tpGen, conn)
 	} else {
-		cs = socket.NewClient(p.tpGen, sk)
+		cs = socket.NewClient(cb.tpGen, conn)
 	}
-	if p.acceptor != nil {
-		sk.SetResponder(p.acceptor(cs))
+	if cb.acceptor != nil {
+		conn.SetResponder(cb.acceptor(cs))
 	} else {
-		sk.SetResponder(_noopSocket)
+		conn.SetResponder(_noopSocket)
 	}
 
 	// bind closers.
-	if len(p.onCloses) > 0 {
-		for _, closer := range p.onCloses {
+	if len(cb.onCloses) > 0 {
+		for _, closer := range cb.onCloses {
 			cs.OnClose(closer)
 		}
 	}
 
 	// setup client.
-	err = cs.Setup(ctx, p.setup)
+	err = cs.Setup(ctx, cb.setup)
 	if err == nil {
 		client = cs
 	}

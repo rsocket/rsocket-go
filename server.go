@@ -245,7 +245,7 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 
 	// 4. resume success
 	copy(token, frame.Token())
-	sendingSocket = socket.NewServerResume(rawSocket, token)
+	sendingSocket = socket.NewResumableServerSocket(rawSocket, token)
 	if responder, e := p.acc(frame, sendingSocket); e != nil {
 		switch vv := e.(type) {
 		case *framing.ErrorFrame:

@@ -51,7 +51,7 @@ func (p *TcpConn) Read() (f core.Frame, err error) {
 		return
 	}
 	if logger.IsDebugEnabled() {
-		logger.Debugf("<--- rcv: %s\n", f)
+		logger.Debugf("%s\n", framing.PrintFrame(f))
 	}
 	return
 }
@@ -84,7 +84,7 @@ func (p *TcpConn) Write(frame core.WriteableFrame) (err error) {
 		return
 	}
 	if logger.IsDebugEnabled() {
-		logger.Debugf("---> snd: %s\n", debugStr)
+		logger.Debugf("%s\n", debugStr)
 	}
 	return
 }

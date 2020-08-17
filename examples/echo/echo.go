@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/jjeffcaii/reactor-go/scheduler"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/payload"
@@ -24,13 +23,12 @@ var tp transport.ServerTransportFunc
 
 func init() {
 	tp = rsocket.TcpServer().SetHostAndPort("127.0.0.1", 7878).Build()
+	go func() {
+		log.Println(http.ListenAndServe(":4444", nil))
+	}()
 }
 
 func main() {
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		log.Println(http.ListenAndServe(":4444", nil))
-	}()
 	//logger.SetLevel(logger.LevelDebug)
 	err := rsocket.Receive().
 		//Fragment(65535).

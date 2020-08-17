@@ -3,11 +3,11 @@ package socket_test
 import (
 	"context"
 	"io"
+	"log"
 	"testing"
 	"time"
 
 	"github.com/golang/mock/gomock"
-	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var fakeResponder = rsocket.NewAbstractSocket()
+var fakeToken = []byte("fakeToken")
 
-func TestSimpleServerSocket_Start(t *testing.T) {
+func TestResumableServerSocket_Start(t *testing.T) {
 	ctrl, conn, tp := InitTransport(t)
 	defer ctrl.Finish()
 
@@ -56,14 +56,14 @@ func TestSimpleServerSocket_Start(t *testing.T) {
 	close(readChan)
 
 	c := socket.NewServerDuplexConnection(fragmentation.MaxFragment, nil)
-	ss := socket.NewSimpleServerSocket(c)
+	ss := socket.NewResumableServerSocket(c, fakeToken)
+
 	ss.SetResponder(fakeResponder)
 	ss.SetTransport(tp)
 
-	assert.Equal(t, false, ss.Pause(), "should always returns false")
 	token, ok := ss.Token()
-	assert.False(t, ok)
-	assert.Nil(t, token, "token should be nil")
+	assert.True(t, ok)
+	assert.Equal(t, fakeToken, token, "token doesn't match")
 
 	done := make(chan struct{})
 	go func() {
@@ -75,7 +75,11 @@ func TestSimpleServerSocket_Start(t *testing.T) {
 	err = tp.Start(context.Background())
 	assert.NoError(t, err, "start transport failed")
 
+	log.Println("closing")
 	_ = c.Close()
+	log.Println("closed")
+
+	assert.Equal(t, true, ss.Pause(), "should return true")
 
 	<-done
 }

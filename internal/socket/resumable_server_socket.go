@@ -36,8 +36,8 @@ func (p *resumeServerSocket) Start(ctx context.Context) error {
 	return p.socket.LoopWrite(ctx)
 }
 
-// NewServerResume creates a new server-side socket with resume support.
-func NewServerResume(socket *DuplexConnection, token []byte) ServerSocket {
+// NewResumableServerSocket creates a new server-side socket with resume support.
+func NewResumableServerSocket(socket *DuplexConnection, token []byte) ServerSocket {
 	return &resumeServerSocket{
 		BaseSocket: NewBaseSocket(socket),
 		token:      token,
