@@ -20,6 +20,7 @@ import (
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -154,6 +155,8 @@ func TestConnectBroken(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	port := 8787
+
 	go func(ctx context.Context) {
 		_ = Receive().
 			OnStart(func() {
@@ -162,21 +165,21 @@ func TestConnectBroken(t *testing.T) {
 			Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 				return fakeResponser, nil
 			}).
-			Transport(TcpServer().SetAddr(":7878").Build()).
+			Transport(TcpServer().SetAddr(fmt.Sprintf(":%d", port)).Build()).
 			Serve(ctx)
 	}(ctx)
 
 	<-started
 
+	time.Sleep(500 * time.Millisecond)
+
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 
-	time.Sleep(200 * time.Millisecond)
-
 	go func() {
 		defer wg.Done()
-		cli, err := Connect().Resume().Transport(TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()).Start(ctx)
-		assert.NoError(t, err, "connect failed")
+		cli, err := Connect().Resume().Transport(TcpClient().SetHostAndPort("127.0.0.1", port).Build()).Start(ctx)
+		require.NoError(t, err, "connect failed")
 		defer cli.Close()
 		_, err = cli.RequestResponse(fakeRequest).Block(ctx)
 		assert.Error(t, err, "should connect failed")
@@ -184,8 +187,8 @@ func TestConnectBroken(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		cli, err := Connect().Lease().Transport(TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()).Start(ctx)
-		assert.NoError(t, err, "connect failed")
+		cli, err := Connect().Lease().Transport(TcpClient().SetHostAndPort("127.0.0.1", port).Build()).Start(ctx)
+		require.NoError(t, err, "connect failed")
 		defer cli.Close()
 		_, err = cli.RequestResponse(fakeRequest).Block(ctx)
 		assert.Error(t, err, "should connect failed")
