@@ -92,12 +92,14 @@ func (a Authentication) Bytes() (raw []byte) {
 // ParseAuthentication parse Authentication from raw bytes.
 func ParseAuthentication(raw []byte) (auth *Authentication, err error) {
 	totals := len(raw)
-	if totals < 1 {
+	if totals < 2 {
 		err = _errInvalidAuthBytes
 		return
 	}
 	first := raw[0]
-	n := 0x7F & first
+	n := ^uint8(0x80) & first
+
+	// Well-known Auth Type ID
 	if first&0x80 != 0 {
 		auth = &Authentication{
 			typ:     wellKnownAuthenticationType(n).String(),
@@ -105,7 +107,14 @@ func ParseAuthentication(raw []byte) (auth *Authentication, err error) {
 		}
 		return
 	}
-	if totals < int(n+1) {
+
+	// At least 1 byte for authentication type
+	if n == 0 {
+		err = _errInvalidAuthBytes
+		return
+	}
+
+	if totals-1 < int(n) {
 		err = _errInvalidAuthBytes
 		return
 	}

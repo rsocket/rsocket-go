@@ -71,8 +71,8 @@ func (r *resumeClientSocket) connect(ctx context.Context) (err error) {
 			_ = r.connect(ctx)
 		}()
 		err := tp.Start(ctx)
-		if err != nil {
-			logger.Errorf("client exit: %s\n", err)
+		if err != nil && logger.IsDebugEnabled() {
+			logger.Debugf("resumable client stopped: %s\n", err)
 		}
 	}(ctx, tp)
 
@@ -135,6 +135,7 @@ func (r *resumeClientSocket) connect(ctx context.Context) (err error) {
 		if ok {
 			err = errors.New(reject)
 			r.markAsClosing()
+			err = r.connect(ctx)
 		} else {
 			r.socket.SetTransport(tp)
 		}

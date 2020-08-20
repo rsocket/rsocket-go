@@ -1,6 +1,8 @@
 package socket
 
 import (
+	"io"
+
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -16,6 +18,9 @@ type requestStreamCallback struct {
 }
 
 func (s requestStreamCallback) stopWithError(err error) {
+	if closer, ok := s.pc.Raw().(io.Closer); ok {
+		_ = closer.Close()
+	}
 	s.pc.Error(err)
 }
 
@@ -34,6 +39,9 @@ type requestChannelCallback struct {
 
 func (s requestChannelCallback) stopWithError(err error) {
 	s.snd.Cancel()
+	if closer, ok := s.rcv.Raw().(io.Closer); ok {
+		_ = closer.Close()
+	}
 	s.rcv.Error(err)
 }
 
@@ -61,6 +69,9 @@ type requestChannelCallbackReverse struct {
 }
 
 func (s requestChannelCallbackReverse) stopWithError(err error) {
+	if closer, ok := s.rcv.Raw().(io.Closer); ok {
+		closer.Close()
+	}
 	s.rcv.Error(err)
 	s.snd.Cancel()
 }

@@ -3,7 +3,6 @@ package socket_test
 import (
 	"context"
 	"io"
-	"log"
 	"testing"
 	"time"
 
@@ -75,9 +74,7 @@ func TestResumableServerSocket_Start(t *testing.T) {
 	err = tp.Start(context.Background())
 	assert.NoError(t, err, "start transport failed")
 
-	log.Println("closing")
 	_ = c.Close()
-	log.Println("closed")
 
 	assert.Equal(t, true, ss.Pause(), "should return true")
 

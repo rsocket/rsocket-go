@@ -1,7 +1,6 @@
 package socket_test
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -22,8 +21,7 @@ func TestKeepaliver(t *testing.T) {
 L:
 	for {
 		select {
-		case v := <-k.C():
-			fmt.Println(v)
+		case <-k.C():
 			beats++
 		case <-k.Done():
 			break L

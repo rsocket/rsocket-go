@@ -104,7 +104,11 @@ func (p *server) Resume(opts ...OpServerResume) ServerBuilder {
 }
 
 func (p *server) Fragment(mtu int) ServerBuilder {
-	p.fragment = mtu
+	if mtu == 0 {
+		p.fragment = fragmentation.MaxFragment
+	} else {
+		p.fragment = mtu
+	}
 	return p
 }
 
