@@ -171,6 +171,8 @@ func TestConnectBroken(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 
+	time.Sleep(200 * time.Millisecond)
+
 	go func() {
 		defer wg.Done()
 		cli, err := Connect().Resume().Transport(TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()).Start(ctx)
