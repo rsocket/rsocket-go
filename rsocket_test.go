@@ -72,57 +72,19 @@ func TestResume(t *testing.T) {
 	<-started
 
 	ch := make(chan net.Listener, 1)
-	// Starting a tcp proxy to simulate network broken
-	startProxy := func(ch chan net.Listener) {
-		var (
-			conns     []net.Conn
-			upstreams []net.Conn
-		)
-		defer func() {
-			for _, conn := range conns {
-				_ = conn.Close()
-			}
-			for _, upstream := range upstreams {
-				_ = upstream.Close()
-			}
-		}()
-		l, err := net.Listen("tcp", ":17878")
-		if err != nil {
-			return
-		}
-		ch <- l
-		for {
-			c, err := l.Accept()
-			if err != nil {
-				break
-			}
-			conns = append(conns, c)
-			go func() {
-				upstream, _ := net.Dial("tcp", "127.0.0.1:7878")
-				upstreams = append(upstreams, upstream)
-				wg := sync.WaitGroup{}
-				wg.Add(2)
 
-				go func() {
-					defer wg.Done()
-					_, _ = io.Copy(c, upstream)
-				}()
-				go func() {
-					defer wg.Done()
-					_, _ = io.Copy(upstream, c)
-				}()
-				wg.Wait()
-			}()
-		}
-		fmt.Println("PROXY KILLED")
-	}
-	go startProxy(ch)
+	proxyPort := 7979
+	proxyAddr := fmt.Sprintf(":%d", proxyPort)
+	upstreamAddr := "127.0.0.1:7878"
+	go startProxy(proxyAddr, ch, upstreamAddr)
+
+	time.Sleep(200 * time.Millisecond)
 
 	cli, err := Connect().
 		Resume(WithClientResumeToken(func() []byte {
 			return fakeToken
 		})).
-		Transport(TcpClient().SetAddr("127.0.0.1:17878").Build()).
+		Transport(TcpClient().SetHostAndPort("127.0.0.1", proxyPort).Build()).
 		Start(ctx)
 	assert.NoError(t, err, "connect failed")
 	defer cli.Close()
@@ -136,7 +98,7 @@ func TestResume(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// restart the proxy
-	go startProxy(ch)
+	go startProxy(proxyAddr, ch, upstreamAddr)
 
 	// client should request correctly.
 	res, err = cli.RequestResponse(fakeRequest).Block(ctx)
@@ -148,7 +110,7 @@ func TestResume(t *testing.T) {
 	time.Sleep(sessionTimeout + 100*time.Millisecond)
 
 	// restart the proxy again
-	go startProxy(ch)
+	go startProxy(proxyAddr, ch, upstreamAddr)
 
 	defer (<-ch).Close()
 
@@ -551,4 +513,50 @@ func testRequestChannelOneByOne(ctx context.Context, cli Client, t *testing.T) {
 			su.Request(1)
 		}))
 	<-done
+}
+
+// Starting a tcp proxy to simulate network broken
+func startProxy(addr string, ch chan net.Listener, upstreamAddr string) {
+	var (
+		conns     []net.Conn
+		upstreams []net.Conn
+	)
+	defer func() {
+		for _, conn := range conns {
+			_ = conn.Close()
+		}
+		for _, upstream := range upstreams {
+			_ = upstream.Close()
+		}
+		fmt.Println("PROXY KILLED")
+	}()
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		return
+	}
+	ch <- l
+	for {
+		c, err := l.Accept()
+		if err != nil {
+			break
+		}
+		conns = append(conns, c)
+		go func() {
+			upstream, _ := net.Dial("tcp", upstreamAddr)
+			upstreams = append(upstreams, upstream)
+			wg := sync.WaitGroup{}
+			wg.Add(2)
+
+			go func() {
+				defer wg.Done()
+				_, _ = io.Copy(c, upstream)
+			}()
+			go func() {
+				defer wg.Done()
+				_, _ = io.Copy(upstream, c)
+			}()
+			wg.Wait()
+		}()
+	}
+
 }
