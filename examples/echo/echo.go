@@ -19,10 +19,10 @@ import (
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
-var tp transport.ServerTransportFunc
+var tp transport.ServerTransporter
 
 func init() {
-	tp = rsocket.TcpServer().SetHostAndPort("127.0.0.1", 7878).Build()
+	tp = rsocket.TCPServer().SetHostAndPort("127.0.0.1", 7878).Build()
 	go func() {
 		log.Println(http.ListenAndServe(":4444", nil))
 	}()

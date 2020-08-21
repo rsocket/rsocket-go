@@ -66,7 +66,7 @@ func TestResume(t *testing.T) {
 				)
 				return
 			}).
-			Transport(TcpServer().SetAddr(":7878").Build()).
+			Transport(TCPServer().SetAddr(":9797").Build()).
 			Serve(ctx)
 	}(ctx)
 
@@ -76,7 +76,7 @@ func TestResume(t *testing.T) {
 
 	proxyPort := 7979
 	proxyAddr := fmt.Sprintf(":%d", proxyPort)
-	upstreamAddr := "127.0.0.1:7878"
+	upstreamAddr := "127.0.0.1:9797"
 	go startProxy(proxyAddr, ch, upstreamAddr)
 
 	time.Sleep(200 * time.Millisecond)
@@ -85,7 +85,7 @@ func TestResume(t *testing.T) {
 		Resume(WithClientResumeToken(func() []byte {
 			return fakeToken
 		})).
-		Transport(TcpClient().SetHostAndPort("127.0.0.1", proxyPort).Build()).
+		Transport(TCPClient().SetHostAndPort("127.0.0.1", proxyPort).Build()).
 		Start(ctx)
 	assert.NoError(t, err, "connect failed")
 	defer cli.Close()
@@ -127,7 +127,7 @@ func TestReceiveWithBadArgs(t *testing.T) {
 		Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 			return fakeResponser, nil
 		}).
-		Transport(TcpServer().SetHostAndPort("127.0.0.1", 7878).Build()).
+		Transport(TCPServer().SetHostAndPort("127.0.0.1", DefaultPort).Build()).
 		Serve(context.Background())
 	assert.Error(t, err, "should serve failed")
 
@@ -145,7 +145,7 @@ func TestReceiveWithBadArgs(t *testing.T) {
 func TestConnectWithBadArgs(t *testing.T) {
 	_, err := Connect().
 		Fragment(-999).
-		Transport(TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()).
+		Transport(TCPClient().SetHostAndPort("127.0.0.1", DefaultPort).Build()).
 		Start(context.Background())
 	assert.Error(t, err, "should connect failed")
 }
@@ -165,7 +165,7 @@ func TestConnectBroken(t *testing.T) {
 			Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 				return fakeResponser, nil
 			}).
-			Transport(TcpServer().SetAddr(fmt.Sprintf(":%d", port)).Build()).
+			Transport(TCPServer().SetAddr(fmt.Sprintf(":%d", port)).Build()).
 			Serve(ctx)
 	}(ctx)
 
@@ -178,7 +178,7 @@ func TestConnectBroken(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		cli, err := Connect().Resume().Transport(TcpClient().SetHostAndPort("127.0.0.1", port).Build()).Start(ctx)
+		cli, err := Connect().Resume().Transport(TCPClient().SetHostAndPort("127.0.0.1", port).Build()).Start(ctx)
 		require.NoError(t, err, "connect failed")
 		defer cli.Close()
 		_, err = cli.RequestResponse(fakeRequest).Block(ctx)
@@ -187,7 +187,7 @@ func TestConnectBroken(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		cli, err := Connect().Lease().Transport(TcpClient().SetHostAndPort("127.0.0.1", port).Build()).Start(ctx)
+		cli, err := Connect().Lease().Transport(TCPClient().SetHostAndPort("127.0.0.1", port).Build()).Start(ctx)
 		require.NoError(t, err, "connect failed")
 		defer cli.Close()
 		_, err = cli.RequestResponse(fakeRequest).Block(ctx)
@@ -197,6 +197,8 @@ func TestConnectBroken(t *testing.T) {
 }
 
 func TestBiDirection(t *testing.T) {
+	testPort := 7777
+
 	started := make(chan struct{})
 
 	res := make(chan payload.Payload)
@@ -225,7 +227,7 @@ func TestBiDirection(t *testing.T) {
 				sendingSocket.MetadataPush(fakeRequest)
 				return fakeResponser, nil
 			}).
-			Transport(TcpServer().SetHostAndPort("127.0.0.1", 7878).Build()).
+			Transport(TCPServer().SetHostAndPort("127.0.0.1", testPort).Build()).
 			Serve(ctx)
 	}(ctx)
 
@@ -262,7 +264,7 @@ func TestBiDirection(t *testing.T) {
 				}),
 			)
 		}).
-		Transport(TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()).
+		Transport(TCPClient().SetHostAndPort("127.0.0.1", testPort).Build()).
 		Start(ctx)
 	assert.NoError(t, err, "connect failed")
 	defer func() {
@@ -289,12 +291,12 @@ func TestSuite(t *testing.T) {
 		"tcp",
 		"websocket",
 	}
-	c := []transport.ClientTransportFunc{
-		TcpClient().SetHostAndPort("127.0.0.1", 7878).Build(),
-		WebsocketClient().SetUrl("ws://127.0.0.1:8080/test").Build(),
+	c := []transport.ClientTransporter{
+		TCPClient().SetHostAndPort("127.0.0.1", 7878).Build(),
+		WebsocketClient().SetURL("ws://127.0.0.1:8080/test").Build(),
 	}
-	s := []transport.ServerTransportFunc{
-		TcpServer().SetAddr(":7878").Build(),
+	s := []transport.ServerTransporter{
+		TCPServer().SetAddr(":7878").Build(),
 		WebsocketServer().SetAddr("127.0.0.1:8080").SetPath("/test").Build(),
 	}
 
@@ -304,7 +306,7 @@ func TestSuite(t *testing.T) {
 
 }
 
-func testAll(t *testing.T, proto string, clientTp transport.ClientTransportFunc, serverTp transport.ServerTransportFunc) {
+func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, serverTp transport.ServerTransporter) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

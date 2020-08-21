@@ -39,18 +39,18 @@ func TestUnixClient(t *testing.T) {
 
 func TestTcpClient(t *testing.T) {
 	assert.NotPanics(t, func() {
-		rsocket.TcpClient().
+		rsocket.TCPClient().
 			SetAddr(":7878").
 			SetHostAndPort("127.0.0.1", 7878).
-			SetTlsConfig(fakeTlsConfig).
+			SetTLSConfig(fakeTlsConfig).
 			Build()
 	})
 }
 
 func TestTcpServerBuilder(t *testing.T) {
 	assert.NotPanics(t, func() {
-		rsocket.TcpServer().SetAddr(":7878").Build()
-		rsocket.TcpServer().SetHostAndPort("127.0.0.1", 7878).SetTlsConfig(fakeTlsConfig).Build()
+		rsocket.TCPServer().SetAddr(":7878").Build()
+		rsocket.TCPServer().SetHostAndPort("127.0.0.1", 7878).SetTLSConfig(fakeTlsConfig).Build()
 	})
 }
 
@@ -59,9 +59,9 @@ func TestWebsocketClient(t *testing.T) {
 		h := make(http.Header)
 		h.Set("x-foo-bar", "qux")
 		rsocket.WebsocketClient().
-			SetUrl("ws://127.0.0.1:8080/fake/path").
+			SetURL("ws://127.0.0.1:8080/fake/path").
 			SetHeader(h).
-			SetTlsConfig(fakeTlsConfig).
+			SetTLSConfig(fakeTlsConfig).
 			Build()
 	})
 }
@@ -71,7 +71,7 @@ func TestWebsocketServer(t *testing.T) {
 		tp := rsocket.WebsocketServer().
 			SetAddr(":7878").
 			SetPath("/fake").
-			SetTlsConfig(fakeTlsConfig).
+			SetTLSConfig(fakeTlsConfig).
 			Build()
 		assert.NotNil(t, tp)
 	})

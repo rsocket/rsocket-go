@@ -20,7 +20,7 @@ type resumeClientSocket struct {
 	*BaseSocket
 	connects *atomic.Int32
 	setup    *SetupInfo
-	tp       transport.ClientTransportFunc
+	tp       transport.ClientTransporter
 }
 
 func (r *resumeClientSocket) Setup(ctx context.Context, setup *SetupInfo) error {
@@ -152,7 +152,7 @@ func (r *resumeClientSocket) isClosed() bool {
 }
 
 // NewResumableClientSocket creates a client-side socket with resume support.
-func NewResumableClientSocket(tp transport.ClientTransportFunc, socket *DuplexConnection) ClientSocket {
+func NewResumableClientSocket(tp transport.ClientTransporter, socket *DuplexConnection) ClientSocket {
 	return &resumeClientSocket{
 		BaseSocket: NewBaseSocket(socket),
 		connects:   atomic.NewInt32(0),

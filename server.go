@@ -45,7 +45,9 @@ type (
 	// ToServerStarter is used to build a RSocket server with custom Transport string.
 	ToServerStarter interface {
 		// Transport specify transport generator func.
-		Transport(t transport.ServerTransportFunc) Start
+		// Example:
+		// rsocket.TCPServer().SetAddr(":8888").Build()
+		Transport(t transport.ServerTransporter) Start
 	}
 
 	// Start start a RSocket server.
@@ -73,7 +75,7 @@ type serverResumeOptions struct {
 }
 
 type server struct {
-	tp         transport.ServerTransportFunc
+	tp         transport.ServerTransporter
 	resumeOpts *serverResumeOptions
 	fragment   int
 	acc        ServerAcceptor
@@ -117,7 +119,7 @@ func (p *server) Acceptor(acceptor ServerAcceptor) ToServerStarter {
 	return p
 }
 
-func (p *server) Transport(t transport.ServerTransportFunc) Start {
+func (p *server) Transport(t transport.ServerTransporter) Start {
 	p.tp = t
 	return p
 }
