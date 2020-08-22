@@ -201,14 +201,14 @@ func (p *server) Serve(ctx context.Context) error {
 		}
 	})
 
-	serveNotifier := make(chan struct{})
-	go func(c <-chan struct{}, fn []func()) {
+	notifier := make(chan bool)
+	go func(c <-chan bool, fn []func()) {
 		<-c
 		for i := range fn {
 			fn[i]()
 		}
-	}(serveNotifier, p.onServe)
-	return t.Listen(ctx, serveNotifier)
+	}(notifier, p.onServe)
+	return t.Listen(ctx, notifier)
 }
 
 func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.WriteableErrorFrame) {

@@ -70,11 +70,11 @@ func TestNewWebsocketServerTransport(t *testing.T) {
 		AnyTimes()
 	listener.EXPECT().Close().AnyTimes()
 
-	tp := transport.NewWebsocketServerTransport(func() (net.Listener, error) {
+	tp := transport.NewWebsocketServerTransport(func(context.Context) (net.Listener, error) {
 		return listener, nil
 	}, "")
 
-	notifier := make(chan struct{})
+	notifier := make(chan bool)
 
 	done := make(chan struct{})
 
@@ -84,7 +84,7 @@ func TestNewWebsocketServerTransport(t *testing.T) {
 		assert.True(t, err == nil || err == io.EOF)
 	}()
 
-	_, ok := <-notifier
+	ok := <-notifier
 	assert.True(t, ok, "notifier should return ok=true")
 
 	time.Sleep(100 * time.Millisecond)
@@ -98,13 +98,13 @@ func TestNewWebsocketServerTransport_Broken(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	tp := transport.NewWebsocketServerTransport(func() (net.Listener, error) {
+	tp := transport.NewWebsocketServerTransport(func(context.Context) (net.Listener, error) {
 		return nil, fakeErr
 	}, "")
 	tp.Accept(func(ctx context.Context, tp *transport.Transport, onClose func(*transport.Transport)) {
 	})
 
-	notifier := make(chan struct{})
+	notifier := make(chan bool)
 
 	done := make(chan struct{})
 
@@ -114,7 +114,7 @@ func TestNewWebsocketServerTransport_Broken(t *testing.T) {
 		assert.Equal(t, fakeErr, errors.Cause(err))
 	}()
 
-	_, ok := <-notifier
+	ok := <-notifier
 	assert.False(t, ok, "notifier should return ok=false")
 
 	<-done

@@ -30,9 +30,8 @@ type ServerTransport interface {
 	// Accept register incoming connection handler.
 	Accept(acceptor ServerTransportAcceptor)
 	// Listen listens on the network address addr and handles requests on incoming connections.
-	// You can specify onReady handler, it'll be invoked when server begin listening.
-	// It always returns a non-nil error.
-	Listen(ctx context.Context, notifier chan<- struct{}) error
+	// You can specify notifier chan, it'll be sent true/false when server listening success/failed.
+	Listen(ctx context.Context, notifier chan<- bool) error
 }
 
 type EventType int

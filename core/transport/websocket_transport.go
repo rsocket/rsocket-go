@@ -29,103 +29,137 @@ func init() {
 }
 
 type wsServerTransport struct {
-	path       string
-	acceptor   ServerTransportAcceptor
-	onceClose  sync.Once
-	listenerFn func() (net.Listener, error)
-	listener   net.Listener
-	transports *sync.Map
+	mu       sync.Mutex
+	path     string
+	acceptor ServerTransportAcceptor
+	f        ListenerFactory
+	l        net.Listener
+	m        map[*Transport]struct{}
+	done     chan struct{}
 }
 
 func (p *wsServerTransport) Close() (err error) {
-	p.onceClose.Do(func() {
-		if p.listener != nil {
-			err = p.listener.Close()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	select {
+	case <-p.done:
+		// already closed
+		break
+	default:
+		close(p.done)
+		if p.l == nil {
+			break
 		}
-	})
+		// close listener
+		err = p.l.Close()
+		// close transports
+		for k := range p.m {
+			_ = k.Close()
+		}
+	}
 	return
 }
 
 func (p *wsServerTransport) Accept(acceptor ServerTransportAcceptor) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.acceptor = acceptor
 }
 
-func (p *wsServerTransport) Listen(ctx context.Context, notifier chan<- struct{}) (err error) {
+func (p *wsServerTransport) Listen(ctx context.Context, notifier chan<- bool) (err error) {
+	p.l, err = p.f(ctx)
+	if err != nil {
+		notifier <- false
+		return
+	}
+	defer func() {
+		_ = p.Close()
+	}()
+
+	notifier <- true
+
 	mux := http.NewServeMux()
 	mux.HandleFunc(p.path, func(w http.ResponseWriter, r *http.Request) {
+		// upgrade websocket
 		c, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			logger.Errorf("create websocket conn failed: %s\n", err.Error())
 			return
 		}
+
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		select {
+		case <-p.done:
+			// already closed
+			return
+		default:
+			if p.m == nil {
+				return
+			}
+		}
+
+		// new websocket transport
 		tp := NewTransport(NewWebsocketConnection(c))
-		p.transports.Store(tp, struct{}{})
+
+		// put transport
+		p.m[tp] = struct{}{}
+
+		// accept async
 		go p.acceptor(ctx, tp, func(tp *Transport) {
-			p.transports.Delete(tp)
+			// remove transport
+			p.mu.Lock()
+			defer p.mu.Unlock()
+			delete(p.m, tp)
 		})
 	})
 
-	p.listener, err = p.listenerFn()
-
-	if err != nil {
-		err = errors.Wrap(err, "server listen failed")
-		close(notifier)
-		return
-	}
-
-	notifier <- struct{}{}
-
-	stop := make(chan struct{})
-	ctx, cancel := context.WithCancel(ctx)
-
-	go func(ctx context.Context, stop chan struct{}) {
-		defer func() {
-			_ = p.Close()
-			close(stop)
-		}()
-		<-ctx.Done()
-	}(ctx, stop)
-
-	err = http.Serve(p.listener, mux)
+	err = http.Serve(p.l, mux)
 	if err == io.EOF || isClosedErr(err) {
 		err = nil
 	} else {
 		err = errors.Wrap(err, "listen websocket server failed")
 	}
-	cancel()
-	<-stop
 	return
 }
 
-func NewWebsocketServerTransport(gen func() (net.Listener, error), path string) ServerTransport {
+func NewWebsocketServerTransport(f ListenerFactory, path string) ServerTransport {
 	if path == "" {
 		path = defaultWebsocketPath
 	}
 	return &wsServerTransport{
-		path:       path,
-		listenerFn: gen,
-		transports: &sync.Map{},
+		path: path,
+		f:    f,
+		m:    make(map[*Transport]struct{}),
+		done: make(chan struct{}),
 	}
 }
 
-func NewWebsocketServerTransportWithAddr(addr string, path string, c *tls.Config) ServerTransport {
-	return NewWebsocketServerTransport(func() (net.Listener, error) {
-		if c == nil {
-			return net.Listen("tcp", addr)
+func NewWebsocketServerTransportWithAddr(addr string, path string, config *tls.Config) ServerTransport {
+	f := func(ctx context.Context) (net.Listener, error) {
+		var c net.ListenConfig
+		l, err := c.Listen(ctx, "tcp", addr)
+		if err != nil {
+			return nil, err
 		}
-		return tls.Listen("tcp", addr, c)
-	}, path)
+		if config == nil {
+			return l, nil
+		}
+		return tls.NewListener(l, config), nil
+	}
+	return NewWebsocketServerTransport(f, path)
 }
 
-func NewWebsocketClientTransport(url string, tc *tls.Config, header http.Header) (*Transport, error) {
+func NewWebsocketClientTransport(url string, config *tls.Config, header http.Header) (*Transport, error) {
 	var d *websocket.Dialer
-	if tc == nil {
+	if config == nil {
 		d = websocket.DefaultDialer
 	} else {
 		d = &websocket.Dialer{
 			Proxy:            http.ProxyFromEnvironment,
 			HandshakeTimeout: 45 * time.Second,
-			TLSClientConfig:  tc,
+			TLSClientConfig:  config,
 		}
 	}
 	wsConn, _, err := d.Dial(url, header)

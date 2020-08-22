@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"strconv"
-	"strings"
 
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
@@ -58,9 +56,9 @@ func main() {
 				log.Println("***** socket disconnected *****")
 			})
 			// For SETUP_REJECT testing.
-			if strings.EqualFold(setup.DataUTF8(), "REJECT_ME") {
-				return nil, errors.New("bye bye bye")
-			}
+			//if strings.EqualFold(setup.DataUTF8(), "REJECT_ME") {
+			//	return nil, errors.New("bye bye bye")
+			//}
 			return responder(), nil
 		}).
 		Transport(tp).
