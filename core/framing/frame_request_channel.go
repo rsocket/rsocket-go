@@ -13,11 +13,12 @@ const (
 	minRequestChannelFrameLen = initReqLen
 )
 
-// RequestChannelFrame is frame for RequestChannel.
+// RequestChannelFrame is RequestChannel frame.
 type RequestChannelFrame struct {
 	*RawFrame
 }
 
+// WriteableRequestChannelFrame is writeable RequestChannel frame.
 type WriteableRequestChannelFrame struct {
 	*tinyFrame
 	n        [4]byte
@@ -66,6 +67,7 @@ func (r *RequestChannelFrame) DataUTF8() string {
 	return string(r.Data())
 }
 
+// WriteTo writes frame to writer.
 func (r WriteableRequestChannelFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = r.header.WriteTo(w)
@@ -90,10 +92,12 @@ func (r WriteableRequestChannelFrame) WriteTo(w io.Writer) (n int64, err error) 
 	return
 }
 
+// Len returns length of frame.
 func (r WriteableRequestChannelFrame) Len() int {
 	return CalcPayloadFrameSize(r.data, r.metadata) + 4
 }
 
+// NewWriteableRequestChannelFrame creates a new WriteableRequestChannelFrame.
 func NewWriteableRequestChannelFrame(sid uint32, n uint32, data, metadata []byte, flag core.FrameFlag) *WriteableRequestChannelFrame {
 	var b [4]byte
 	binary.BigEndian.PutUint32(b[:], n)
@@ -110,7 +114,7 @@ func NewWriteableRequestChannelFrame(sid uint32, n uint32, data, metadata []byte
 	}
 }
 
-// NewRequestChannelFrame returns a new RequestChannel frame.
+// NewRequestChannelFrame creates a new RequestChannelFrame.
 func NewRequestChannelFrame(sid uint32, n uint32, data, metadata []byte, flag core.FrameFlag) *RequestChannelFrame {
 	bf := common.NewByteBuff()
 	var b4 [4]byte

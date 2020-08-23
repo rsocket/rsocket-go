@@ -72,7 +72,7 @@ func TestNewWebsocketServerTransport(t *testing.T) {
 
 	tp := transport.NewWebsocketServerTransport(func(context.Context) (net.Listener, error) {
 		return listener, nil
-	}, "")
+	}, "", nil)
 
 	notifier := make(chan bool)
 
@@ -100,7 +100,7 @@ func TestNewWebsocketServerTransport_Broken(t *testing.T) {
 
 	tp := transport.NewWebsocketServerTransport(func(context.Context) (net.Listener, error) {
 		return nil, fakeErr
-	}, "")
+	}, "", nil)
 	tp.Accept(func(ctx context.Context, tp *transport.Transport, onClose func(*transport.Transport)) {
 	})
 

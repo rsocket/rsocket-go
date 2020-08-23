@@ -32,10 +32,12 @@ func (p Version) Minor() uint16 {
 	return p[1]
 }
 
+// Equals returns true if versions are same.
 func (p Version) Equals(version Version) bool {
 	return p.Major() == version.Major() && p.Minor() == version.Minor()
 }
 
+// GreaterThan returns true if current version is greater than target.
 func (p Version) GreaterThan(version Version) bool {
 	if p[0] == version[0] {
 		return p[1] > version[1]
@@ -43,6 +45,7 @@ func (p Version) GreaterThan(version Version) bool {
 	return p[0] > version[0]
 }
 
+// LessThan returns true if current version is less than target.
 func (p Version) LessThan(version Version) bool {
 	if p[0] == version[0] {
 		return p[1] < version[1]

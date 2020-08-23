@@ -26,7 +26,8 @@ const (
 	_schedulerSize = 64
 )
 
-var errSocketClosed = errors.New("socket closed already")
+var errSocketClosed = errors.New("rsocket: socket closed already")
+var errRequestFailed = errors.New("rsocket: send request failed")
 
 var (
 	unsupportedRequestStream   = []byte("Request-Stream not implemented.")
@@ -42,7 +43,7 @@ type DuplexConnection struct {
 	outs         chan core.WriteableFrame
 	outsPriority []core.WriteableFrame
 	responder    Responder
-	messages     *map32
+	messages     *map32 // key=streamID, value=callback
 	sids         StreamID
 	mtu          int
 	fragments    *map32 // key=streamID, value=Joiner
@@ -51,7 +52,7 @@ type DuplexConnection struct {
 	cond         sync.Cond
 	sc           scheduler.Scheduler
 	e            error
-	leases       lease.Leases
+	leases       lease.Factory
 	closed       *atomic.Bool
 	ready        *atomic.Bool
 }
@@ -201,16 +202,18 @@ func (dc *DuplexConnection) RequestResponse(pl payload.Payload) (result mono.Mon
 
 	result = processor.
 		DoFinally(func(s rx.SignalType) {
+			defer dc.unregister(sid)
 			if s == rx.SignalCancel {
 				dc.sendFrame(framing.NewWriteableCancelFrame(sid))
 			}
-			dc.unregister(sid)
 		})
 
 	// sending...
 	size := framing.CalcPayloadFrameSize(data, metadata)
 	if !dc.shouldSplit(size) {
-		dc.sendFrame(framing.NewWriteableRequestResponseFrame(sid, data, metadata, 0))
+		if ok := dc.sendFrame(framing.NewWriteableRequestResponseFrame(sid, data, metadata, 0)); !ok {
+			dc.killCallback(sid)
+		}
 		return
 	}
 	dc.doSplit(data, metadata, func(index int, result fragmentation.SplitResult) {
@@ -220,7 +223,9 @@ func (dc *DuplexConnection) RequestResponse(pl payload.Payload) (result mono.Mon
 		} else {
 			f = framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
 		}
-		dc.sendFrame(f)
+		if ok := dc.sendFrame(f); !ok {
+			dc.killCallback(sid)
+		}
 	})
 
 	return
@@ -264,7 +269,9 @@ func (dc *DuplexConnection) RequestStream(sending payload.Payload) (ret flux.Flu
 
 			size := framing.CalcPayloadFrameSize(data, metadata) + 4
 			if !dc.shouldSplit(size) {
-				dc.sendFrame(framing.NewWriteableRequestStreamFrame(sid, n32, data, metadata, 0))
+				if ok := dc.sendFrame(framing.NewWriteableRequestStreamFrame(sid, n32, data, metadata, 0)); !ok {
+					dc.killCallback(sid)
+				}
 				return
 			}
 
@@ -275,10 +282,20 @@ func (dc *DuplexConnection) RequestStream(sending payload.Payload) (ret flux.Flu
 				} else {
 					f = framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
 				}
-				dc.sendFrame(f)
+				if ok := dc.sendFrame(f); !ok {
+					dc.killCallback(sid)
+				}
 			})
 		})
 	return
+}
+
+func (dc *DuplexConnection) killCallback(sid uint32) {
+	cb, ok := dc.messages.Load(sid)
+	if !ok {
+		return
+	}
+	cb.(callback).stopWithError(errRequestFailed)
 }
 
 // RequestChannel start a request of RequestChannel.
@@ -811,17 +828,17 @@ func (dc *DuplexConnection) currentTransport() (tp *transport.Transport) {
 
 // SetTransport sets a transport for current socket.
 func (dc *DuplexConnection) SetTransport(tp *transport.Transport) (ok bool) {
-	tp.RegisterHandler(transport.OnCancel, dc.onFrameCancel)
-	tp.RegisterHandler(transport.OnError, dc.onFrameError)
-	tp.RegisterHandler(transport.OnRequestN, dc.onFrameRequestN)
-	tp.RegisterHandler(transport.OnPayload, dc.onFramePayload)
-	tp.RegisterHandler(transport.OnKeepalive, dc.onFrameKeepalive)
+	tp.Handle(transport.OnCancel, dc.onFrameCancel)
+	tp.Handle(transport.OnError, dc.onFrameError)
+	tp.Handle(transport.OnRequestN, dc.onFrameRequestN)
+	tp.Handle(transport.OnPayload, dc.onFramePayload)
+	tp.Handle(transport.OnKeepalive, dc.onFrameKeepalive)
 	if dc.responder != nil {
-		tp.RegisterHandler(transport.OnRequestResponse, dc.onFrameRequestResponse)
-		tp.RegisterHandler(transport.OnMetadataPush, dc.respondMetadataPush)
-		tp.RegisterHandler(transport.OnFireAndForget, dc.onFrameFNF)
-		tp.RegisterHandler(transport.OnRequestStream, dc.onFrameRequestStream)
-		tp.RegisterHandler(transport.OnRequestChannel, dc.onFrameRequestChannel)
+		tp.Handle(transport.OnRequestResponse, dc.onFrameRequestResponse)
+		tp.Handle(transport.OnMetadataPush, dc.respondMetadataPush)
+		tp.Handle(transport.OnFireAndForget, dc.onFrameFNF)
+		tp.Handle(transport.OnRequestStream, dc.onFrameRequestStream)
+		tp.Handle(transport.OnRequestChannel, dc.onFrameRequestChannel)
 	}
 
 	ok = dc.ready.CAS(false, true)
@@ -977,19 +994,20 @@ func (dc *DuplexConnection) drain(leaseChan <-chan lease.Lease) bool {
 	return true
 }
 
-func (dc *DuplexConnection) drainOne(out core.WriteableFrame) bool {
-	if tp := dc.currentTransport(); tp == nil {
+func (dc *DuplexConnection) drainOne(out core.WriteableFrame) (ok bool) {
+	tp := dc.currentTransport()
+	if tp == nil {
 		dc.outsPriority = append(dc.outsPriority, out)
-		return false
-	} else {
-		err := tp.Send(out, false)
-		if err != nil {
-			dc.outsPriority = append(dc.outsPriority, out)
-			logger.Errorf("send frame failed: %s\n", err.Error())
-			return false
-		}
-		return true
+		return
 	}
+	err := tp.Send(out, false)
+	if err != nil {
+		dc.outsPriority = append(dc.outsPriority, out)
+		logger.Errorf("send frame failed: %s\n", err.Error())
+		return
+	}
+	ok = true
+	return
 }
 
 func (dc *DuplexConnection) drainOutBack() {
@@ -1062,6 +1080,7 @@ func (dc *DuplexConnection) cleanOuts() {
 	dc.outsPriority = nil
 }
 
+// LoopWrite start write loop
 func (dc *DuplexConnection) LoopWrite(ctx context.Context) error {
 	defer close(dc.writeDone)
 
@@ -1131,7 +1150,7 @@ func IsSocketClosedError(err error) bool {
 }
 
 // NewServerDuplexConnection creates a new server-side DuplexConnection.
-func NewServerDuplexConnection(mtu int, leases lease.Leases) *DuplexConnection {
+func NewServerDuplexConnection(mtu int, leases lease.Factory) *DuplexConnection {
 	return newDuplexConnection(mtu, nil, &serverStreamIDs{}, leases)
 }
 
@@ -1140,7 +1159,7 @@ func NewClientDuplexConnection(mtu int, keepaliveInterval time.Duration) *Duplex
 	return newDuplexConnection(mtu, NewKeepaliver(keepaliveInterval), &clientStreamIDs{}, nil)
 }
 
-func newDuplexConnection(mtu int, ka *Keepaliver, sids StreamID, leases lease.Leases) *DuplexConnection {
+func newDuplexConnection(mtu int, ka *Keepaliver, sids StreamID, leases lease.Factory) *DuplexConnection {
 	c := &DuplexConnection{
 		leases:     leases,
 		outs:       make(chan core.WriteableFrame, _outChanSize),

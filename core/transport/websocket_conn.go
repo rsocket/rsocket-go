@@ -17,27 +17,37 @@ var _buffPool = sync.Pool{
 	New: func() interface{} { return &bytes.Buffer{} },
 }
 
-type RawWsConn interface {
+// RawWebsocketConn is Raw websocket connection.
+// Only for mock tests.
+type RawWebsocketConn interface {
 	io.Closer
+	// SetReadDeadline set read deadline.
 	SetReadDeadline(time.Time) error
+	// ReadMessage reads next message.
 	ReadMessage() (messageType int, p []byte, err error)
+	// WriteMessage writes next message.
 	WriteMessage(messageType int, data []byte) error
 }
 
-type WsConn struct {
-	c       RawWsConn
+// WebsocketConn is websocket RSocket connection.
+type WebsocketConn struct {
+	c       RawWebsocketConn
 	counter *core.TrafficCounter
 }
 
-func (p *WsConn) SetCounter(c *core.TrafficCounter) {
+// SetCounter bind a counter which can count r/w bytes.
+func (p *WebsocketConn) SetCounter(c *core.TrafficCounter) {
 	p.counter = c
 }
 
-func (p *WsConn) SetDeadline(deadline time.Time) error {
+// SetDeadline set deadline for current connection.
+// After this deadline, connection will be closed.
+func (p *WebsocketConn) SetDeadline(deadline time.Time) error {
 	return p.c.SetReadDeadline(deadline)
 }
 
-func (p *WsConn) Read() (f core.Frame, err error) {
+// Read reads next frame from Conn.
+func (p *WebsocketConn) Read() (f core.Frame, err error) {
 	t, raw, err := p.c.ReadMessage()
 
 	if err == io.EOF {
@@ -80,11 +90,13 @@ func (p *WsConn) Read() (f core.Frame, err error) {
 	return
 }
 
-func (p *WsConn) Flush() (err error) {
+// Flush flush data.
+func (p *WebsocketConn) Flush() (err error) {
 	return
 }
 
-func (p *WsConn) Write(frame core.WriteableFrame) (err error) {
+// Write writes frames.
+func (p *WebsocketConn) Write(frame core.WriteableFrame) (err error) {
 	size := frame.Len()
 	bf := _buffPool.Get().(*bytes.Buffer)
 	defer func() {
@@ -112,12 +124,14 @@ func (p *WsConn) Write(frame core.WriteableFrame) (err error) {
 	return
 }
 
-func (p *WsConn) Close() error {
+// Close closes connection.
+func (p *WebsocketConn) Close() error {
 	return p.c.Close()
 }
 
-func NewWebsocketConnection(rawConn RawWsConn) *WsConn {
-	return &WsConn{
+// NewWebsocketConnection creates a new RSocket websocket connection.
+func NewWebsocketConnection(rawConn RawWebsocketConn) *WebsocketConn {
+	return &WebsocketConn{
 		c: rawConn,
 	}
 }

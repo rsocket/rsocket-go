@@ -7,11 +7,12 @@ import (
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
-// RequestResponseFrame is frame for requesting single response.
+// RequestResponseFrame is RequestResponse frame.
 type RequestResponseFrame struct {
 	*RawFrame
 }
 
+// WriteableRequestResponseFrame is writeable RequestResponse frame.
 type WriteableRequestResponseFrame struct {
 	*tinyFrame
 	metadata []byte
@@ -50,6 +51,7 @@ func (r *RequestResponseFrame) DataUTF8() string {
 	return string(r.Data())
 }
 
+// WriteTo writes frame to writer.
 func (r WriteableRequestResponseFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = r.header.WriteTo(w)
@@ -64,11 +66,12 @@ func (r WriteableRequestResponseFrame) WriteTo(w io.Writer) (n int64, err error)
 	return
 }
 
+// Len returns length of frame.
 func (r WriteableRequestResponseFrame) Len() int {
 	return CalcPayloadFrameSize(r.data, r.metadata)
 }
 
-// NewWriteableRequestResponseFrame returns a new RequestResponse frame support.
+// NewWriteableRequestResponseFrame returns a new WriteableRequestResponseFrame.
 func NewWriteableRequestResponseFrame(id uint32, data, metadata []byte, fg core.FrameFlag) core.WriteableFrame {
 	if len(metadata) > 0 {
 		fg |= core.FlagMetadata
@@ -80,7 +83,7 @@ func NewWriteableRequestResponseFrame(id uint32, data, metadata []byte, fg core.
 	}
 }
 
-// NewRequestResponseFrame returns a new RequestResponse frame.
+// NewRequestResponseFrame returns a new RequestResponseFrame.
 func NewRequestResponseFrame(id uint32, data, metadata []byte, fg core.FrameFlag) *RequestResponseFrame {
 	bf := common.NewByteBuff()
 	if len(metadata) > 0 {

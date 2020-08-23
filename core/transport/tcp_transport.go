@@ -51,6 +51,7 @@ func (t *tcpServerTransport) Listen(ctx context.Context, notifier chan<- bool) (
 	t.l, err = t.f(ctx)
 	if err != nil {
 		notifier <- false
+		err = errors.Wrap(err, "listen tcp server failed")
 		return
 	}
 
@@ -59,6 +60,17 @@ func (t *tcpServerTransport) Listen(ctx context.Context, notifier chan<- bool) (
 	}()
 
 	notifier <- true
+
+	// daemon: close if ctx is done.
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = t.Close()
+			break
+		case <-t.done:
+			break
+		}
+	}()
 
 	// Start loop of accepting connections.
 	var c net.Conn
@@ -73,12 +85,14 @@ func (t *tcpServerTransport) Listen(ctx context.Context, notifier chan<- bool) (
 			break
 		}
 		// Dispatch raw conn.
-		tp := NewTransport(NewTcpConn(c))
+		tp := NewTransport(NewTCPConn(c))
 
 		if t.putTransport(tp) {
 			go t.acceptor(ctx, tp, func(tp *Transport) {
 				t.removeTransport(tp)
 			})
+		} else {
+			_ = t.Close()
 		}
 	}
 	return
@@ -106,7 +120,8 @@ func (t *tcpServerTransport) putTransport(tp *Transport) bool {
 	}
 }
 
-func NewTcpServerTransport(f ListenerFactory) ServerTransport {
+// NewTCPServerTransport creates a new server-side transport.
+func NewTCPServerTransport(f ListenerFactory) ServerTransport {
 	return &tcpServerTransport{
 		f:    f,
 		m:    make(map[*Transport]struct{}),
@@ -114,11 +129,8 @@ func NewTcpServerTransport(f ListenerFactory) ServerTransport {
 	}
 }
 
-func NewTcpClientTransport(c net.Conn) *Transport {
-	return NewTransport(NewTcpConn(c))
-}
-
-func NewTcpServerTransportWithAddr(network, addr string, tlsConfig *tls.Config) ServerTransport {
+// NewTCPServerTransportWithAddr creates a new server-side transport.
+func NewTCPServerTransportWithAddr(network, addr string, tlsConfig *tls.Config) ServerTransport {
 	f := func(ctx context.Context) (net.Listener, error) {
 		var c net.ListenConfig
 		l, err := c.Listen(ctx, network, addr)
@@ -130,10 +142,16 @@ func NewTcpServerTransportWithAddr(network, addr string, tlsConfig *tls.Config) 
 		}
 		return tls.NewListener(l, tlsConfig), nil
 	}
-	return NewTcpServerTransport(f)
+	return NewTCPServerTransport(f)
 }
 
-func NewTcpClientTransportWithAddr(network, addr string, tlsConfig *tls.Config) (tp *Transport, err error) {
+// NewTCPClientTransport creates a new transport.
+func NewTCPClientTransport(c net.Conn) *Transport {
+	return NewTransport(NewTCPConn(c))
+}
+
+// NewTCPClientTransportWithAddr creates a new transport.
+func NewTCPClientTransportWithAddr(network, addr string, tlsConfig *tls.Config) (tp *Transport, err error) {
 	var rawConn net.Conn
 	if tlsConfig == nil {
 		rawConn, err = net.Dial(network, addr)
@@ -143,6 +161,6 @@ func NewTcpClientTransportWithAddr(network, addr string, tlsConfig *tls.Config) 
 	if err != nil {
 		return
 	}
-	tp = NewTcpClientTransport(rawConn)
+	tp = NewTCPClientTransport(rawConn)
 	return
 }

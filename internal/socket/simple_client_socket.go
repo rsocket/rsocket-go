@@ -26,14 +26,14 @@ func (p *simpleClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err e
 
 	if setup.Lease {
 		p.refreshLease(0, 0)
-		tp.RegisterHandler(transport.OnLease, func(frame core.Frame) (err error) {
+		tp.Handle(transport.OnLease, func(frame core.Frame) (err error) {
 			lease := frame.(*framing.LeaseFrame)
 			p.refreshLease(lease.TimeToLive(), int64(lease.NumberOfRequests()))
 			return
 		})
 	}
 
-	tp.RegisterHandler(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
+	tp.Handle(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
 		p.socket.SetError(frame.(*framing.ErrorFrame))
 		return
 	})

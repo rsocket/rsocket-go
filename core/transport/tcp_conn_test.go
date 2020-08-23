@@ -16,10 +16,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func InitMockTcpConn(t *testing.T) (*gomock.Controller, *mockNetConn, *transport.TcpConn) {
+func InitMockTcpConn(t *testing.T) (*gomock.Controller, *mockNetConn, *transport.TCPConn) {
 	ctrl := gomock.NewController(t)
 	nc := newMockNetConn(ctrl)
-	tc := transport.NewTcpConn(nc)
+	tc := transport.NewTCPConn(nc)
 	return ctrl, nc, tc
 }
 

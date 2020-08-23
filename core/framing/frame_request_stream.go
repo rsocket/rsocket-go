@@ -12,11 +12,12 @@ const (
 	minRequestStreamFrameLen = initReqLen
 )
 
-// RequestStreamFrame is frame for requesting a completable stream.
+// RequestStreamFrame is RequestStream frame.
 type RequestStreamFrame struct {
 	*RawFrame
 }
 
+// WriteableRequestStreamFrame is writeable RequestStream frame.
 type WriteableRequestStreamFrame struct {
 	*tinyFrame
 	n        [4]byte
@@ -65,6 +66,7 @@ func (r *RequestStreamFrame) DataUTF8() string {
 	return string(r.Data())
 }
 
+// WriteTo writes frame to writer.
 func (r WriteableRequestStreamFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = r.header.WriteTo(w)
@@ -88,10 +90,12 @@ func (r WriteableRequestStreamFrame) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
+// Len returns length of frame.
 func (r WriteableRequestStreamFrame) Len() int {
 	return 4 + CalcPayloadFrameSize(r.data, r.metadata)
 }
 
+// NewWriteableRequestStreamFrame creates a new WriteableRequestStreamFrame.
 func NewWriteableRequestStreamFrame(id uint32, n uint32, data, metadata []byte, flag core.FrameFlag) core.WriteableFrame {
 	if len(metadata) > 0 {
 		flag |= core.FlagMetadata
@@ -108,7 +112,7 @@ func NewWriteableRequestStreamFrame(id uint32, n uint32, data, metadata []byte, 
 	}
 }
 
-// NewRequestStreamFrame returns a new request stream frame.
+// NewRequestStreamFrame returns a new RequestStreamFrame.
 func NewRequestStreamFrame(id uint32, n uint32, data, metadata []byte, flag core.FrameFlag) *RequestStreamFrame {
 	bf := common.NewByteBuff()
 	if err := binary.Write(bf, binary.BigEndian, n); err != nil {

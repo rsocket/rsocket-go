@@ -12,6 +12,7 @@ type PayloadFrame struct {
 	*RawFrame
 }
 
+// WriteablePayloadFrame is writeable Payload frame.
 type WriteablePayloadFrame struct {
 	*tinyFrame
 	metadata []byte
@@ -37,6 +38,7 @@ func (p *PayloadFrame) Data() []byte {
 	return p.trySliceData(0)
 }
 
+// MetadataUTF8 returns metadata as UTF8 string.
 func (p *PayloadFrame) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := p.Metadata()
 	if ok {
@@ -45,14 +47,17 @@ func (p *PayloadFrame) MetadataUTF8() (metadata string, ok bool) {
 	return
 }
 
+// DataUTF8 returns data as UTF8 string.
 func (p *PayloadFrame) DataUTF8() string {
 	return string(p.Data())
 }
 
+// Data returns data bytes.
 func (p WriteablePayloadFrame) Data() []byte {
 	return p.data
 }
 
+// Metadata returns metadata bytes.
 func (p WriteablePayloadFrame) Metadata() (metadata []byte, ok bool) {
 	ok = p.header.Flag().Check(core.FlagMetadata)
 	if ok {
@@ -61,6 +66,7 @@ func (p WriteablePayloadFrame) Metadata() (metadata []byte, ok bool) {
 	return
 }
 
+// DataUTF8 returns data as UTF8 string.
 func (p WriteablePayloadFrame) DataUTF8() (data string) {
 	if p.data != nil {
 		data = string(p.data)
@@ -68,6 +74,7 @@ func (p WriteablePayloadFrame) DataUTF8() (data string) {
 	return
 }
 
+// MetadataUTF8 returns metadata as UTF8 string.
 func (p WriteablePayloadFrame) MetadataUTF8() (metadata string, ok bool) {
 	ok = p.header.Flag().Check(core.FlagMetadata)
 	if ok {
@@ -76,6 +83,7 @@ func (p WriteablePayloadFrame) MetadataUTF8() (metadata string, ok bool) {
 	return
 }
 
+// WriteTo writes frame to writer.
 func (p WriteablePayloadFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = p.header.WriteTo(w)
@@ -90,11 +98,12 @@ func (p WriteablePayloadFrame) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
+// Len returns length of frame.
 func (p WriteablePayloadFrame) Len() int {
 	return CalcPayloadFrameSize(p.data, p.metadata)
 }
 
-// NewWriteablePayloadFrame returns a new payload frame.
+// NewWriteablePayloadFrame returns a new WriteablePayloadFrame.
 func NewWriteablePayloadFrame(id uint32, data, metadata []byte, flag core.FrameFlag) *WriteablePayloadFrame {
 	if len(metadata) > 0 {
 		flag |= core.FlagMetadata
@@ -108,7 +117,7 @@ func NewWriteablePayloadFrame(id uint32, data, metadata []byte, flag core.FrameF
 	}
 }
 
-// NewPayloadFrame returns a new payload frame.
+// NewPayloadFrame returns a new PayloadFrame.
 func NewPayloadFrame(id uint32, data, metadata []byte, flag core.FrameFlag) *PayloadFrame {
 	bf := common.NewByteBuff()
 	if len(metadata) > 0 {

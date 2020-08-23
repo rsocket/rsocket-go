@@ -16,8 +16,8 @@ const (
 )
 
 var (
-	_errInvalidAuthBytes     = errors.New("invalid authentication bytes")
-	_errAuthTypeLengthExceed = errors.New("invalid authType length: exceed 127 bytes")
+	errInvalidAuthBytes     = errors.New("invalid authentication bytes")
+	errAuthTypeLengthExceed = errors.New("invalid authType length: exceed 127 bytes")
 )
 
 type wellKnownAuthenticationType uint8
@@ -60,7 +60,7 @@ func (a Authentication) IsWellKnown() (ok bool) {
 // NewAuthentication creates a new Authentication
 func NewAuthentication(authType string, payload []byte) (*Authentication, error) {
 	if len(authType) > 0x7F {
-		return nil, _errAuthTypeLengthExceed
+		return nil, errAuthTypeLengthExceed
 	}
 	return &Authentication{
 		typ:     authType,
@@ -93,7 +93,7 @@ func (a Authentication) Bytes() (raw []byte) {
 func ParseAuthentication(raw []byte) (auth *Authentication, err error) {
 	totals := len(raw)
 	if totals < 2 {
-		err = _errInvalidAuthBytes
+		err = errInvalidAuthBytes
 		return
 	}
 	first := raw[0]
@@ -110,12 +110,12 @@ func ParseAuthentication(raw []byte) (auth *Authentication, err error) {
 
 	// At least 1 byte for authentication type
 	if n == 0 {
-		err = _errInvalidAuthBytes
+		err = errInvalidAuthBytes
 		return
 	}
 
 	if totals-1 < int(n) {
-		err = _errInvalidAuthBytes
+		err = errInvalidAuthBytes
 		return
 	}
 	auth = &Authentication{
@@ -127,12 +127,12 @@ func ParseAuthentication(raw []byte) (auth *Authentication, err error) {
 
 // IsInvalidAuthenticationBytes returns true if input error is for invalid bytes.
 func IsInvalidAuthenticationBytes(err error) bool {
-	return err == _errInvalidAuthBytes
+	return err == errInvalidAuthBytes
 }
 
 // IsAuthTypeLengthExceed returns true if input error is for AuthType length exceed.
 func IsAuthTypeLengthExceed(err error) bool {
-	return err == _errAuthTypeLengthExceed
+	return err == errAuthTypeLengthExceed
 }
 
 func parseWellKnownAuthenticateType(typ string) (au wellKnownAuthenticationType, ok bool) {

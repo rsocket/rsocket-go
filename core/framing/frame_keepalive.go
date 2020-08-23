@@ -13,17 +13,19 @@ const (
 	minKeepaliveFrameLen = lastRecvPosLen
 )
 
-// KeepaliveFrame is keepalive frame.
+// KeepaliveFrame is Keepalive frame.
 type KeepaliveFrame struct {
 	*RawFrame
 }
 
+// WriteableKeepaliveFrame is writeable Keepalive frame.
 type WriteableKeepaliveFrame struct {
 	*tinyFrame
 	pos  [8]byte
 	data []byte
 }
 
+// WriteTo writes frame to writer.
 func (k WriteableKeepaliveFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = k.header.WriteTo(w)
@@ -48,6 +50,7 @@ func (k WriteableKeepaliveFrame) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
+// Len returns length of frame.
 func (k WriteableKeepaliveFrame) Len() int {
 	return core.FrameHeaderLen + 8 + len(k.data)
 }
@@ -70,6 +73,7 @@ func (k *KeepaliveFrame) Data() []byte {
 	return k.body.Bytes()[lastRecvPosLen:]
 }
 
+// NewWriteableKeepaliveFrame creates a new WriteableKeepaliveFrame.
 func NewWriteableKeepaliveFrame(position uint64, data []byte, respond bool) *WriteableKeepaliveFrame {
 	var flag core.FrameFlag
 	if respond {
@@ -89,7 +93,7 @@ func NewWriteableKeepaliveFrame(position uint64, data []byte, respond bool) *Wri
 	}
 }
 
-// NewKeepaliveFrame returns a new keepalive frame.
+// NewKeepaliveFrame creates a new KeepaliveFrame.
 func NewKeepaliveFrame(position uint64, data []byte, respond bool) *KeepaliveFrame {
 	var fg core.FrameFlag
 	if respond {

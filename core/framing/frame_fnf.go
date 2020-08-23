@@ -7,17 +7,19 @@ import (
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
-// FireAndForgetFrame is fire and forget frame.
+// FireAndForgetFrame is FireAndForget frame.
 type FireAndForgetFrame struct {
 	*RawFrame
 }
 
+// WriteableFireAndForgetFrame is writeable FireAndForget frame.
 type WriteableFireAndForgetFrame struct {
 	*tinyFrame
 	metadata []byte
 	data     []byte
 }
 
+// WriteTo writes frame to writer.
 func (f WriteableFireAndForgetFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = f.header.WriteTo(w)
@@ -34,6 +36,7 @@ func (f WriteableFireAndForgetFrame) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
+// Len returns length of frame.
 func (f WriteableFireAndForgetFrame) Len() int {
 	return CalcPayloadFrameSize(f.data, f.metadata)
 }
@@ -70,6 +73,7 @@ func (f *FireAndForgetFrame) DataUTF8() string {
 	return string(f.Data())
 }
 
+// NewWriteableFireAndForgetFrame creates a new WriteableFireAndForgetFrame.
 func NewWriteableFireAndForgetFrame(sid uint32, data, metadata []byte, flag core.FrameFlag) *WriteableFireAndForgetFrame {
 	if len(metadata) > 0 {
 		flag |= core.FlagMetadata
@@ -83,7 +87,7 @@ func NewWriteableFireAndForgetFrame(sid uint32, data, metadata []byte, flag core
 	}
 }
 
-// NewFireAndForgetFrame returns a new fire and forget frame.
+// NewFireAndForgetFrame returns a new FireAndForgetFrame.
 func NewFireAndForgetFrame(sid uint32, data, metadata []byte, flag core.FrameFlag) *FireAndForgetFrame {
 	bf := common.NewByteBuff()
 	if len(metadata) > 0 {

@@ -42,12 +42,14 @@ func init() {
 	}
 }
 
+// PrettyHexDump converts bytes to pretty hex dump string.
 func PrettyHexDump(b []byte) string {
 	sb := &strings.Builder{}
 	AppendPrettyHexDump(sb, b)
 	return sb.String()
 }
 
+// AppendPrettyHexDump appends bytes to string builder.
 func AppendPrettyHexDump(dump *strings.Builder, b []byte) {
 	if len(b) < 1 {
 		return

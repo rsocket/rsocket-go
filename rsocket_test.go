@@ -206,7 +206,7 @@ func TestBiDirection(t *testing.T) {
 	defer cancel()
 
 	go func(ctx context.Context) {
-		l, _ := lease.NewSimpleLease(3*time.Second, 1*time.Second, 1*time.Second, 10)
+		l, _ := lease.NewSimpleFactory(3*time.Second, 1*time.Second, 1*time.Second, 10)
 		_ = Receive().
 			Lease(l).
 			Resume(WithServerResumeSessionDuration(1 * time.Minute)).

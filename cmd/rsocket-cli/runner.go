@@ -26,6 +26,7 @@ import (
 
 var errConflictHeadersAndMetadata = errors.New("can't specify headers and metadata")
 
+// Runner can be used to execute a command.
 type Runner struct {
 	Headers          cli.StringSlice
 	TransportHeaders cli.StringSlice
@@ -89,6 +90,7 @@ func (r *Runner) preflight() (err error) {
 	return
 }
 
+// Run run the Runner.
 func (r *Runner) Run() error {
 	if err := r.preflight(); err != nil {
 		return err

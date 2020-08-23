@@ -2,38 +2,43 @@ package lease
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
+// lease errors
 var (
 	ErrLeaseNotRcv         = errors.New("rsocket: lease was not received yet")
 	ErrLeaseExpired        = errors.New("rsocket: lease expired")
 	ErrLeaseNoMoreRequests = errors.New("rsocket: no more lease")
 )
 
-type Leases interface {
+// Factory can be used to generate leases.
+type Factory interface {
+	// Next generate next lease chan.
 	Next(ctx context.Context) (ch chan Lease, ok bool)
 }
 
+// Lease represents lease structure.
 type Lease struct {
 	TimeToLive       time.Duration
 	NumberOfRequests uint32
 	Metadata         []byte
 }
 
-func NewSimpleLease(interval, ttl, delay time.Duration, numberOfRequest uint32) (Leases, error) {
+// NewSimpleFactory creates a simple lease factory.
+func NewSimpleFactory(interval, ttl, delay time.Duration, numberOfRequest uint32) (Factory, error) {
 	if interval <= 0 {
-		return nil, fmt.Errorf("invalid simple lease interval: %s", interval)
+		return nil, errors.Errorf("invalid simple lease interval: %s", interval)
 	}
 	if ttl <= 0 {
-		return nil, fmt.Errorf("invalid simple lease TTL: %s", ttl)
+		return nil, errors.Errorf("invalid simple lease TTL: %s", ttl)
 	}
 	if numberOfRequest < 1 {
-		return nil, fmt.Errorf("invalid simple lease NumberOfRequest: %d", numberOfRequest)
+		return nil, errors.Errorf("invalid simple lease NumberOfRequest: %d", numberOfRequest)
 	}
-	return simpleLease{
+	return &simpleLease{
 		delay:    delay,
 		ttl:      ttl,
 		n:        numberOfRequest,
@@ -48,7 +53,7 @@ type simpleLease struct {
 	interval time.Duration
 }
 
-func (s simpleLease) Next(ctx context.Context) (chan Lease, bool) {
+func (s *simpleLease) Next(ctx context.Context) (chan Lease, bool) {
 	ch := make(chan Lease)
 	go func(ctx context.Context, ch chan Lease) {
 		defer close(ch)
@@ -63,10 +68,11 @@ func (s simpleLease) Next(ctx context.Context) (chan Lease, bool) {
 		}
 
 		tk := time.NewTicker(s.interval)
+		defer tk.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
-				tk.Stop()
 				return
 			case <-tk.C:
 				ch <- s.create()
@@ -76,7 +82,7 @@ func (s simpleLease) Next(ctx context.Context) (chan Lease, bool) {
 	return ch, true
 }
 
-func (s simpleLease) create() Lease {
+func (s *simpleLease) create() Lease {
 	return Lease{
 		TimeToLive:       s.ttl,
 		NumberOfRequests: s.n,

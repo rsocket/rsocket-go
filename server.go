@@ -33,7 +33,7 @@ type (
 		// Fragment set fragmentation size which default is 16_777_215(16MB).
 		Fragment(mtu int) ServerBuilder
 		// Lease enable feature of Lease.
-		Lease(leases lease.Leases) ServerBuilder
+		Lease(leases lease.Factory) ServerBuilder
 		// Resume enable resume for current server.
 		Resume(opts ...OpServerResume) ServerBuilder
 		// Acceptor register server acceptor which is used to handle incoming RSockets.
@@ -82,10 +82,10 @@ type server struct {
 	sm         *session.Manager
 	done       chan struct{}
 	onServe    []func()
-	leases     lease.Leases
+	leases     lease.Factory
 }
 
-func (p *server) Lease(leases lease.Leases) ServerBuilder {
+func (p *server) Lease(leases lease.Factory) ServerBuilder {
 	p.leases = leases
 	return p
 }

@@ -10,10 +10,13 @@ import (
 )
 
 type (
+	// ClientTransporter is alias which generate new client-side transports.
 	ClientTransporter func(context.Context) (*Transport, error)
+	// ServerTransporter is alias which generate new server-side transports.
 	ServerTransporter func(context.Context) (ServerTransport, error)
 )
 
+// ListenerFactory is factory which generate new listeners.
 type ListenerFactory func(context.Context) (net.Listener, error)
 
 // Conn is connection for RSocket.

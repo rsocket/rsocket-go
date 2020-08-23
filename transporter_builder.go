@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/gorilla/websocket"
 	"github.com/rsocket/rsocket-go/core/transport"
 )
 
@@ -41,6 +42,7 @@ type WebsocketServerBuilder struct {
 	addr      string
 	path      string
 	tlsConfig *tls.Config
+	upgrader  *websocket.Upgrader
 }
 
 // UnixClientBuilder provides builder which can be used to create a client-side UDS transport easily.
@@ -65,7 +67,7 @@ func (us *UnixServerBuilder) Build() transport.ServerTransporter {
 		if _, err := os.Stat(us.path); !os.IsNotExist(err) {
 			return nil, err
 		}
-		return transport.NewTcpServerTransportWithAddr("unix", us.path, nil), nil
+		return transport.NewTCPServerTransportWithAddr("unix", us.path, nil), nil
 	}
 }
 
@@ -78,7 +80,7 @@ func (uc *UnixClientBuilder) SetPath(path string) *UnixClientBuilder {
 // Build builds and returns a new ClientTransporter.
 func (uc UnixClientBuilder) Build() transport.ClientTransporter {
 	return func(ctx context.Context) (*transport.Transport, error) {
-		return transport.NewTcpClientTransportWithAddr("unix", uc.path, nil)
+		return transport.NewTCPClientTransportWithAddr("unix", uc.path, nil)
 	}
 }
 
@@ -123,10 +125,26 @@ func (ws *WebsocketServerBuilder) SetTLSConfig(c *tls.Config) *WebsocketServerBu
 	return ws
 }
 
+// SetUpgrader sets websocket upgrader.
+// You can customize your own websocket upgrader instead of the default upgrader.
+//
+// Example(also the default value):
+// upgrader := &websocket.Upgrader{
+//		ReadBufferSize:  1024,
+//		WriteBufferSize: 1024,
+//		CheckOrigin: func(r *http.Request) bool {
+//			return true
+//		},
+// }
+func (ws *WebsocketServerBuilder) SetUpgrader(upgrader *websocket.Upgrader) *WebsocketServerBuilder {
+	ws.upgrader = upgrader
+	return ws
+}
+
 // Build builds and returns a new websocket ServerTransporter.
 func (ws *WebsocketServerBuilder) Build() transport.ServerTransporter {
 	return func(ctx context.Context) (transport.ServerTransport, error) {
-		return transport.NewWebsocketServerTransportWithAddr(ws.addr, ws.path, ws.tlsConfig), nil
+		return transport.NewWebsocketServerTransportWithAddr(ws.addr, ws.path, ws.upgrader, ws.tlsConfig), nil
 	}
 }
 
@@ -206,7 +224,7 @@ func (ts *TCPServerBuilder) SetTLSConfig(c *tls.Config) *TCPServerBuilder {
 // Build builds and returns a new TCP ServerTransporter.
 func (ts *TCPServerBuilder) Build() transport.ServerTransporter {
 	return func(ctx context.Context) (transport.ServerTransport, error) {
-		return transport.NewTcpServerTransportWithAddr("tcp", ts.addr, ts.tlsCfg), nil
+		return transport.NewTCPServerTransportWithAddr("tcp", ts.addr, ts.tlsCfg), nil
 	}
 }
 
@@ -237,7 +255,7 @@ func (tc *TCPClientBuilder) SetTLSConfig(c *tls.Config) *TCPClientBuilder {
 // Build builds and returns a new TCP ClientTransporter.
 func (tc *TCPClientBuilder) Build() transport.ClientTransporter {
 	return func(ctx context.Context) (*transport.Transport, error) {
-		return transport.NewTcpClientTransportWithAddr("tcp", tc.addr, tc.tlsCfg)
+		return transport.NewTCPClientTransportWithAddr("tcp", tc.addr, tc.tlsCfg)
 	}
 }
 

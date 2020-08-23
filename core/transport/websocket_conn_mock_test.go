@@ -10,7 +10,7 @@ import (
 	time "time"
 )
 
-// mockRawWsConn is a mock of RawWsConn interface
+// mockRawWsConn is a mock of RawWebsocketConn interface
 type mockRawWsConn struct {
 	ctrl     *gomock.Controller
 	recorder *mockRawWsConnMockRecorder

@@ -17,14 +17,14 @@ import (
 func InitTcpServerTransport(t *testing.T) (*gomock.Controller, *mockNetListener, transport.ServerTransport) {
 	ctrl := gomock.NewController(t)
 	listener := newMockNetListener(ctrl)
-	tp := transport.NewTcpServerTransport(func(ctx context.Context) (net.Listener, error) {
+	tp := transport.NewTCPServerTransport(func(ctx context.Context) (net.Listener, error) {
 		return listener, nil
 	})
 	return ctrl, listener, tp
 }
 
 func TestTcpServerTransport_ListenBroken(t *testing.T) {
-	tp := transport.NewTcpServerTransport(func(ctx context.Context) (net.Listener, error) {
+	tp := transport.NewTCPServerTransport(func(ctx context.Context) (net.Listener, error) {
 		return nil, fakeErr
 	})
 
@@ -152,14 +152,14 @@ func TestTcpServerTransport_AcceptBroken(t *testing.T) {
 
 func TestNewTcpServerTransportWithAddr(t *testing.T) {
 	assert.NotPanics(t, func() {
-		tp := transport.NewTcpServerTransportWithAddr("tcp", ":9999", nil)
+		tp := transport.NewTCPServerTransportWithAddr("tcp", ":9999", nil)
 		assert.NotNil(t, tp)
 	})
 	assert.NotPanics(t, func() {
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: true,
 		}
-		tp := transport.NewTcpServerTransportWithAddr("tcp", ":9999", tlsConfig)
+		tp := transport.NewTCPServerTransportWithAddr("tcp", ":9999", tlsConfig)
 		assert.NotNil(t, tp)
 	})
 }

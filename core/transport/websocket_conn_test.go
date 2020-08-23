@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func InitMockWsConn(t *testing.T) (*gomock.Controller, *mockRawWsConn, *transport.WsConn) {
+func InitMockWsConn(t *testing.T) (*gomock.Controller, *mockRawWsConn, *transport.WebsocketConn) {
 	ctrl := gomock.NewController(t)
 	rawConn := newMockRawWsConn(ctrl)
 	conn := transport.NewWebsocketConnection(rawConn)
