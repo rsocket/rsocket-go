@@ -99,21 +99,21 @@ func TestTransport_RegisterHandler(t *testing.T) {
 
 	callsErrorWithZeroStreamID := atomic.NewInt32(0)
 
-	tp.RegisterHandler(transport.OnSetup, fakeHandler)
-	tp.RegisterHandler(transport.OnRequestResponse, fakeHandler)
-	tp.RegisterHandler(transport.OnFireAndForget, fakeHandler)
-	tp.RegisterHandler(transport.OnMetadataPush, fakeHandler)
-	tp.RegisterHandler(transport.OnRequestStream, fakeHandler)
-	tp.RegisterHandler(transport.OnRequestChannel, fakeHandler)
-	tp.RegisterHandler(transport.OnKeepalive, fakeHandler)
-	tp.RegisterHandler(transport.OnRequestN, fakeHandler)
-	tp.RegisterHandler(transport.OnPayload, fakeHandler)
-	tp.RegisterHandler(transport.OnError, fakeHandler)
-	tp.RegisterHandler(transport.OnCancel, fakeHandler)
-	tp.RegisterHandler(transport.OnResumeOK, fakeHandler)
-	tp.RegisterHandler(transport.OnResume, fakeHandler)
-	tp.RegisterHandler(transport.OnLease, fakeHandler)
-	tp.RegisterHandler(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
+	tp.Handle(transport.OnSetup, fakeHandler)
+	tp.Handle(transport.OnRequestResponse, fakeHandler)
+	tp.Handle(transport.OnFireAndForget, fakeHandler)
+	tp.Handle(transport.OnMetadataPush, fakeHandler)
+	tp.Handle(transport.OnRequestStream, fakeHandler)
+	tp.Handle(transport.OnRequestChannel, fakeHandler)
+	tp.Handle(transport.OnKeepalive, fakeHandler)
+	tp.Handle(transport.OnRequestN, fakeHandler)
+	tp.Handle(transport.OnPayload, fakeHandler)
+	tp.Handle(transport.OnError, fakeHandler)
+	tp.Handle(transport.OnCancel, fakeHandler)
+	tp.Handle(transport.OnResumeOK, fakeHandler)
+	tp.Handle(transport.OnResume, fakeHandler)
+	tp.Handle(transport.OnLease, fakeHandler)
+	tp.Handle(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
 		callsErrorWithZeroStreamID.Inc()
 		return
 	})
@@ -219,7 +219,7 @@ func TestTransport_HandlerReturnsError(t *testing.T) {
 	conn.EXPECT().Close().Times(1)
 	conn.EXPECT().Read().Return(framing.NewCancelFrame(1), nil).Times(1)
 
-	tp.RegisterHandler(transport.OnCancel, func(_ core.Frame) error {
+	tp.Handle(transport.OnCancel, func(_ core.Frame) error {
 		return fakeErr
 	})
 	err := tp.Start(context.Background())

@@ -19,10 +19,12 @@ func (p TrafficCounter) WriteBytes() uint64 {
 	return p.w.Load()
 }
 
+// IncWriteBytes increases bytes wrote.
 func (p TrafficCounter) IncWriteBytes(n int) {
 	p.w.Add(uint64(n))
 }
 
+// IncReadBytes increases bytes read.
 func (p TrafficCounter) IncReadBytes(n int) {
 	p.r.Add(uint64(n))
 }

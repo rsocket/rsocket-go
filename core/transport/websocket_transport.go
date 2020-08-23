@@ -16,116 +16,176 @@ import (
 
 const defaultWebsocketPath = "/"
 
-var upgrader websocket.Upgrader
-
-func init() {
-	upgrader = websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
-	}
-}
-
 type wsServerTransport struct {
-	path       string
-	acceptor   ServerTransportAcceptor
-	onceClose  sync.Once
-	listenerFn func() (net.Listener, error)
-	listener   net.Listener
-	transports *sync.Map
+	upgrader *websocket.Upgrader
+	mu       sync.Mutex
+	path     string
+	acceptor ServerTransportAcceptor
+	f        ListenerFactory
+	l        net.Listener
+	m        map[*Transport]struct{}
+	done     chan struct{}
 }
 
-func (p *wsServerTransport) Close() (err error) {
-	p.onceClose.Do(func() {
-		if p.listener != nil {
-			err = p.listener.Close()
+func (ws *wsServerTransport) Close() (err error) {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	select {
+	case <-ws.done:
+		// already closed
+		break
+	default:
+		close(ws.done)
+		if ws.l == nil {
+			break
 		}
-	})
+		// close listener
+		err = ws.l.Close()
+		// close transports
+		for k := range ws.m {
+			_ = k.Close()
+		}
+	}
 	return
 }
 
-func (p *wsServerTransport) Accept(acceptor ServerTransportAcceptor) {
-	p.acceptor = acceptor
+func (ws *wsServerTransport) Accept(acceptor ServerTransportAcceptor) {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.acceptor = acceptor
 }
 
-func (p *wsServerTransport) Listen(ctx context.Context, notifier chan<- struct{}) (err error) {
+func (ws *wsServerTransport) Listen(ctx context.Context, notifier chan<- bool) (err error) {
+	ws.l, err = ws.f(ctx)
+	if err != nil {
+		notifier <- false
+		return
+	}
+	defer func() {
+		_ = ws.Close()
+	}()
+
+	notifier <- true
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			// context end
+			_ = ws.Close()
+			break
+		case <-ws.done:
+			// already closed
+			break
+		}
+	}()
+
 	mux := http.NewServeMux()
-	mux.HandleFunc(p.path, func(w http.ResponseWriter, r *http.Request) {
-		c, err := upgrader.Upgrade(w, r, nil)
+	mux.HandleFunc(ws.path, func(w http.ResponseWriter, r *http.Request) {
+		// upgrade websocket
+		c, err := ws.upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			logger.Errorf("create websocket conn failed: %s\n", err.Error())
 			return
 		}
+
+		// new websocket transport
 		tp := NewTransport(NewWebsocketConnection(c))
-		p.transports.Store(tp, struct{}{})
-		go p.acceptor(ctx, tp, func(tp *Transport) {
-			p.transports.Delete(tp)
-		})
+
+		if ws.putTransport(tp) {
+			// accept async
+			go ws.acceptor(ctx, tp, func(tp *Transport) {
+				// remove transport
+				ws.removeTransport(tp)
+			})
+		} else {
+			_ = tp.Close()
+		}
 	})
 
-	p.listener, err = p.listenerFn()
-
-	if err != nil {
-		err = errors.Wrap(err, "server listen failed")
-		close(notifier)
-		return
-	}
-
-	notifier <- struct{}{}
-
-	stop := make(chan struct{})
-	ctx, cancel := context.WithCancel(ctx)
-
-	go func(ctx context.Context, stop chan struct{}) {
-		defer func() {
-			_ = p.Close()
-			close(stop)
-		}()
-		<-ctx.Done()
-	}(ctx, stop)
-
-	err = http.Serve(p.listener, mux)
+	err = http.Serve(ws.l, mux)
 	if err == io.EOF || isClosedErr(err) {
 		err = nil
 	} else {
 		err = errors.Wrap(err, "listen websocket server failed")
 	}
-	cancel()
-	<-stop
 	return
 }
 
-func NewWebsocketServerTransport(gen func() (net.Listener, error), path string) ServerTransport {
+func (ws *wsServerTransport) removeTransport(tp *Transport) {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	if ws.m == nil {
+		return
+	}
+	delete(ws.m, tp)
+}
+
+func (ws *wsServerTransport) putTransport(tp *Transport) bool {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	select {
+	case <-ws.done:
+		// already closed
+		return false
+	default:
+		if ws.m == nil {
+			return false
+		}
+		// put transport
+		ws.m[tp] = struct{}{}
+		return true
+	}
+}
+
+// NewWebsocketServerTransport creates a new server-side transport.
+func NewWebsocketServerTransport(f ListenerFactory, path string, upgrader *websocket.Upgrader) ServerTransport {
 	if path == "" {
 		path = defaultWebsocketPath
 	}
+	if upgrader == nil {
+		upgrader = &websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				return true
+			},
+		}
+	}
 	return &wsServerTransport{
-		path:       path,
-		listenerFn: gen,
-		transports: &sync.Map{},
+		upgrader: upgrader,
+		path:     path,
+		f:        f,
+		m:        make(map[*Transport]struct{}),
+		done:     make(chan struct{}),
 	}
 }
 
-func NewWebsocketServerTransportWithAddr(addr string, path string, c *tls.Config) ServerTransport {
-	return NewWebsocketServerTransport(func() (net.Listener, error) {
-		if c == nil {
-			return net.Listen("tcp", addr)
+// NewWebsocketServerTransportWithAddr creates a new server-side transport.
+func NewWebsocketServerTransportWithAddr(addr string, path string, upgrader *websocket.Upgrader, config *tls.Config) ServerTransport {
+	f := func(ctx context.Context) (net.Listener, error) {
+		var c net.ListenConfig
+		l, err := c.Listen(ctx, "tcp", addr)
+		if err != nil {
+			return nil, err
 		}
-		return tls.Listen("tcp", addr, c)
-	}, path)
+		if config == nil {
+			return l, nil
+		}
+		return tls.NewListener(l, config), nil
+	}
+	return NewWebsocketServerTransport(f, path, upgrader)
 }
 
-func NewWebsocketClientTransport(url string, tc *tls.Config, header http.Header) (*Transport, error) {
+// NewWebsocketClientTransport creates a new client-side transport.
+func NewWebsocketClientTransport(url string, config *tls.Config, header http.Header) (*Transport, error) {
 	var d *websocket.Dialer
-	if tc == nil {
+	if config == nil {
 		d = websocket.DefaultDialer
 	} else {
 		d = &websocket.Dialer{
 			Proxy:            http.ProxyFromEnvironment,
 			HandshakeTimeout: 45 * time.Second,
-			TLSClientConfig:  tc,
+			TLSClientConfig:  config,
 		}
 	}
 	wsConn, _, err := d.Dial(url, header)

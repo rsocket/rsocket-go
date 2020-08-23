@@ -46,7 +46,7 @@ func (c *CompositeMetadataScanner) MetadataUTF8() (mimeType string, metadata str
 	return
 }
 
-// MetadataUTF8 returns current metadata bytes.
+// Metadata returns current metadata bytes.
 func (c *CompositeMetadataScanner) Metadata() (mimeType string, metadata []byte, err error) {
 	l, mimeType, metadata, err := c.decodeCompositeMetadataOnce(c.raw[c.offset:])
 	if err != nil {

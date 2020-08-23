@@ -108,6 +108,7 @@ func (f FrameFlag) Check(flag FrameFlag) bool {
 	return flag&f == flag
 }
 
+// WriteableFrame means writeable frame.
 type WriteableFrame interface {
 	io.WriterTo
 	// FrameHeader returns frame FrameHeader.

@@ -17,11 +17,12 @@ const (
 	_minSetupFrameLen = _versionLen + _timeLen*2 + _metadataLen + _dataLen
 )
 
-// SetupFrame is sent by client to initiate protocol processing.
+// SetupFrame is Setup frame.
 type SetupFrame struct {
 	*RawFrame
 }
 
+// WriteableSetupFrame is writeable Setup frame.
 type WriteableSetupFrame struct {
 	*tinyFrame
 	version      core.Version
@@ -138,6 +139,7 @@ func (p *SetupFrame) seekMIME() int {
 	return 14 + int(l)
 }
 
+// WriteTo writes frame to writer.
 func (s WriteableSetupFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = s.header.WriteTo(w)
@@ -211,6 +213,7 @@ func (s WriteableSetupFrame) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
+// Len returns length of frame.
 func (s WriteableSetupFrame) Len() int {
 	n := _minSetupFrameLen + CalcPayloadFrameSize(s.data, s.metadata)
 	n += len(s.mimeData) + len(s.mimeMetadata)
@@ -220,6 +223,7 @@ func (s WriteableSetupFrame) Len() int {
 	return n
 }
 
+// NewWriteableSetupFrame creates a new WriteableSetupFrame.
 func NewWriteableSetupFrame(
 	version core.Version,
 	timeBetweenKeepalive,
@@ -260,7 +264,7 @@ func NewWriteableSetupFrame(
 	}
 }
 
-// NewSetupFrame returns a new setup frame.
+// NewSetupFrame returns a new SetupFrame.
 func NewSetupFrame(
 	version core.Version,
 	timeBetweenKeepalive,

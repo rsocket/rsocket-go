@@ -36,6 +36,7 @@ func (p *SetupInfo) toFrame() core.WriteableFrame {
 	)
 }
 
+// ToIntRequestN converts n to valid request n.
 func ToIntRequestN(n uint32) int {
 	if n > rx.RequestMax {
 		return rx.RequestMax
@@ -43,6 +44,7 @@ func ToIntRequestN(n uint32) int {
 	return int(n)
 }
 
+// ToUint32RequestN converts n to valid request n.
 func ToUint32RequestN(n int) uint32 {
 	if n < 0 {
 		panic("invalid negative int")

@@ -17,14 +17,14 @@ import (
 func InitTcpServerTransport(t *testing.T) (*gomock.Controller, *mockNetListener, transport.ServerTransport) {
 	ctrl := gomock.NewController(t)
 	listener := newMockNetListener(ctrl)
-	tp := transport.NewTcpServerTransport(func() (net.Listener, error) {
+	tp := transport.NewTCPServerTransport(func(ctx context.Context) (net.Listener, error) {
 		return listener, nil
 	})
 	return ctrl, listener, tp
 }
 
 func TestTcpServerTransport_ListenBroken(t *testing.T) {
-	tp := transport.NewTcpServerTransport(func() (net.Listener, error) {
+	tp := transport.NewTCPServerTransport(func(ctx context.Context) (net.Listener, error) {
 		return nil, fakeErr
 	})
 
@@ -32,13 +32,13 @@ func TestTcpServerTransport_ListenBroken(t *testing.T) {
 
 	done := make(chan struct{})
 
-	notifier := make(chan struct{})
+	notifier := make(chan bool)
 	go func() {
 		defer close(done)
 		err := tp.Listen(context.Background(), notifier)
 		assert.Equal(t, fakeErr, errors.Cause(err), "should caused by fake error")
 	}()
-	_, ok := <-notifier
+	ok := <-notifier
 	assert.False(t, ok)
 
 	<-done
@@ -54,13 +54,13 @@ func TestTcpServerTransport_Listen(t *testing.T) {
 	done := make(chan struct{})
 
 	ctx, cancel := context.WithCancel(context.Background())
-	notifier := make(chan struct{})
+	notifier := make(chan bool)
 	go func() {
 		defer close(done)
 		err := tp.Listen(ctx, notifier)
 		assert.True(t, err == nil || err == io.EOF)
 	}()
-	_, ok := <-notifier
+	ok := <-notifier
 	assert.True(t, ok)
 
 	time.Sleep(100 * time.Millisecond)
@@ -95,14 +95,14 @@ func TestTcpServerTransport_Accept(t *testing.T) {
 
 	done := make(chan struct{})
 
-	notifier := make(chan struct{})
+	notifier := make(chan bool)
 	go func() {
 		defer close(done)
 		err := tp.Listen(context.Background(), notifier)
 		assert.True(t, err == nil || err == io.EOF)
 	}()
 
-	_, ok := <-notifier
+	ok := <-notifier
 	assert.True(t, ok, "notifier failed")
 
 	c := newMockNetConn(ctrl)
@@ -136,7 +136,7 @@ func TestTcpServerTransport_AcceptBroken(t *testing.T) {
 
 	done := make(chan struct{})
 
-	notifier := make(chan struct{})
+	notifier := make(chan bool)
 	go func() {
 		defer close(done)
 		err := tp.Listen(context.Background(), notifier)
@@ -144,7 +144,7 @@ func TestTcpServerTransport_AcceptBroken(t *testing.T) {
 		assert.Equal(t, fakeErr, errors.Cause(err), "should caused by fake error")
 	}()
 
-	_, ok := <-notifier
+	ok := <-notifier
 	assert.True(t, ok, "notifier failed")
 
 	<-done
@@ -152,14 +152,14 @@ func TestTcpServerTransport_AcceptBroken(t *testing.T) {
 
 func TestNewTcpServerTransportWithAddr(t *testing.T) {
 	assert.NotPanics(t, func() {
-		tp := transport.NewTcpServerTransportWithAddr("tcp", ":9999", nil)
+		tp := transport.NewTCPServerTransportWithAddr("tcp", ":9999", nil)
 		assert.NotNil(t, tp)
 	})
 	assert.NotPanics(t, func() {
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: true,
 		}
-		tp := transport.NewTcpServerTransportWithAddr("tcp", ":9999", tlsConfig)
+		tp := transport.NewTCPServerTransportWithAddr("tcp", ":9999", tlsConfig)
 		assert.NotNil(t, tp)
 	})
 }

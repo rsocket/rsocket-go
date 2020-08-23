@@ -30,13 +30,14 @@ type ServerTransport interface {
 	// Accept register incoming connection handler.
 	Accept(acceptor ServerTransportAcceptor)
 	// Listen listens on the network address addr and handles requests on incoming connections.
-	// You can specify onReady handler, it'll be invoked when server begin listening.
-	// It always returns a non-nil error.
-	Listen(ctx context.Context, notifier chan<- struct{}) error
+	// You can specify notifier chan, it'll be sent true/false when server listening success/failed.
+	Listen(ctx context.Context, notifier chan<- bool) error
 }
 
+// EventType represents the events when transport received frames.
 type EventType int
 
+// EventTypes
 const (
 	OnSetup EventType = iota
 	OnResume
@@ -66,7 +67,8 @@ type Transport struct {
 	handlers    [handlerLen]FrameHandler
 }
 
-func (p *Transport) RegisterHandler(event EventType, handler FrameHandler) {
+// Handle register event handlers
+func (p *Transport) Handle(event EventType, handler FrameHandler) {
 	p.handlers[int(event)] = handler
 }
 
@@ -240,6 +242,7 @@ func (p *Transport) DispatchFrame(_ context.Context, frame core.Frame) (err erro
 	return
 }
 
+// NewTransport creates a new transport.
 func NewTransport(c Conn) *Transport {
 	return &Transport{
 		conn:        c,
@@ -247,6 +250,7 @@ func NewTransport(c Conn) *Transport {
 	}
 }
 
+// IsNoHandlerError returns true if input error means no handler registered.
 func IsNoHandlerError(err error) bool {
 	return err == errNoHandler
 }

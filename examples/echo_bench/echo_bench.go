@@ -17,12 +17,12 @@ import (
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
-var tp transport.ClientTransportFunc
+var tp transport.ClientTransporter
 
 func init() {
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
-	tp = rsocket.TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()
+	tp = rsocket.TCPClient().SetHostAndPort("127.0.0.1", 7878).Build()
 }
 
 func main() {

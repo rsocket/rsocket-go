@@ -58,7 +58,7 @@ type (
 		RequestChannel(messages rx.Publisher) flux.Flux
 	}
 
-	// CloseableRSocket is a RSocket which support more events.
+	// CloseableRSocket is RSocket which can be closed and handle close event.
 	CloseableRSocket interface {
 		socket.Closeable
 		RSocket
@@ -79,35 +79,35 @@ func NewAbstractSocket(opts ...OptAbstractSocket) RSocket {
 }
 
 // MetadataPush register request handler for MetadataPush.
-func MetadataPush(fn func(msg payload.Payload)) OptAbstractSocket {
+func MetadataPush(fn func(request payload.Payload)) OptAbstractSocket {
 	return func(socket *socket.AbstractRSocket) {
 		socket.MP = fn
 	}
 }
 
 // FireAndForget register request handler for FireAndForget.
-func FireAndForget(fn func(msg payload.Payload)) OptAbstractSocket {
+func FireAndForget(fn func(request payload.Payload)) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.FF = fn
 	}
 }
 
 // RequestResponse register request handler for RequestResponse.
-func RequestResponse(fn func(msg payload.Payload) mono.Mono) OptAbstractSocket {
+func RequestResponse(fn func(request payload.Payload) (response mono.Mono)) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.RR = fn
 	}
 }
 
 // RequestStream register request handler for RequestStream.
-func RequestStream(fn func(msg payload.Payload) flux.Flux) OptAbstractSocket {
+func RequestStream(fn func(request payload.Payload) (responses flux.Flux)) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.RS = fn
 	}
 }
 
 // RequestChannel register request handler for RequestChannel.
-func RequestChannel(fn func(msgs rx.Publisher) flux.Flux) OptAbstractSocket {
+func RequestChannel(fn func(requests rx.Publisher) (responses flux.Flux)) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.RC = fn
 	}

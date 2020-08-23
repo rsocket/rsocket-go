@@ -54,7 +54,7 @@ func server(readyCh chan struct{}) {
 			return rsocket.NewAbstractSocket(requestChannelHandler), nil
 		}).
 		// specify transport
-		Transport(rsocket.TcpServer().SetAddr(":7878").Build()).
+		Transport(rsocket.TCPServer().SetAddr(":7878").Build()).
 		// serve will block execution unless an error occurred
 		Serve(context.Background())
 
@@ -63,7 +63,7 @@ func server(readyCh chan struct{}) {
 
 func client() {
 	// Start a client connection
-	client, err := rsocket.Connect().Transport(rsocket.TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()).Start(context.Background())
+	client, err := rsocket.Connect().Transport(rsocket.TCPClient().SetHostAndPort("127.0.0.1", 7878).Build()).Start(context.Background())
 	if err != nil {
 		panic(err)
 	}

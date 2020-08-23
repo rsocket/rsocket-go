@@ -63,16 +63,18 @@ type ClientBuilder interface {
 	Acceptor(acceptor ClientSocketAcceptor) ToClientStarter
 }
 
+// ToClientStarter is used to build a RSocket client with custom Transport.
 type ToClientStarter interface {
 	// Transport set generator func for current RSocket client.
-	// Example:
-	// "tcp://127.0.0.1:7878" means a TCP RSocket transport.
-	// "ws://127.0.0.1:8080/a/b/c" means a Websocket RSocket transport.
-	// "wss://127.0.0.1:8080/a/b/c" means a  Websocket RSocket transport with HTTPS.
-	Transport(transport.ClientTransportFunc) ClientStarter
+	//
+	// Examples:
+	//
+	// rsocket.TCPClient().SetHostAndPort("127.0.0.1", 7878).Build()
+	// rsocket.WebsocketClient().SetURL("ws://127.0.0.1:8080/hello").Build()
+	// rsocket.UnixClient().SetPath("/var/run/rsocket.sock").Build()
+	Transport(transport.ClientTransporter) ClientStarter
 }
 
-// ToClientStarter is used to build a RSocket client with custom Transport string.
 type setupClientSocket interface {
 	Client
 	Setup(ctx context.Context, setup *socket.SetupInfo) error
@@ -81,7 +83,7 @@ type setupClientSocket interface {
 type clientBuilder struct {
 	resume   *resumeOpts
 	fragment int
-	tpGen    transport.ClientTransportFunc
+	tpGen    transport.ClientTransporter
 	setup    *socket.SetupInfo
 	acceptor ClientSocketAcceptor
 	onCloses []func(error)
@@ -152,7 +154,7 @@ func (cb *clientBuilder) Acceptor(acceptor ClientSocketAcceptor) ToClientStarter
 	return cb
 }
 
-func (cb *clientBuilder) Transport(t transport.ClientTransportFunc) ClientStarter {
+func (cb *clientBuilder) Transport(t transport.ClientTransporter) ClientStarter {
 	cb.tpGen = t
 	return cb
 }

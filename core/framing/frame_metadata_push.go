@@ -9,10 +9,12 @@ import (
 
 var _metadataPushHeader = core.NewFrameHeader(0, core.FrameTypeMetadataPush, core.FlagMetadata)
 
-// MetadataPushFrame is metadata push frame.
+// MetadataPushFrame is MetadataPush frame.
 type MetadataPushFrame struct {
 	*RawFrame
 }
+
+// WriteableMetadataPushFrame is writeable MetadataPush frame.
 type WriteableMetadataPushFrame struct {
 	*tinyFrame
 	metadata []byte
@@ -42,6 +44,7 @@ func (m *MetadataPushFrame) MetadataUTF8() (metadata string, ok bool) {
 	return
 }
 
+// WriteTo writes frame to writer.
 func (m WriteableMetadataPushFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = m.header.WriteTo(w)
@@ -59,6 +62,7 @@ func (m WriteableMetadataPushFrame) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
+// Len returns length of frame.
 func (m WriteableMetadataPushFrame) Len() int {
 	return core.FrameHeaderLen + len(m.metadata)
 }
@@ -68,6 +72,7 @@ func (m *MetadataPushFrame) DataUTF8() (data string) {
 	return
 }
 
+// NewWriteableMetadataPushFrame creates a new WriteableMetadataPushFrame.
 func NewWriteableMetadataPushFrame(metadata []byte) *WriteableMetadataPushFrame {
 	t := newTinyFrame(_metadataPushHeader)
 	return &WriteableMetadataPushFrame{
@@ -76,7 +81,7 @@ func NewWriteableMetadataPushFrame(metadata []byte) *WriteableMetadataPushFrame 
 	}
 }
 
-// NewMetadataPushFrame returns a new metadata push frame.
+// NewMetadataPushFrame returns a new MetadataPushFrame.
 func NewMetadataPushFrame(metadata []byte) *MetadataPushFrame {
 	bf := common.NewByteBuff()
 	if _, err := bf.Write(metadata); err != nil {

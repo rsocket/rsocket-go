@@ -20,11 +20,12 @@ const (
 	_minResumeLength = _lenVersion + _lenTokenLength + _lenLastRecvPos + _lenFirstPos
 )
 
-// ResumeFrame represents a frame of Resume.
+// ResumeFrame is Resume frame.
 type ResumeFrame struct {
 	*RawFrame
 }
 
+// WriteableResumeFrame is writeable Resume frame.
 type WriteableResumeFrame struct {
 	*tinyFrame
 	version  core.Version
@@ -70,6 +71,7 @@ func (r *ResumeFrame) FirstAvailableClientPosition() uint64 {
 	return binary.BigEndian.Uint64(raw[offset:])
 }
 
+// WriteTo writes frame to writer.
 func (r WriteableResumeFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = r.header.WriteTo(w)
@@ -114,11 +116,12 @@ func (r WriteableResumeFrame) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
+// Len returns length of frame.
 func (r WriteableResumeFrame) Len() int {
 	return core.FrameHeaderLen + _lenTokenLength + _lenFirstPos + _lenLastRecvPos + _lenVersion + len(r.token)
 }
 
-// NewWriteableResumeFrame creates a new frame support of Resume.
+// NewWriteableResumeFrame creates a new WriteableResumeFrame.
 func NewWriteableResumeFrame(version core.Version, token []byte, firstAvailableClientPosition, lastReceivedServerPosition uint64) *WriteableResumeFrame {
 	h := core.NewFrameHeader(0, core.FrameTypeResume, 0)
 	t := newTinyFrame(h)
@@ -135,7 +138,7 @@ func NewWriteableResumeFrame(version core.Version, token []byte, firstAvailableC
 	}
 }
 
-// NewResumeFrame creates a new frame of Resume.
+// NewResumeFrame creates a new ResumeFrame.
 func NewResumeFrame(version core.Version, token []byte, firstAvailableClientPosition, lastReceivedServerPosition uint64) *ResumeFrame {
 	n := len(token)
 	if n > math.MaxUint16 {

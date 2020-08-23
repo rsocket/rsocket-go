@@ -26,6 +26,7 @@ import (
 
 var errConflictHeadersAndMetadata = errors.New("can't specify headers and metadata")
 
+// Runner can be used to execute a command.
 type Runner struct {
 	Headers          cli.StringSlice
 	TransportHeaders cli.StringSlice
@@ -89,6 +90,7 @@ func (r *Runner) preflight() (err error) {
 	return
 }
 
+// Run run the Runner.
 func (r *Runner) Run() error {
 	if err := r.preflight(); err != nil {
 		return err
@@ -333,7 +335,7 @@ func (r *Runner) readData(input string) (data []byte, err error) {
 	return
 }
 
-func (r *Runner) newClientTransport() (transport.ClientTransportFunc, error) {
+func (r *Runner) newClientTransport() (transport.ClientTransporter, error) {
 	u, err := url.Parse(r.URI)
 	if err != nil {
 		return nil, err
@@ -344,17 +346,17 @@ func (r *Runner) newClientTransport() (transport.ClientTransportFunc, error) {
 		if err != nil {
 			return nil, err
 		}
-		return rsocket.TcpClient().SetHostAndPort(u.Hostname(), port).Build(), nil
+		return rsocket.TCPClient().SetHostAndPort(u.Hostname(), port).Build(), nil
 	case "unix":
 		return rsocket.UnixClient().SetPath(u.Hostname()).Build(), nil
 	case "ws", "wss":
-		return rsocket.WebsocketClient().SetUrl(r.URI).SetHeader(r.wsHeaders).Build(), nil
+		return rsocket.WebsocketClient().SetURL(r.URI).SetHeader(r.wsHeaders).Build(), nil
 	default:
 		return nil, fmt.Errorf("invalid transport %s", u.Scheme)
 	}
 }
 
-func (r *Runner) newServerTransport() (transport.ServerTransportFunc, error) {
+func (r *Runner) newServerTransport() (transport.ServerTransporter, error) {
 	u, err := url.Parse(r.URI)
 	if err != nil {
 		return nil, err
@@ -365,7 +367,7 @@ func (r *Runner) newServerTransport() (transport.ServerTransportFunc, error) {
 		if err != nil {
 			return nil, err
 		}
-		return rsocket.TcpServer().SetHostAndPort(u.Hostname(), port).Build(), nil
+		return rsocket.TCPServer().SetHostAndPort(u.Hostname(), port).Build(), nil
 	case "unix":
 		return rsocket.UnixServer().SetPath(u.Hostname()).Build(), nil
 	case "ws", "wss":

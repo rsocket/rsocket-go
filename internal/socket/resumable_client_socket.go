@@ -20,7 +20,7 @@ type resumeClientSocket struct {
 	*BaseSocket
 	connects *atomic.Int32
 	setup    *SetupInfo
-	tp       transport.ClientTransportFunc
+	tp       transport.ClientTransporter
 }
 
 func (r *resumeClientSocket) Setup(ctx context.Context, setup *SetupInfo) error {
@@ -71,8 +71,8 @@ func (r *resumeClientSocket) connect(ctx context.Context) (err error) {
 			_ = r.connect(ctx)
 		}()
 		err := tp.Start(ctx)
-		if err != nil {
-			logger.Errorf("client exit: %s\n", err)
+		if err != nil && logger.IsDebugEnabled() {
+			logger.Debugf("resumable client stopped: %s\n", err)
 		}
 	}(ctx, tp)
 
@@ -80,7 +80,7 @@ func (r *resumeClientSocket) connect(ctx context.Context) (err error) {
 
 	// connect first time.
 	if len(r.setup.Token) < 1 || connects == 1 {
-		tp.RegisterHandler(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
+		tp.Handle(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
 			r.socket.SetError(frame.(*framing.ErrorFrame))
 			r.markAsClosing()
 			return
@@ -100,12 +100,12 @@ func (r *resumeClientSocket) connect(ctx context.Context) (err error) {
 
 	resumeErr := make(chan string)
 
-	tp.RegisterHandler(transport.OnResumeOK, func(frame core.Frame) (err error) {
+	tp.Handle(transport.OnResumeOK, func(frame core.Frame) (err error) {
 		close(resumeErr)
 		return
 	})
 
-	tp.RegisterHandler(transport.OnErrorWithZeroStreamID, func(frame core.Frame) error {
+	tp.Handle(transport.OnErrorWithZeroStreamID, func(frame core.Frame) error {
 		// TODO: process other error with zero StreamID
 		f := frame.(*framing.ErrorFrame)
 		if f.ErrorCode() == core.ErrorCodeRejectedResume {
@@ -135,6 +135,7 @@ func (r *resumeClientSocket) connect(ctx context.Context) (err error) {
 		if ok {
 			err = errors.New(reject)
 			r.markAsClosing()
+			err = r.connect(ctx)
 		} else {
 			r.socket.SetTransport(tp)
 		}
@@ -151,7 +152,7 @@ func (r *resumeClientSocket) isClosed() bool {
 }
 
 // NewResumableClientSocket creates a client-side socket with resume support.
-func NewResumableClientSocket(tp transport.ClientTransportFunc, socket *DuplexConnection) ClientSocket {
+func NewResumableClientSocket(tp transport.ClientTransporter, socket *DuplexConnection) ClientSocket {
 	return &resumeClientSocket{
 		BaseSocket: NewBaseSocket(socket),
 		connects:   atomic.NewInt32(0),

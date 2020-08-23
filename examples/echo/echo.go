@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"strconv"
-	"strings"
 
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
@@ -19,10 +17,10 @@ import (
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
-var tp transport.ServerTransportFunc
+var tp transport.ServerTransporter
 
 func init() {
-	tp = rsocket.TcpServer().SetHostAndPort("127.0.0.1", 7878).Build()
+	tp = rsocket.TCPServer().SetHostAndPort("127.0.0.1", 7878).Build()
 	go func() {
 		log.Println(http.ListenAndServe(":4444", nil))
 	}()
@@ -58,9 +56,9 @@ func main() {
 				log.Println("***** socket disconnected *****")
 			})
 			// For SETUP_REJECT testing.
-			if strings.EqualFold(setup.DataUTF8(), "REJECT_ME") {
-				return nil, errors.New("bye bye bye")
-			}
+			//if strings.EqualFold(setup.DataUTF8(), "REJECT_ME") {
+			//	return nil, errors.New("bye bye bye")
+			//}
 			return responder(), nil
 		}).
 		Transport(tp).

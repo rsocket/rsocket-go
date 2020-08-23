@@ -33,7 +33,7 @@ type (
 		// Fragment set fragmentation size which default is 16_777_215(16MB).
 		Fragment(mtu int) ServerBuilder
 		// Lease enable feature of Lease.
-		Lease(leases lease.Leases) ServerBuilder
+		Lease(leases lease.Factory) ServerBuilder
 		// Resume enable resume for current server.
 		Resume(opts ...OpServerResume) ServerBuilder
 		// Acceptor register server acceptor which is used to handle incoming RSockets.
@@ -45,7 +45,9 @@ type (
 	// ToServerStarter is used to build a RSocket server with custom Transport string.
 	ToServerStarter interface {
 		// Transport specify transport generator func.
-		Transport(t transport.ServerTransportFunc) Start
+		// Example:
+		// rsocket.TCPServer().SetAddr(":8888").Build()
+		Transport(t transport.ServerTransporter) Start
 	}
 
 	// Start start a RSocket server.
@@ -73,17 +75,17 @@ type serverResumeOptions struct {
 }
 
 type server struct {
-	tp         transport.ServerTransportFunc
+	tp         transport.ServerTransporter
 	resumeOpts *serverResumeOptions
 	fragment   int
 	acc        ServerAcceptor
 	sm         *session.Manager
 	done       chan struct{}
 	onServe    []func()
-	leases     lease.Leases
+	leases     lease.Factory
 }
 
-func (p *server) Lease(leases lease.Leases) ServerBuilder {
+func (p *server) Lease(leases lease.Factory) ServerBuilder {
 	p.leases = leases
 	return p
 }
@@ -104,7 +106,11 @@ func (p *server) Resume(opts ...OpServerResume) ServerBuilder {
 }
 
 func (p *server) Fragment(mtu int) ServerBuilder {
-	p.fragment = mtu
+	if mtu == 0 {
+		p.fragment = fragmentation.MaxFragment
+	} else {
+		p.fragment = mtu
+	}
 	return p
 }
 
@@ -113,7 +119,7 @@ func (p *server) Acceptor(acceptor ServerAcceptor) ToServerStarter {
 	return p
 }
 
-func (p *server) Transport(t transport.ServerTransportFunc) Start {
+func (p *server) Transport(t transport.ServerTransporter) Start {
 	p.tp = t
 	return p
 }
@@ -195,14 +201,14 @@ func (p *server) Serve(ctx context.Context) error {
 		}
 	})
 
-	serveNotifier := make(chan struct{})
-	go func(c <-chan struct{}, fn []func()) {
+	notifier := make(chan bool)
+	go func(c <-chan bool, fn []func()) {
 		<-c
 		for i := range fn {
 			fn[i]()
 		}
-	}(serveNotifier, p.onServe)
-	return t.Listen(ctx, serveNotifier)
+	}(notifier, p.onServe)
+	return t.Listen(ctx, notifier)
 }
 
 func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.WriteableErrorFrame) {

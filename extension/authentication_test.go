@@ -30,13 +30,18 @@ func TestNewAuthentication(t *testing.T) {
 	assert.True(t, extension.IsAuthTypeLengthExceed(err), "should error")
 }
 
-func TestParseAuthentication(t *testing.T) {
+func TestParseAuthentication_Broken(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	input := make([]byte, 2)
-	rand.Read(input)
-	input[0] &= ^uint8(0x80)
+	for {
+		rand.Read(input)
+		input[0] &= ^uint8(0x80)
+		if input[0] != 0x01 {
+			break
+		}
+	}
 	_, err := extension.ParseAuthentication(input)
-	assert.True(t, extension.IsInvalidAuthenticationBytes(err), "should error")
+	assert.True(t, extension.IsInvalidAuthenticationBytes(err), "should be invalid authentication bytes")
 }
 
 func TestAuthentication(t *testing.T) {

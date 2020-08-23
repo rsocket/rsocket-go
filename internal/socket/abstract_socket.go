@@ -27,43 +27,43 @@ type AbstractRSocket struct {
 }
 
 // MetadataPush starts a request of MetadataPush.
-func (p AbstractRSocket) MetadataPush(message payload.Payload) {
-	if p.MP == nil {
+func (a AbstractRSocket) MetadataPush(message payload.Payload) {
+	if a.MP == nil {
 		logger.Errorf("%s\n", errUnimplementedMetadataPush)
 		return
 	}
-	p.MP(message)
+	a.MP(message)
 }
 
 // FireAndForget starts a request of FireAndForget.
-func (p AbstractRSocket) FireAndForget(message payload.Payload) {
-	if p.FF == nil {
+func (a AbstractRSocket) FireAndForget(message payload.Payload) {
+	if a.FF == nil {
 		logger.Errorf("%s\n", errUnimplementedFireAndForget)
 		return
 	}
-	p.FF(message)
+	a.FF(message)
 }
 
 // RequestResponse starts a request of RequestResponse.
-func (p AbstractRSocket) RequestResponse(message payload.Payload) mono.Mono {
-	if p.RR == nil {
+func (a AbstractRSocket) RequestResponse(message payload.Payload) mono.Mono {
+	if a.RR == nil {
 		return mono.Error(errUnimplementedRequestResponse)
 	}
-	return p.RR(message)
+	return a.RR(message)
 }
 
 // RequestStream starts a request of RequestStream.
-func (p AbstractRSocket) RequestStream(message payload.Payload) flux.Flux {
-	if p.RS == nil {
+func (a AbstractRSocket) RequestStream(message payload.Payload) flux.Flux {
+	if a.RS == nil {
 		return flux.Error(errUnimplementedRequestStream)
 	}
-	return p.RS(message)
+	return a.RS(message)
 }
 
 // RequestChannel starts a request of RequestChannel.
-func (p AbstractRSocket) RequestChannel(messages rx.Publisher) flux.Flux {
-	if p.RC == nil {
+func (a AbstractRSocket) RequestChannel(messages rx.Publisher) flux.Flux {
+	if a.RC == nil {
 		return flux.Error(errUnimplementedRequestChannel)
 	}
-	return p.RC(messages)
+	return a.RC(messages)
 }

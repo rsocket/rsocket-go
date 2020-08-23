@@ -25,7 +25,7 @@ func Example() {
 				}),
 			), nil
 		}).
-		Transport(rsocket.TcpServer().SetAddr(":7878").Build()).
+		Transport(rsocket.TCPServer().SetAddr(":7878").Build()).
 		Serve(context.Background())
 	if err != nil {
 		panic(err)
@@ -34,7 +34,7 @@ func Example() {
 	// Connect to a server.
 	cli, err := rsocket.Connect().
 		SetupPayload(payload.NewString("Hello World", "From Golang")).
-		Transport(rsocket.TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()).
+		Transport(rsocket.TCPClient().SetHostAndPort("127.0.0.1", 7878).Build()).
 		Start(context.Background())
 	if err != nil {
 		panic(err)
@@ -90,7 +90,7 @@ func ExampleReceive() {
 				}),
 			), nil
 		}).
-		Transport(rsocket.TcpServer().SetHostAndPort("127.0.0.1", 7878).Build()).
+		Transport(rsocket.TCPServer().SetHostAndPort("127.0.0.1", 7878).Build()).
 		Serve(context.Background())
 	panic(err)
 }
@@ -108,7 +108,7 @@ func ExampleConnect() {
 				}),
 			)
 		}).
-		Transport(rsocket.TcpClient().SetAddr("127.0.0.1:7878").Build()).
+		Transport(rsocket.TCPClient().SetAddr("127.0.0.1:7878").Build()).
 		Start(context.Background())
 	if err != nil {
 		panic(err)

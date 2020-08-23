@@ -60,6 +60,7 @@ func (h FrameHeader) Flag() FrameFlag {
 	return FrameFlag(h.n() & 0x03FF)
 }
 
+// Bytes returns raw frame header bytes.
 func (h FrameHeader) Bytes() []byte {
 	return h[:]
 }

@@ -38,7 +38,7 @@ func ExampleNewGroup() {
 				return upstream.RequestResponse(msg)
 			})), nil
 		}).
-		Transport(rsocket.TcpServer().SetAddr(":7878").Build()).
+		Transport(rsocket.TCPServer().SetAddr(":7878").Build()).
 		Serve(context.Background())
 	if err != nil {
 		panic(err)

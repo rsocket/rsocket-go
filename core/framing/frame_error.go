@@ -20,16 +20,19 @@ type ErrorFrame struct {
 	*RawFrame
 }
 
+// WriteableErrorFrame is writeable error frame.
 type WriteableErrorFrame struct {
 	*tinyFrame
 	code core.ErrorCode
 	data []byte
 }
 
+// Error returns error string.
 func (e WriteableErrorFrame) Error() string {
 	return makeErrorString(e.code, e.data)
 }
 
+// WriteTo writes frame to writer.
 func (e WriteableErrorFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = e.header.WriteTo(w)
@@ -52,6 +55,7 @@ func (e WriteableErrorFrame) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
+// Len returns length of frame.
 func (e WriteableErrorFrame) Len() int {
 	return core.FrameHeaderLen + 4 + len(e.data)
 }
@@ -64,6 +68,7 @@ func (p *ErrorFrame) Validate() (err error) {
 	return
 }
 
+// Error returns error string.
 func (p *ErrorFrame) Error() string {
 	return makeErrorString(p.ErrorCode(), p.ErrorData())
 }
@@ -79,6 +84,7 @@ func (p *ErrorFrame) ErrorData() []byte {
 	return p.body.Bytes()[errDataOff:]
 }
 
+// NewWriteableErrorFrame creates WriteableErrorFrame.
 func NewWriteableErrorFrame(id uint32, code core.ErrorCode, data []byte) *WriteableErrorFrame {
 	h := core.NewFrameHeader(id, core.FrameTypeError, 0)
 	t := newTinyFrame(h)

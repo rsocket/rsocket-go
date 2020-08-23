@@ -21,9 +21,16 @@
    - Installation: `go get github.com/rsocket/rsocket-go/cmd/rsocket-cli`
    - Example: `rsocket-cli --request -i hello_world --setup setup_me tcp://127.0.0.1:7878`
 
-## Getting started
+## Install
+
+```shell
+$ go get -u github.com/rsocket/rsocket-go
+```
+
+## Quick Start
 
 > Start an echo server
+
 ```go
 package main
 
@@ -38,8 +45,6 @@ import (
 
 func main() {
 	err := rsocket.Receive().
-		Resume().
-		Fragment(1024).
 		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			// bind responder
 			return rsocket.NewAbstractSocket(
@@ -71,8 +76,6 @@ import (
 func main() {
 	// Connect to server
 	cli, err := rsocket.Connect().
-		Resume().
-		Fragment(1024).
 		SetupPayload(payload.NewString("Hello", "World")).
 		Transport(rsocket.TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()).
 		Start(context.Background())

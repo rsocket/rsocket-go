@@ -8,11 +8,12 @@ import (
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
-// ResumeOKFrame represents a frame of ResumeOK.
+// ResumeOKFrame is ResumeOK frame.
 type ResumeOKFrame struct {
 	*RawFrame
 }
 
+// WriteableResumeOKFrame is writeable ResumeOK frame.
 type WriteableResumeOKFrame struct {
 	*tinyFrame
 	pos [8]byte
@@ -33,6 +34,7 @@ func (r *ResumeOKFrame) LastReceivedClientPosition() uint64 {
 	return binary.BigEndian.Uint64(raw)
 }
 
+// WriteTo writes frame to writer.
 func (r WriteableResumeOKFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = r.header.WriteTo(w)
@@ -49,10 +51,12 @@ func (r WriteableResumeOKFrame) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
+// Len returns length of frame.
 func (r WriteableResumeOKFrame) Len() int {
 	return core.FrameHeaderLen + 8
 }
 
+// NewWriteableResumeOKFrame creates a new WriteableResumeOKFrame.
 func NewWriteableResumeOKFrame(position uint64) *WriteableResumeOKFrame {
 	h := core.NewFrameHeader(0, core.FrameTypeResumeOK, 0)
 	t := newTinyFrame(h)
@@ -64,7 +68,7 @@ func NewWriteableResumeOKFrame(position uint64) *WriteableResumeOKFrame {
 	}
 }
 
-// NewResumeOKFrame creates a new frame of ResumeOK.
+// NewResumeOKFrame creates a new ResumeOKFrame.
 func NewResumeOKFrame(position uint64) *ResumeOKFrame {
 	var b8 [8]byte
 	binary.BigEndian.PutUint64(b8[:], position)

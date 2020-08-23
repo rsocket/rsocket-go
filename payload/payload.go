@@ -112,6 +112,7 @@ func MustNewFile(filename string, metadata []byte) Payload {
 	return foo
 }
 
+// Equal returns true if payloads have same data and metadata.
 func Equal(a Payload, b Payload) bool {
 	if a == b {
 		return true

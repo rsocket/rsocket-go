@@ -13,22 +13,27 @@ import (
 	"github.com/rsocket/rsocket-go/logger"
 )
 
-type TcpConn struct {
+// TCPConn is RSocket connection for TCP transport.
+type TCPConn struct {
 	conn    net.Conn
 	writer  *bufio.Writer
 	decoder *LengthBasedFrameDecoder
 	counter *core.TrafficCounter
 }
 
-func (p *TcpConn) SetCounter(c *core.TrafficCounter) {
+// SetCounter bind a counter which can count r/w bytes.
+func (p *TCPConn) SetCounter(c *core.TrafficCounter) {
 	p.counter = c
 }
 
-func (p *TcpConn) SetDeadline(deadline time.Time) error {
+// SetDeadline set deadline for current connection.
+// After this deadline, connection will be closed.
+func (p *TCPConn) SetDeadline(deadline time.Time) error {
 	return p.conn.SetReadDeadline(deadline)
 }
 
-func (p *TcpConn) Read() (f core.Frame, err error) {
+// Read reads next frame from Conn.
+func (p *TCPConn) Read() (f core.Frame, err error) {
 	raw, err := p.decoder.Read()
 	if err == io.EOF {
 		return
@@ -56,7 +61,8 @@ func (p *TcpConn) Read() (f core.Frame, err error) {
 	return
 }
 
-func (p *TcpConn) Flush() (err error) {
+// Flush flush data.
+func (p *TCPConn) Flush() (err error) {
 	err = p.writer.Flush()
 	if err != nil {
 		err = errors.Wrap(err, "flush failed")
@@ -64,7 +70,8 @@ func (p *TcpConn) Flush() (err error) {
 	return
 }
 
-func (p *TcpConn) Write(frame core.WriteableFrame) (err error) {
+// Write writes a frame.
+func (p *TCPConn) Write(frame core.WriteableFrame) (err error) {
 	size := frame.Len()
 	if p.counter != nil && frame.Header().Resumable() {
 		p.counter.IncWriteBytes(size)
@@ -89,12 +96,14 @@ func (p *TcpConn) Write(frame core.WriteableFrame) (err error) {
 	return
 }
 
-func (p *TcpConn) Close() error {
+// Close close current connection.
+func (p *TCPConn) Close() error {
 	return p.conn.Close()
 }
 
-func NewTcpConn(conn net.Conn) *TcpConn {
-	return &TcpConn{
+// NewTCPConn creates a new TCP RSocket connection.
+func NewTCPConn(conn net.Conn) *TCPConn {
+	return &TCPConn{
 		conn:    conn,
 		writer:  bufio.NewWriter(conn),
 		decoder: NewLengthBasedFrameDecoder(conn),
