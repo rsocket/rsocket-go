@@ -1,6 +1,8 @@
 package rx
 
 import (
+	"context"
+
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/rsocket/rsocket-go/payload"
 )
@@ -27,7 +29,7 @@ type Subscriber interface {
 	OnComplete()
 	// OnSubscribe invoked after Publisher subscribed.
 	// No data will start flowing until Subscription#Request is invoked.
-	OnSubscribe(Subscription)
+	OnSubscribe(context.Context, Subscription)
 }
 
 type subscriber struct {
@@ -56,9 +58,9 @@ func (s *subscriber) OnComplete() {
 	}
 }
 
-func (s *subscriber) OnSubscribe(su Subscription) {
+func (s *subscriber) OnSubscribe(ctx context.Context, su Subscription) {
 	if s != nil && s.fnOnSubscribe != nil {
-		s.fnOnSubscribe(su)
+		s.fnOnSubscribe(ctx, su)
 	} else {
 		su.Request(RequestMax)
 	}

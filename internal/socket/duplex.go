@@ -355,7 +355,7 @@ func (dc *DuplexConnection) RequestChannel(publisher rx.Publisher) (ret flux.Flu
 					})
 					return
 				}),
-				rx.OnSubscribe(func(s rx.Subscription) {
+				rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 					dc.register(sid, requestChannelCallback{rcv: receiving, snd: s})
 					s.Request(1)
 				}),
@@ -419,7 +419,7 @@ func (dc *DuplexConnection) respondRequestResponse(receiving fragmentation.Heade
 		rx.OnError(func(e error) {
 			dc.writeError(sid, e)
 		}),
-		rx.OnSubscribe(func(s rx.Subscription) {
+		rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			dc.register(sid, requestResponseCallbackReverse{su: s})
 			s.Request(rx.RequestMax)
 		}),
@@ -505,7 +505,7 @@ func (dc *DuplexConnection) respondRequestChannel(pl fragmentation.HeaderAndPayl
 				<-complete.DoneNotify()
 			}
 		}),
-		rx.OnSubscribe(func(s rx.Subscription) {
+		rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			dc.register(sid, requestChannelCallbackReverse{rcv: receivingProcessor, snd: s})
 			close(mustSub)
 			s.Request(initRequestN)
@@ -602,7 +602,7 @@ func (dc *DuplexConnection) respondRequestStream(receiving fragmentation.HeaderA
 			dc.sendPayload(sid, elem, core.FlagNext)
 			return nil
 		}),
-		rx.OnSubscribe(func(s rx.Subscription) {
+		rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			dc.register(sid, requestStreamCallbackReverse{su: s})
 			s.Request(n32)
 		}),

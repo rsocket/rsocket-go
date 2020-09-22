@@ -177,20 +177,20 @@ func NewWebsocketServerTransportWithAddr(addr string, path string, upgrader *web
 }
 
 // NewWebsocketClientTransport creates a new client-side transport.
-func NewWebsocketClientTransport(url string, config *tls.Config, header http.Header) (*Transport, error) {
-	var d *websocket.Dialer
+func NewWebsocketClientTransport(ctx context.Context, url string, config *tls.Config, header http.Header) (*Transport, error) {
+	var dial *websocket.Dialer
 	if config == nil {
-		d = websocket.DefaultDialer
+		dial = websocket.DefaultDialer
 	} else {
-		d = &websocket.Dialer{
+		dial = &websocket.Dialer{
 			Proxy:            http.ProxyFromEnvironment,
 			HandshakeTimeout: 45 * time.Second,
 			TLSClientConfig:  config,
 		}
 	}
-	wsConn, _, err := d.Dial(url, header)
+	conn, _, err := dial.DialContext(ctx, url, header)
 	if err != nil {
 		return nil, errors.Wrap(err, "dial websocket failed")
 	}
-	return NewTransport(NewWebsocketConnection(wsConn)), nil
+	return NewTransport(NewWebsocketConnection(conn)), nil
 }

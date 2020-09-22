@@ -453,7 +453,7 @@ func testRequestStreamOneByOne(ctx context.Context, cli Client, t *testing.T) {
 			su.Request(1)
 			return nil
 		}).
-		Subscribe(ctx, rx.OnSubscribe(func(s rx.Subscription) {
+		Subscribe(ctx, rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			su = s
 			su.Request(1)
 		}))
@@ -515,7 +515,7 @@ func testRequestChannelOneByOne(ctx context.Context, cli Client, t *testing.T) {
 		Subscribe(ctx, rx.OnNext(func(elem payload.Payload) error {
 			su.Request(1)
 			return nil
-		}), rx.OnSubscribe(func(s rx.Subscription) {
+		}), rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			su = s
 			su.Request(1)
 		}))

@@ -85,8 +85,20 @@ func (p proxy) Block(ctx context.Context) (pa payload.Payload, err error) {
 }
 
 func (p proxy) Filter(fn rx.FnPredicate) Mono {
-	return newProxy(p.Mono.Filter(func(i interface{}) bool {
+	return newProxy(p.Mono.Filter(func(i reactor.Any) bool {
 		return fn(i.(payload.Payload))
+	}))
+}
+
+func (p proxy) Map(transform rx.FnTransform) Mono {
+	return newProxy(p.Mono.Map(func(any reactor.Any) (reactor.Any, error) {
+		return transform(any.(payload.Payload))
+	}))
+}
+
+func (p proxy) FlatMap(transform func(payload.Payload) Mono) Mono {
+	return newProxy(p.Mono.FlatMap(func(any reactor.Any) mono.Mono {
+		return transform(any.(payload.Payload)).Raw()
 	}))
 }
 
@@ -108,8 +120,8 @@ func (p proxy) DoOnSuccess(next rx.FnOnNext) Mono {
 }
 
 func (p proxy) DoOnSubscribe(fn rx.FnOnSubscribe) Mono {
-	return newProxy(p.Mono.DoOnSubscribe(func(su reactor.Subscription) {
-		fn(su)
+	return newProxy(p.Mono.DoOnSubscribe(func(ctx context.Context, su reactor.Subscription) {
+		fn(ctx, su)
 	}))
 }
 
@@ -137,8 +149,8 @@ func (p proxy) SubscribeWith(ctx context.Context, actual rx.Subscriber) {
 			reactor.OnComplete(func() {
 				actual.OnComplete()
 			}),
-			reactor.OnSubscribe(func(su reactor.Subscription) {
-				actual.OnSubscribe(su)
+			reactor.OnSubscribe(func(ctx context.Context, su reactor.Subscription) {
+				actual.OnSubscribe(ctx, su)
 			}),
 			reactor.OnError(func(e error) {
 				actual.OnError(e)

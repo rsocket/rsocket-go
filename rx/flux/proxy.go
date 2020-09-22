@@ -132,8 +132,8 @@ func (p proxy) BlockSlice(ctx context.Context) (results []payload.Payload, err e
 }
 
 func (p proxy) DoOnSubscribe(fn rx.FnOnSubscribe) Flux {
-	return newProxy(p.Flux.DoOnSubscribe(func(su reactor.Subscription) {
-		fn(su)
+	return newProxy(p.Flux.DoOnSubscribe(func(ctx context.Context, su reactor.Subscription) {
+		fn(ctx, su)
 	}))
 }
 
@@ -176,8 +176,8 @@ func (p proxy) SubscribeWith(ctx context.Context, s rx.Subscriber) {
 			reactor.OnComplete(func() {
 				s.OnComplete()
 			}),
-			reactor.OnSubscribe(func(su reactor.Subscription) {
-				s.OnSubscribe(su)
+			reactor.OnSubscribe(func(ctx context.Context, su reactor.Subscription) {
+				s.OnSubscribe(ctx, su)
 			}),
 		)
 	}
