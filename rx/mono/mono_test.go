@@ -113,6 +113,47 @@ func TestProxy_Filter(t *testing.T) {
 		Subscribe(context.Background())
 }
 
+func TestMap(t *testing.T) {
+	fakeMono := Just(payload.NewString("hello", "world"))
+	value, err := fakeMono.
+		Map(func(p payload.Payload) (payload.Payload, error) {
+			data := strings.ToUpper(p.DataUTF8())
+			metadata, _ := p.MetadataUTF8()
+			return payload.NewString(data, metadata), nil
+		}).
+		Map(func(p payload.Payload) (payload.Payload, error) {
+			metadata, _ := p.MetadataUTF8()
+			return payload.NewString(p.DataUTF8(), strings.ToUpper(metadata)), nil
+		}).
+		Block(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, "HELLO", value.DataUTF8())
+	metadata, _ := value.MetadataUTF8()
+	assert.Equal(t, "WORLD", metadata)
+
+	_, err = fakeMono.Map(func(p payload.Payload) (payload.Payload, error) {
+		return nil, errors.New("fake error")
+	}).Block(context.Background())
+	assert.Error(t, err)
+}
+
+func TestFlatMap(t *testing.T) {
+	res, err := Just(payload.NewString("foo", "")).
+		FlatMap(func(p payload.Payload) Mono {
+			return Create(func(ctx context.Context, sink Sink) {
+				select {
+				case <-ctx.Done():
+					sink.Error(errors.New("cancelled"))
+				case <-time.After(100 * time.Millisecond):
+					sink.Success(payload.NewString("bar", ""))
+				}
+			}).SubscribeOn(scheduler.Parallel())
+		}).
+		Block(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, "bar", res.DataUTF8())
+}
+
 func TestCreate(t *testing.T) {
 	Create(func(i context.Context, sink Sink) {
 		sink.Success(payload.NewString("hello", "world"))

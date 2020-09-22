@@ -15,6 +15,7 @@ func TestGroup_Get(t *testing.T) {
 		called++
 		return balancer.NewRoundRobinBalancer()
 	})
+	defer g.Close()
 	for range [2]struct{}{} {
 		b := g.Get(fakeGroupId)
 		assert.NotNil(t, b)

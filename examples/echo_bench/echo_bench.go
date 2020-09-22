@@ -55,11 +55,8 @@ func main() {
 			return nil
 		}),
 	)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	for i := 0; i < n; i++ {
-		client.RequestResponse(payload.New(data, nil)).SubscribeWith(ctx, sub)
+		client.RequestResponse(payload.New(data, nil)).SubscribeWith(context.Background(), sub)
 	}
 	wg.Wait()
 	cost := time.Since(now)
