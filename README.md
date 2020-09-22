@@ -22,6 +22,8 @@
 
 ## Install
 
+> Minimal go version is ***1.11***.
+
 ```shell
 $ go get -u github.com/rsocket/rsocket-go
 ```

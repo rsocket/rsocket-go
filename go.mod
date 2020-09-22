@@ -1,6 +1,6 @@
 module github.com/rsocket/rsocket-go
 
-go 1.12
+go 1.11
 
 require (
 	github.com/golang/mock v1.4.3

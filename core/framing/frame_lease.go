@@ -101,7 +101,7 @@ func (l WriteableLeaseFrame) Len() int {
 // NewWriteableLeaseFrame creates a new WriteableLeaseFrame.
 func NewWriteableLeaseFrame(ttl time.Duration, n uint32, metadata []byte) *WriteableLeaseFrame {
 	var a, b [4]byte
-	binary.BigEndian.PutUint32(a[:], uint32(ttl.Milliseconds()))
+	binary.BigEndian.PutUint32(a[:], uint32(int64(ttl)/1e6))
 	binary.BigEndian.PutUint32(b[:], n)
 
 	var flag core.FrameFlag
@@ -121,7 +121,7 @@ func NewWriteableLeaseFrame(ttl time.Duration, n uint32, metadata []byte) *Write
 // NewLeaseFrame creates a new LeaseFrame.
 func NewLeaseFrame(ttl time.Duration, n uint32, metadata []byte) *LeaseFrame {
 	bf := common.NewByteBuff()
-	if err := binary.Write(bf, binary.BigEndian, uint32(ttl.Milliseconds())); err != nil {
+	if err := binary.Write(bf, binary.BigEndian, uint32(int64(ttl)/1e6)); err != nil {
 		panic(err)
 	}
 	if err := binary.Write(bf, binary.BigEndian, n); err != nil {
