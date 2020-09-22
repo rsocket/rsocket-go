@@ -17,4 +17,3 @@ func isClosedErr(err error) bool {
 	}
 	return false
 }
-

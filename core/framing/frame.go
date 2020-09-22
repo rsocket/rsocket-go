@@ -137,4 +137,3 @@ func FromBytes(b []byte) (core.Frame, error) {
 	raw := NewRawFrame(header, bb)
 	return FromRawFrame(raw)
 }
-

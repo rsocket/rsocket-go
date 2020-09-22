@@ -98,7 +98,7 @@ func ExampleReceive() {
 func ExampleConnect() {
 	cli, err := rsocket.Connect().
 		Resume(). // Enable RESUME.
-		Lease(). // Enable LEASE.
+		Lease().  // Enable LEASE.
 		Fragment(4096).
 		SetupPayload(payload.NewString("Hello", "World")).
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
