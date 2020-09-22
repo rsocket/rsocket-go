@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/payload"
@@ -47,7 +46,6 @@ func main() {
 	rand.Read(data)
 
 	now := time.Now()
-	ctx := context.Background()
 
 	sub := rx.NewSubscriber(
 		rx.OnNext(func(input payload.Payload) error {
@@ -57,9 +55,8 @@ func main() {
 			return nil
 		}),
 	)
-
 	for i := 0; i < n; i++ {
-		client.RequestResponse(payload.New(data, nil)).SubscribeOn(scheduler.Parallel()).SubscribeWith(ctx, sub)
+		client.RequestResponse(payload.New(data, nil)).SubscribeWith(context.Background(), sub)
 	}
 	wg.Wait()
 	cost := time.Since(now)

@@ -133,7 +133,7 @@ func ExampleConnect() {
 			s.Request(1)
 			return nil
 		}).
-		Subscribe(context.Background(), rx.OnSubscribe(func(s rx.Subscription) {
+		Subscribe(context.Background(), rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			s.Request(1)
 		}))
 	// Simple RequestChannel.

@@ -80,7 +80,7 @@ func (uc *UnixClientBuilder) SetPath(path string) *UnixClientBuilder {
 // Build builds and returns a new ClientTransporter.
 func (uc UnixClientBuilder) Build() transport.ClientTransporter {
 	return func(ctx context.Context) (*transport.Transport, error) {
-		return transport.NewTCPClientTransportWithAddr("unix", uc.path, nil)
+		return transport.NewTCPClientTransportWithAddr(ctx, "unix", uc.path, nil)
 	}
 }
 
@@ -176,7 +176,7 @@ func (wc *WebsocketClientBuilder) SetHeader(header http.Header) *WebsocketClient
 // Build builds and returns a new websocket ClientTransporter
 func (wc *WebsocketClientBuilder) Build() transport.ClientTransporter {
 	return func(ctx context.Context) (*transport.Transport, error) {
-		return transport.NewWebsocketClientTransport(wc.url, wc.tlsCfg, wc.header)
+		return transport.NewWebsocketClientTransport(ctx, wc.url, wc.tlsCfg, wc.header)
 	}
 }
 
@@ -255,7 +255,7 @@ func (tc *TCPClientBuilder) SetTLSConfig(c *tls.Config) *TCPClientBuilder {
 // Build builds and returns a new TCP ClientTransporter.
 func (tc *TCPClientBuilder) Build() transport.ClientTransporter {
 	return func(ctx context.Context) (*transport.Transport, error) {
-		return transport.NewTCPClientTransportWithAddr("tcp", tc.addr, tc.tlsCfg)
+		return transport.NewTCPClientTransportWithAddr(ctx, "tcp", tc.addr, tc.tlsCfg)
 	}
 }
 

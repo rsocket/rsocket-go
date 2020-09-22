@@ -25,7 +25,7 @@ type (
 	// FnOnNext is alias of function for signal when next element arrived.
 	FnOnNext = func(input payload.Payload) error
 	// FnOnSubscribe is alias of function for signal when subscribe begin.
-	FnOnSubscribe = func(s Subscription)
+	FnOnSubscribe = func(ctx context.Context, s Subscription)
 	// FnOnError is alias of function for signal when an error occurred.
 	FnOnError = func(e error)
 	// FnOnCancel is alias of function for signal when subscription canceled.
@@ -36,6 +36,8 @@ type (
 	FnPredicate = func(input payload.Payload) bool
 	// FnOnRequest is alias of function for signal when requesting next element.
 	FnOnRequest = func(n int)
+	// FnTransform is alias of function to transform a payload to another.
+	FnTransform = func(payload.Payload) (payload.Payload, error)
 )
 
 // RawPublisher represents a basic Publisher which can be subscribed by a Subscriber.

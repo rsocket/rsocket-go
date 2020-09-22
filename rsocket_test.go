@@ -52,6 +52,13 @@ func TestResume(t *testing.T) {
 	}()
 
 	go func(ctx context.Context) {
+		defer func() {
+			select {
+			case <-started:
+			default:
+				close(started)
+			}
+		}()
 		_ = Receive().
 			OnStart(func() {
 				close(started)
@@ -158,6 +165,13 @@ func TestConnectBroken(t *testing.T) {
 	port := 8787
 
 	go func(ctx context.Context) {
+		defer func() {
+			select {
+			case <-started:
+			default:
+				close(started)
+			}
+		}()
 		_ = Receive().
 			OnStart(func() {
 				close(started)
@@ -206,6 +220,15 @@ func TestBiDirection(t *testing.T) {
 	defer cancel()
 
 	go func(ctx context.Context) {
+
+		defer func() {
+			select {
+			case <-started:
+			default:
+				close(started)
+			}
+		}()
+
 		l, _ := lease.NewSimpleFactory(3*time.Second, 1*time.Second, 1*time.Second, 10)
 		_ = Receive().
 			Lease(l).
@@ -313,6 +336,15 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 	serving := make(chan struct{})
 
 	go func(ctx context.Context) {
+
+		defer func() {
+			select {
+			case <-serving:
+			default:
+				close(serving)
+			}
+		}()
+
 		err := Receive().
 			Fragment(128).
 			OnStart(func() {
@@ -453,7 +485,7 @@ func testRequestStreamOneByOne(ctx context.Context, cli Client, t *testing.T) {
 			su.Request(1)
 			return nil
 		}).
-		Subscribe(ctx, rx.OnSubscribe(func(s rx.Subscription) {
+		Subscribe(ctx, rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			su = s
 			su.Request(1)
 		}))
@@ -515,7 +547,7 @@ func testRequestChannelOneByOne(ctx context.Context, cli Client, t *testing.T) {
 		Subscribe(ctx, rx.OnNext(func(elem payload.Payload) error {
 			su.Request(1)
 			return nil
-		}), rx.OnSubscribe(func(s rx.Subscription) {
+		}), rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			su = s
 			su.Request(1)
 		}))
@@ -566,4 +598,75 @@ func startProxy(addr string, ch chan net.Listener, upstreamAddr string) {
 		}()
 	}
 
+}
+
+type delayedRSocket struct {
+}
+
+func (d delayedRSocket) FireAndForget(message payload.Payload) {
+	panic("implement me")
+}
+
+func (d delayedRSocket) MetadataPush(message payload.Payload) {
+	panic("implement me")
+}
+
+func (d delayedRSocket) RequestResponse(message payload.Payload) mono.Mono {
+	return mono.Create(func(ctx context.Context, sink mono.Sink) {
+		time.AfterFunc(300*time.Millisecond, func() {
+			sink.Success(message)
+		})
+	})
+}
+
+func (d delayedRSocket) RequestStream(message payload.Payload) flux.Flux {
+	panic("implement me")
+}
+
+func (d delayedRSocket) RequestChannel(messages rx.Publisher) flux.Flux {
+	panic("implement me")
+}
+
+func TestContextTimeout(t *testing.T) {
+	var responder delayedRSocket
+	started := make(chan struct{})
+	go func() {
+		defer func() {
+			select {
+			case <-started:
+			default:
+				close(started)
+			}
+		}()
+
+		_ = Receive().
+			OnStart(func() {
+				close(started)
+			}).
+			Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
+				return responder, nil
+			}).
+			Transport(TCPServer().SetAddr(":8088").Build()).
+			Serve(context.Background())
+	}()
+
+	<-started
+
+	tp := TCPClient().SetAddr("127.0.0.1:8088").Build()
+
+	// simulate timeout
+	ctxMustTimeout, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+	defer cancel()
+	_, err := Connect().Transport(tp).Start(ctxMustTimeout)
+	assert.Error(t, err, "should connect timeout")
+
+	cli, err := Connect().Transport(tp).Start(context.Background())
+	assert.NoError(t, err, "should connect success")
+	defer cli.Close()
+
+	ctx, cancel2 := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel2()
+
+	_, err = cli.RequestResponse(fakeRequest).Block(ctx)
+	assert.Error(t, err, "should return error")
 }

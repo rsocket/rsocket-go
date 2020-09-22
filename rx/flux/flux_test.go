@@ -149,7 +149,7 @@ func TestCreate(t *testing.T) {
 		DoOnComplete(func() {
 			fmt.Println("complete")
 		}).
-		Subscribe(context.Background(), rx.OnSubscribe(func(s rx.Subscription) {
+		Subscribe(context.Background(), rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			su = s
 			su.Request(1)
 		}))
@@ -234,7 +234,7 @@ func TestFluxRequest(t *testing.T) {
 		rx.OnComplete(func() {
 			fmt.Println("complete")
 		}),
-		rx.OnSubscribe(func(s rx.Subscription) {
+		rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			su = s
 			su.Request(1)
 			fmt.Println("request:", 1)
@@ -271,7 +271,7 @@ func TestFluxProcessorWithRequest(t *testing.T) {
 			su.Request(1)
 			return nil
 		}),
-		rx.OnSubscribe(func(s rx.Subscription) {
+		rx.OnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			su = s
 			su.Request(1)
 		}),

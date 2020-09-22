@@ -76,7 +76,7 @@ func TestNewResumableClientSocket(t *testing.T) {
 	}
 
 	result, err := rcs.RequestResponse(payload.New(fakeData, fakeMetadata)).
-		DoOnSubscribe(func(s rx.Subscription) {
+		DoOnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			readChan <- framing.NewPayloadFrame(nextRequestId(), fakeData, fakeMetadata, core.FlagComplete)
 		}).
 		Block(context.Background())
@@ -90,7 +90,7 @@ func TestNewResumableClientSocket(t *testing.T) {
 			stream = append(stream, input)
 			return nil
 		}).
-		DoOnSubscribe(func(s rx.Subscription) {
+		DoOnSubscribe(func(ctx context.Context, s rx.Subscription) {
 			nextId := nextRequestId()
 			readChan <- framing.NewPayloadFrame(nextId, fakeData, fakeMetadata, core.FlagNext)
 			readChan <- framing.NewPayloadFrame(nextId, fakeData, fakeMetadata, core.FlagNext)

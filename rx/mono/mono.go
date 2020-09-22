@@ -15,6 +15,10 @@ type Mono interface {
 	// Filter evaluate each source value against the given Predicate.
 	// If the predicate test succeeds, the value is emitted.
 	Filter(rx.FnPredicate) Mono
+	// Map transform the item emitted by this Mono by applying a synchronous function to another.
+	Map(rx.FnTransform) Mono
+	// FlatMap Transform the item emitted by this Mono asynchronously, returning the value emitted by another Mono.
+	FlatMap(func(payload.Payload) Mono) Mono
 	// DoFinally adds behavior (side-effect) triggered after the Mono terminates for any reason, including cancellation.
 	DoFinally(rx.FnFinally) Mono
 	// DoOnError adds behavior (side-effect) triggered when the Mono completes with an error.
