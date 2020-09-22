@@ -153,17 +153,13 @@ func NewTCPClientTransport(c net.Conn) *Transport {
 // NewTCPClientTransportWithAddr creates a new transport.
 func NewTCPClientTransportWithAddr(ctx context.Context, network, addr string, tlsConfig *tls.Config) (tp *Transport, err error) {
 	var conn net.Conn
-	if tlsConfig == nil {
-		var dial net.Dialer
-		conn, err = dial.DialContext(ctx, network, addr)
-	} else {
-		dial := tls.Dialer{
-			Config: tlsConfig,
-		}
-		conn, err = dial.DialContext(ctx, network, addr)
-	}
+	var dial net.Dialer
+	conn, err = dial.DialContext(ctx, network, addr)
 	if err != nil {
 		return
+	}
+	if tlsConfig != nil {
+		conn = tls.Client(conn, tlsConfig)
 	}
 	tp = NewTCPClientTransport(conn)
 	return

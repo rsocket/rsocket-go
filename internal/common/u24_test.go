@@ -40,7 +40,7 @@ func TestMustNewUint24(t *testing.T) {
 
 func TestUint24(t *testing.T) {
 	testSingle(t, 0)
-	for range [1_000_000]struct{}{} {
+	for range [1000000]struct{}{} {
 		testSingle(t, RandIntn(MaxUint24))
 	}
 	testSingle(t, MaxUint24)

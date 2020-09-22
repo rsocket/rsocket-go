@@ -158,7 +158,7 @@ func (p *Transport) Start(ctx context.Context) error {
 			if err == nil {
 				continue
 			}
-			if errors.Is(err, io.EOF) {
+			if err == io.EOF {
 				return nil
 			}
 			return errors.Wrap(err, "read and delivery frame failed")

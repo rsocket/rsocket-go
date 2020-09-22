@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/payload"
@@ -56,7 +57,7 @@ func main() {
 		}),
 	)
 	for i := 0; i < n; i++ {
-		client.RequestResponse(payload.New(data, nil)).SubscribeWith(context.Background(), sub)
+		client.RequestResponse(payload.New(data, nil)).SubscribeOn(scheduler.Parallel()).SubscribeWith(context.Background(), sub)
 	}
 	wg.Wait()
 	cost := time.Since(now)
