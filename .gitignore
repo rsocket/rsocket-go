@@ -24,4 +24,4 @@ suppressions/
 
 cmd/rsocket-cli/rsocket-cli
 
-coverage.out
+coverage.txt
