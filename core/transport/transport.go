@@ -60,6 +60,7 @@ const (
 
 // Transport is RSocket transport which is used to carry RSocket frames.
 type Transport struct {
+	sync.RWMutex
 	conn        Conn
 	maxLifetime time.Duration
 	lastRcvPos  uint64
@@ -69,6 +70,8 @@ type Transport struct {
 
 // Handle register event handlers
 func (p *Transport) Handle(event EventType, handler FrameHandler) {
+	p.Lock()
+	defer p.Unlock()
 	p.handlers[int(event)] = handler
 }
 
@@ -173,6 +176,9 @@ func (p *Transport) DispatchFrame(_ context.Context, frame core.Frame) (err erro
 	sid := header.StreamID()
 
 	var handler FrameHandler
+
+	p.RLock()
+	defer p.RUnlock()
 
 	switch t {
 	case core.FrameTypeSetup:

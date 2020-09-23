@@ -1018,7 +1018,9 @@ func (dc *DuplexConnection) drainOutBack() {
 		dc.outsPriority = dc.outsPriority[:0]
 	}()
 
+	dc.locker.RLock()
 	tp := dc.tp
+	dc.locker.RUnlock()
 	if tp == nil {
 		return
 	}
