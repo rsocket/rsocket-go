@@ -659,7 +659,10 @@ func (dc *DuplexConnection) onFrameCancel(frame core.Frame) (err error) {
 
 	v, ok := dc.messages.Load(sid)
 	if !ok {
-		logger.Warnf("nothing cancelled: sid=%d\n", sid)
+		dc.fragments.Delete(sid)
+		if logger.IsDebugEnabled() {
+			logger.Debugf("unmatched frame CANCEL(id=%d), maybe original request has been cancelled\n", sid)
+		}
 		return
 	}
 
@@ -680,12 +683,14 @@ func (dc *DuplexConnection) onFrameCancel(frame core.Frame) (err error) {
 
 func (dc *DuplexConnection) onFrameError(input core.Frame) (err error) {
 	f := input.(*framing.ErrorFrame)
-	logger.Errorf("handle error frame: %s\n", f)
 	sid := f.Header().StreamID()
 
 	v, ok := dc.messages.Load(sid)
 	if !ok {
-		err = fmt.Errorf("invalid stream id: %d", sid)
+		dc.fragments.Delete(sid)
+		if logger.IsDebugEnabled() {
+			logger.Debugf("unmatched frame ERROR(id=%d), maybe original request has been cancelled\n", sid)
+		}
 		return
 	}
 
@@ -707,8 +712,9 @@ func (dc *DuplexConnection) onFrameRequestN(input core.Frame) (err error) {
 	sid := f.Header().StreamID()
 	v, ok := dc.messages.Load(sid)
 	if !ok {
+		dc.fragments.Delete(sid)
 		if logger.IsDebugEnabled() {
-			logger.Debugf("ignore non-exists RequestN: id=%d\n", sid)
+			logger.Debugf("unmatched frame REQUEST_N(id=%d), maybe original request has been cancelled\n", sid)
 		}
 		return
 	}
@@ -720,8 +726,6 @@ func (dc *DuplexConnection) onFrameRequestN(input core.Frame) (err error) {
 		vv.snd.Request(n)
 	case requestChannelCallbackReverse:
 		vv.snd.Request(n)
-	default:
-		panic(fmt.Errorf("illegal requestN for %+v", vv))
 	}
 	return
 }
@@ -771,7 +775,9 @@ func (dc *DuplexConnection) onFramePayload(frame core.Frame) error {
 	sid := h.StreamID()
 	v, ok := dc.messages.Load(sid)
 	if !ok {
-		logger.Warnf("unoccupied Payload(id=%d), maybe it has been canceled(server=%T)\n", sid, dc.sids)
+		if logger.IsDebugEnabled() {
+			logger.Debugf("unmatched frame PAYLOAD(id=%d), maybe original request has been cancelled\n", sid)
+		}
 		return nil
 	}
 
@@ -806,8 +812,6 @@ func (dc *DuplexConnection) onFramePayload(frame core.Frame) error {
 		if fg.Check(core.FlagComplete) {
 			vv.rcv.Complete()
 		}
-	default:
-		panic(fmt.Errorf("illegal Payload for %v", vv))
 	}
 	return nil
 }

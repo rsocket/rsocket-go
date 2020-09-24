@@ -164,7 +164,7 @@ func (p *Transport) Start(ctx context.Context) error {
 			if err == io.EOF {
 				return nil
 			}
-			return errors.Wrap(err, "read and delivery frame failed")
+			return errors.Wrap(err, "dispatch incoming frame failed")
 		}
 	}
 }
@@ -177,54 +177,51 @@ func (p *Transport) DispatchFrame(_ context.Context, frame core.Frame) (err erro
 
 	var handler FrameHandler
 
-	p.RLock()
-	defer p.RUnlock()
-
 	switch t {
 	case core.FrameTypeSetup:
 		p.maxLifetime = frame.(*framing.SetupFrame).MaxLifetime()
-		handler = p.handlers[OnSetup]
+		handler = p.getHandler(OnSetup)
 	case core.FrameTypeResume:
-		handler = p.handlers[OnResume]
+		handler = p.getHandler(OnResume)
 	case core.FrameTypeResumeOK:
 		p.lastRcvPos = frame.(*framing.ResumeOKFrame).LastReceivedClientPosition()
-		handler = p.handlers[OnResumeOK]
+		handler = p.getHandler(OnResumeOK)
 	case core.FrameTypeRequestFNF:
-		handler = p.handlers[OnFireAndForget]
+		handler = p.getHandler(OnFireAndForget)
 	case core.FrameTypeMetadataPush:
 		if sid != 0 {
 			// skip invalid metadata push
-			logger.Warnf("rsocket.Transport: omit MetadataPush with non-zero stream id %d\n", sid)
+			logger.Warnf("rsocket: omit MetadataPush with non-zero stream id %d\n", sid)
 			return
 		}
-		handler = p.handlers[OnMetadataPush]
+		handler = p.getHandler(OnMetadataPush)
 	case core.FrameTypeRequestResponse:
-		handler = p.handlers[OnRequestResponse]
+		handler = p.getHandler(OnRequestResponse)
 	case core.FrameTypeRequestStream:
-		handler = p.handlers[OnRequestStream]
+		handler = p.getHandler(OnRequestStream)
 	case core.FrameTypeRequestChannel:
-		handler = p.handlers[OnRequestChannel]
+		handler = p.getHandler(OnRequestChannel)
 	case core.FrameTypePayload:
-		handler = p.handlers[OnPayload]
+		handler = p.getHandler(OnPayload)
 	case core.FrameTypeRequestN:
-		handler = p.handlers[OnRequestN]
+		handler = p.getHandler(OnRequestN)
 	case core.FrameTypeError:
 		if sid == 0 {
 			err = errors.New(frame.(*framing.ErrorFrame).Error())
-			if call := p.handlers[OnErrorWithZeroStreamID]; call != nil {
+			if call := p.getHandler(OnErrorWithZeroStreamID); call != nil {
 				_ = call(frame)
 			}
 			return
 		}
-		handler = p.handlers[OnError]
+		handler = p.getHandler(OnError)
 	case core.FrameTypeCancel:
-		handler = p.handlers[OnCancel]
+		handler = p.getHandler(OnCancel)
 	case core.FrameTypeKeepalive:
 		ka := frame.(*framing.KeepaliveFrame)
 		p.lastRcvPos = ka.LastReceivedPosition()
-		handler = p.handlers[OnKeepalive]
+		handler = p.getHandler(OnKeepalive)
 	case core.FrameTypeLease:
-		handler = p.handlers[OnLease]
+		handler = p.getHandler(OnLease)
 	}
 
 	// Set deadline.
@@ -246,6 +243,12 @@ func (p *Transport) DispatchFrame(_ context.Context, frame core.Frame) (err erro
 		err = errors.Wrap(err, "exec frame handler failed")
 	}
 	return
+}
+
+func (p *Transport) getHandler(t EventType) FrameHandler {
+	p.RLock()
+	defer p.RUnlock()
+	return p.handlers[t]
 }
 
 // NewTransport creates a new transport.
