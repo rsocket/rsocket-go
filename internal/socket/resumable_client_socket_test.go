@@ -67,7 +67,7 @@ func TestNewResumableClientSocket(t *testing.T) {
 		assert.True(t, onCloseCalled.Load())
 	}()
 
-	err := rcs.Setup(context.Background(), fakeResumableSetup)
+	err := rcs.Setup(context.Background(), 0, fakeResumableSetup)
 	assert.NoError(t, err)
 
 	requestId := atomic.NewUint32(1)
@@ -114,7 +114,7 @@ func TestResumeClientSocket_Setup_Broken(t *testing.T) {
 		return nil, fakeErr
 	}, c)
 	defer s.Close()
-	err := s.Setup(context.Background(), fakeResumableSetup)
+	err := s.Setup(context.Background(), 0, fakeResumableSetup)
 	assert.Error(t, err)
 }
 
@@ -167,7 +167,7 @@ func TestResumeClientSocket_Setup(t *testing.T) {
 		assert.True(t, onCloseCalled.Load())
 	}()
 
-	err := rcs.Setup(context.Background(), fakeResumableSetup)
+	err := rcs.Setup(context.Background(), 0, fakeResumableSetup)
 	assert.NoError(t, err)
 
 	time.Sleep(100 * time.Millisecond)

@@ -25,7 +25,7 @@ func TestNewClientWithBrokenTransporter(t *testing.T) {
 		return nil, fakeErr
 	}
 	cli := socket.NewClient(transporter, ds)
-	err := cli.Setup(context.Background(), fakeSetup)
+	err := cli.Setup(context.Background(), 0, fakeSetup)
 	assert.Equal(t, fakeErr, err, "should be fake error")
 }
 
@@ -59,7 +59,7 @@ func TestNewClient(t *testing.T) {
 		assert.NoError(t, err, "close client failed")
 	}()
 
-	err := cli.Setup(context.Background(), fakeSetup)
+	err := cli.Setup(context.Background(), 0, fakeSetup)
 	assert.NoError(t, err, "setup client failed")
 
 	requestId := atomic.NewUint32(1)
@@ -132,7 +132,7 @@ func TestLease(t *testing.T) {
 
 	setup := *fakeSetup
 	setup.Lease = true
-	err := cli.Setup(context.Background(), &setup)
+	err := cli.Setup(context.Background(), 0, &setup)
 	assert.NoError(t, err, "setup client failed")
 	readChan <- framing.NewLeaseFrame(10*time.Second, 10, fakeMetadata)
 	time.Sleep(3 * time.Second)

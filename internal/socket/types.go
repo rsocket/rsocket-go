@@ -3,6 +3,7 @@ package socket
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/payload"
@@ -37,7 +38,7 @@ type ClientSocket interface {
 	Closeable
 	Responder
 	// Setup setups current socket.
-	Setup(ctx context.Context, setup *SetupInfo) error
+	Setup(ctx context.Context, connectTimeout time.Duration, setup *SetupInfo) error
 }
 
 // ServerSocket represents a server-side socket.

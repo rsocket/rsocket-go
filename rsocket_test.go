@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jjeffcaii/reactor-go"
 	"github.com/pkg/errors"
 	. "github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
@@ -655,18 +656,19 @@ func TestContextTimeout(t *testing.T) {
 	tp := TCPClient().SetAddr("127.0.0.1:8088").Build()
 
 	// simulate timeout
-	ctxMustTimeout, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
-	defer cancel()
-	_, err := Connect().Transport(tp).Start(ctxMustTimeout)
+	_, err := Connect().ConnectTimeout(1 * time.Nanosecond).Transport(tp).Start(context.Background())
 	assert.Error(t, err, "should connect timeout")
 
-	cli, err := Connect().Transport(tp).Start(context.Background())
+	cli, err := Connect().ConnectTimeout(100 * time.Millisecond).Transport(tp).Start(context.Background())
 	assert.NoError(t, err, "should connect success")
 	defer cli.Close()
+
+	time.Sleep(200 * time.Millisecond)
 
 	ctx, cancel2 := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel2()
 
 	_, err = cli.RequestResponse(fakeRequest).Block(ctx)
-	assert.Error(t, err, "should return error")
+	assert.Error(t, err, "should return cancelled error")
+	assert.Equal(t, reactor.ErrSubscribeCancelled, err)
 }
