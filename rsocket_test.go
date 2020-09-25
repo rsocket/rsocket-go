@@ -659,16 +659,29 @@ func TestContextTimeout(t *testing.T) {
 	_, err := Connect().ConnectTimeout(1 * time.Nanosecond).Transport(tp).Start(context.Background())
 	assert.Error(t, err, "should connect timeout")
 
-	cli, err := Connect().ConnectTimeout(100 * time.Millisecond).Transport(tp).Start(context.Background())
+	connected := make(chan bool)
+	cli, err := Connect().
+		OnConnect(func(err error) {
+			connected <- err == nil
+		}).
+		ConnectTimeout(100 * time.Millisecond).
+		Transport(tp).Start(context.Background())
 	assert.NoError(t, err, "should connect success")
 	defer cli.Close()
-
+	assert.True(t, true, <-connected, "connected should be true")
 	time.Sleep(200 * time.Millisecond)
 
 	ctx, cancel2 := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel2()
 
 	_, err = cli.RequestResponse(fakeRequest).Block(ctx)
-	assert.Error(t, err, "should return cancelled error")
-	assert.Equal(t, reactor.ErrSubscribeCancelled, err)
+	assert.Error(t, err, "should return error")
+	assert.True(t, reactor.IsCancelledError(err), "should be cancelled error")
+
+	_, err = cli.RequestResponse(fakeRequest).Timeout(100 * time.Millisecond).Block(context.Background())
+	assert.Error(t, err, "should return error")
+	assert.True(t, reactor.IsCancelledError(err), "should be cancelled error")
+
+	_, err = cli.RequestResponse(fakeRequest).Timeout(400 * time.Millisecond).Block(context.Background())
+	assert.NoError(t, err)
 }

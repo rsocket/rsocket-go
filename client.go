@@ -60,7 +60,9 @@ type ClientBuilder interface {
 	// ConnectTimeout set connect timeout.
 	ConnectTimeout(timeout time.Duration) ClientBuilder
 	// OnClose register handler when client socket closed.
-	OnClose(fn func(error)) ClientBuilder
+	OnClose(func(error)) ClientBuilder
+	// OnConnect register handler when client socket connected.
+	OnConnect(func(error)) ClientBuilder
 	// Acceptor set acceptor for RSocket client.
 	Acceptor(acceptor ClientSocketAcceptor) ToClientStarter
 }
@@ -89,6 +91,7 @@ type clientBuilder struct {
 	setup          *socket.SetupInfo
 	acceptor       ClientSocketAcceptor
 	onCloses       []func(error)
+	onConnects     []func(error)
 	connectTimeout time.Duration
 }
 
@@ -113,6 +116,11 @@ func (cb *clientBuilder) Fragment(mtu int) ClientBuilder {
 	} else {
 		cb.fragment = mtu
 	}
+	return cb
+}
+
+func (cb *clientBuilder) OnConnect(fn func(error)) ClientBuilder {
+	cb.onConnects = append(cb.onConnects, fn)
 	return cb
 }
 
@@ -171,7 +179,7 @@ func (cb *clientBuilder) Start(ctx context.Context) (client Client, err error) {
 	// create a blank socket.
 	err = fragmentation.IsValidFragment(cb.fragment)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	conn := socket.NewClientDuplexConnection(
@@ -204,6 +212,18 @@ func (cb *clientBuilder) Start(ctx context.Context) (client Client, err error) {
 	if err == nil {
 		client = cs
 	}
+
+	// trigger OnConnect
+	if len(cb.onConnects) > 0 {
+		var onConnects []func(error)
+		onConnects, cb.onConnects = cb.onConnects, nil
+		go func() {
+			for _, onConnect := range onConnects {
+				onConnect(err)
+			}
+		}()
+	}
+
 	return
 }
 

@@ -660,9 +660,7 @@ func (dc *DuplexConnection) onFrameCancel(frame core.Frame) (err error) {
 	v, ok := dc.messages.Load(sid)
 	if !ok {
 		dc.fragments.Delete(sid)
-		if logger.IsDebugEnabled() {
-			logger.Debugf("unmatched frame CANCEL(id=%d), maybe original request has been cancelled\n", sid)
-		}
+		logger.Warnf("unmatched frame CANCEL(id=%d), maybe original request has been cancelled\n", sid)
 		return
 	}
 
@@ -688,9 +686,7 @@ func (dc *DuplexConnection) onFrameError(input core.Frame) (err error) {
 	v, ok := dc.messages.Load(sid)
 	if !ok {
 		dc.fragments.Delete(sid)
-		if logger.IsDebugEnabled() {
-			logger.Debugf("unmatched frame ERROR(id=%d), maybe original request has been cancelled\n", sid)
-		}
+		logger.Warnf("unmatched frame ERROR(id=%d), maybe original request has been cancelled\n", sid)
 		return
 	}
 
@@ -713,9 +709,7 @@ func (dc *DuplexConnection) onFrameRequestN(input core.Frame) (err error) {
 	v, ok := dc.messages.Load(sid)
 	if !ok {
 		dc.fragments.Delete(sid)
-		if logger.IsDebugEnabled() {
-			logger.Debugf("unmatched frame REQUEST_N(id=%d), maybe original request has been cancelled\n", sid)
-		}
+		logger.Warnf("unmatched frame REQUEST_N(id=%d), maybe original request has been cancelled\n", sid)
 		return
 	}
 	n := ToIntRequestN(f.N())
@@ -775,9 +769,7 @@ func (dc *DuplexConnection) onFramePayload(frame core.Frame) error {
 	sid := h.StreamID()
 	v, ok := dc.messages.Load(sid)
 	if !ok {
-		if logger.IsDebugEnabled() {
-			logger.Debugf("unmatched frame PAYLOAD(id=%d), maybe original request has been cancelled\n", sid)
-		}
+		logger.Warnf("unmatched frame PAYLOAD(id=%d), maybe original request has been cancelled\n", sid)
 		return nil
 	}
 

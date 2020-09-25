@@ -2,6 +2,7 @@ package mono
 
 import (
 	"context"
+	"time"
 
 	"github.com/jjeffcaii/reactor-go/mono"
 	"github.com/jjeffcaii/reactor-go/scheduler"
@@ -42,6 +43,8 @@ type Mono interface {
 	// ToChan subscribe Mono and puts items into a chan.
 	// It also puts errors into another chan.
 	ToChan(ctx context.Context) (c <-chan payload.Payload, e <-chan error)
+	// Timeout sets the timeout value.
+	Timeout(timeout time.Duration) Mono
 }
 
 // Sink is a wrapper API around an actual downstream Subscriber for emitting nothing, a single value or an error (mutually exclusive).
