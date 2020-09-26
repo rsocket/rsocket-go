@@ -17,6 +17,7 @@ import (
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/extension"
 	"github.com/rsocket/rsocket-go/lease"
+	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -641,6 +642,7 @@ func (d delayedRSocket) RequestChannel(messages rx.Publisher) flux.Flux {
 }
 
 func TestContextTimeout(t *testing.T) {
+	logger.SetLevel(logger.LevelDebug)
 	var responder delayedRSocket
 	started := make(chan struct{})
 	go func() {
