@@ -2,6 +2,7 @@ package mono
 
 import (
 	"context"
+	"time"
 
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/mono"
@@ -131,6 +132,10 @@ func (p proxy) DoOnCancel(fn rx.FnOnCancel) Mono {
 
 func (p proxy) SwitchIfEmpty(alternative Mono) Mono {
 	return newProxy(p.Mono.SwitchIfEmpty(alternative.Raw()))
+}
+
+func (p proxy) Timeout(timeout time.Duration) Mono {
+	return newProxy(p.Mono.Timeout(timeout))
 }
 
 func (p proxy) Subscribe(ctx context.Context, options ...rx.SubscriberOption) {

@@ -2,6 +2,7 @@ package socket
 
 import (
 	"context"
+	"time"
 
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
@@ -14,8 +15,8 @@ type simpleClientSocket struct {
 	tp transport.ClientTransporter
 }
 
-func (p *simpleClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err error) {
-	tp, err := p.tp(ctx)
+func (p *simpleClientSocket) Setup(ctx context.Context, connectTimeout time.Duration, setup *SetupInfo) (err error) {
+	tp, err := p.createTransport(ctx, connectTimeout)
 	if err != nil {
 		return
 	}
@@ -51,6 +52,16 @@ func (p *simpleClientSocket) Setup(ctx context.Context, setup *SetupInfo) (err e
 	setupFrame := setup.toFrame()
 	err = p.socket.tp.Send(setupFrame, true)
 	return
+}
+
+func (p *simpleClientSocket) createTransport(ctx context.Context, connectTimeout time.Duration) (*transport.Transport, error) {
+	var tpCtx = ctx
+	if connectTimeout > 0 {
+		cctx, cancel := context.WithTimeout(ctx, connectTimeout)
+		tpCtx = cctx
+		defer cancel()
+	}
+	return p.tp(tpCtx)
 }
 
 // NewClient create a simple client-side socket.

@@ -23,12 +23,12 @@ type resumeClientSocket struct {
 	tp       transport.ClientTransporter
 }
 
-func (r *resumeClientSocket) Setup(ctx context.Context, setup *SetupInfo) error {
+func (r *resumeClientSocket) Setup(ctx context.Context, timeout time.Duration, setup *SetupInfo) error {
 	r.setup = setup
 	go func(ctx context.Context) {
 		_ = r.socket.LoopWrite(ctx)
 	}(ctx)
-	return r.connect(ctx)
+	return r.connect(ctx, timeout)
 }
 
 func (r *resumeClientSocket) Close() (err error) {
@@ -42,19 +42,29 @@ func (r *resumeClientSocket) Close() (err error) {
 	return
 }
 
-func (r *resumeClientSocket) connect(ctx context.Context) (err error) {
+func (r *resumeClientSocket) createTransport(ctx context.Context, timeout time.Duration) (*transport.Transport, error) {
+	var tpCtx = ctx
+	if timeout > 0 {
+		cctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		tpCtx = cctx
+	}
+	return r.tp(tpCtx)
+}
+
+func (r *resumeClientSocket) connect(ctx context.Context, timeout time.Duration) (err error) {
 	connects := r.connects.Inc()
 	if connects < 0 {
 		_ = r.Close()
 		return
 	}
-	tp, err := r.tp(ctx)
+	tp, err := r.createTransport(ctx, timeout)
 	if err != nil {
 		if connects == 1 {
 			return
 		}
 		time.Sleep(_resumeReconnectDelay)
-		_ = r.connect(ctx)
+		_ = r.connect(ctx, timeout)
 		return
 	}
 	tp.Connection().SetCounter(r.socket.counter)
@@ -68,7 +78,7 @@ func (r *resumeClientSocket) connect(ctx context.Context) (err error) {
 				return
 			}
 			time.Sleep(_resumeReconnectDelay)
-			_ = r.connect(ctx)
+			_ = r.connect(ctx, timeout)
 		}()
 		err := tp.Start(ctx)
 		if err != nil && logger.IsDebugEnabled() {
@@ -135,7 +145,7 @@ func (r *resumeClientSocket) connect(ctx context.Context) (err error) {
 		if ok {
 			err = errors.New(reject)
 			r.markAsClosing()
-			err = r.connect(ctx)
+			err = r.connect(ctx, timeout)
 		} else {
 			r.socket.SetTransport(tp)
 		}

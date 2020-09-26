@@ -10,11 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jjeffcaii/reactor-go"
+	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
 	. "github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/extension"
 	"github.com/rsocket/rsocket-go/lease"
+	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -374,23 +377,34 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 					RequestChannel(func(inputs rx.Publisher) flux.Flux {
 						//var count int32
 						//countPointer := &count
+						done := make(chan struct{})
 						receives := make(chan payload.Payload)
+						receiveErrors := make(chan error)
 
 						go func() {
-							var count int32
-							for range receives {
-								count++
+							success := new(int32)
+							failed := new(int32)
+
+						L:
+							for {
+								select {
+								case <-done:
+									break L
+								case <-receives:
+									atomic.AddInt32(success, 1)
+								case <-receiveErrors:
+									atomic.AddInt32(failed, 1)
+								}
 							}
-							assert.Equal(t, channelElements, count, "bad channel amount")
+							assert.Equal(t, channelElements, atomic.LoadInt32(success)+atomic.LoadInt32(failed))
 						}()
 
-						inputs.(flux.Flux).DoFinally(func(s rx.SignalType) {
-							close(receives)
-						}).Subscribe(context.Background(), rx.OnNext(func(input payload.Payload) error {
-							//fmt.Println("rcv from channel:", input)
-							receives <- input
-							return nil
-						}))
+						inputs.(flux.Flux).
+							DoFinally(func(s rx.SignalType) {
+								close(done)
+							}).
+							SubscribeOn(scheduler.Parallel()).
+							SubscribeWithChan(context.Background(), receives, receiveErrors)
 
 						return flux.Create(func(ctx context.Context, s flux.Sink) {
 							for i := 0; i < int(channelElements); i++ {
@@ -628,6 +642,7 @@ func (d delayedRSocket) RequestChannel(messages rx.Publisher) flux.Flux {
 }
 
 func TestContextTimeout(t *testing.T) {
+	logger.SetLevel(logger.LevelDebug)
 	var responder delayedRSocket
 	started := make(chan struct{})
 	go func() {
@@ -655,18 +670,32 @@ func TestContextTimeout(t *testing.T) {
 	tp := TCPClient().SetAddr("127.0.0.1:8088").Build()
 
 	// simulate timeout
-	ctxMustTimeout, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
-	defer cancel()
-	_, err := Connect().Transport(tp).Start(ctxMustTimeout)
+	_, err := Connect().ConnectTimeout(1 * time.Nanosecond).Transport(tp).Start(context.Background())
 	assert.Error(t, err, "should connect timeout")
 
-	cli, err := Connect().Transport(tp).Start(context.Background())
+	connected := make(chan bool)
+	cli, err := Connect().
+		OnConnect(func(err error) {
+			connected <- err == nil
+		}).
+		ConnectTimeout(100 * time.Millisecond).
+		Transport(tp).Start(context.Background())
 	assert.NoError(t, err, "should connect success")
 	defer cli.Close()
+	assert.True(t, true, <-connected, "connected should be true")
+	time.Sleep(200 * time.Millisecond)
 
 	ctx, cancel2 := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel2()
 
 	_, err = cli.RequestResponse(fakeRequest).Block(ctx)
 	assert.Error(t, err, "should return error")
+	assert.True(t, reactor.IsCancelledError(err), "should be cancelled error")
+
+	_, err = cli.RequestResponse(fakeRequest).Timeout(100 * time.Millisecond).Block(context.Background())
+	assert.Error(t, err, "should return error")
+	assert.True(t, reactor.IsCancelledError(err), "should be cancelled error")
+
+	_, err = cli.RequestResponse(fakeRequest).Timeout(400 * time.Millisecond).Block(context.Background())
+	assert.NoError(t, err)
 }

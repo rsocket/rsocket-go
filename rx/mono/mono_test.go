@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/payload"
@@ -181,4 +182,14 @@ func TestCreate(t *testing.T) {
 			return nil
 		}).
 		Subscribe(context.Background())
+}
+
+func TestTimeout(t *testing.T) {
+	gen := func(ctx context.Context, sink Sink) {
+		time.Sleep(100 * time.Millisecond)
+		sink.Success(payload.NewString("foobar", ""))
+	}
+	_, err := Create(gen).Timeout(10 * time.Millisecond).Block(context.Background())
+	assert.Error(t, err, "should return error")
+	assert.True(t, reactor.IsCancelledError(err), "should be cancelled error")
 }
