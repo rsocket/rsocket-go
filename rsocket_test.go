@@ -17,7 +17,6 @@ import (
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/extension"
 	"github.com/rsocket/rsocket-go/lease"
-	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -55,13 +54,6 @@ func TestResume(t *testing.T) {
 	}()
 
 	go func(ctx context.Context) {
-		defer func() {
-			select {
-			case <-started:
-			default:
-				close(started)
-			}
-		}()
 		_ = Receive().
 			OnStart(func() {
 				close(started)
@@ -168,13 +160,6 @@ func TestConnectBroken(t *testing.T) {
 	port := 8787
 
 	go func(ctx context.Context) {
-		defer func() {
-			select {
-			case <-started:
-			default:
-				close(started)
-			}
-		}()
 		_ = Receive().
 			OnStart(func() {
 				close(started)
@@ -223,15 +208,6 @@ func TestBiDirection(t *testing.T) {
 	defer cancel()
 
 	go func(ctx context.Context) {
-
-		defer func() {
-			select {
-			case <-started:
-			default:
-				close(started)
-			}
-		}()
-
 		l, _ := lease.NewSimpleFactory(3*time.Second, 1*time.Second, 1*time.Second, 10)
 		_ = Receive().
 			Lease(l).
@@ -339,15 +315,6 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 	serving := make(chan struct{})
 
 	go func(ctx context.Context) {
-
-		defer func() {
-			select {
-			case <-serving:
-			default:
-				close(serving)
-			}
-		}()
-
 		err := Receive().
 			Fragment(128).
 			OnStart(func() {
@@ -642,18 +609,9 @@ func (d delayedRSocket) RequestChannel(messages rx.Publisher) flux.Flux {
 }
 
 func TestContextTimeout(t *testing.T) {
-	logger.SetLevel(logger.LevelDebug)
 	var responder delayedRSocket
 	started := make(chan struct{})
 	go func() {
-		defer func() {
-			select {
-			case <-started:
-			default:
-				close(started)
-			}
-		}()
-
 		_ = Receive().
 			OnStart(func() {
 				close(started)
