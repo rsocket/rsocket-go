@@ -62,7 +62,7 @@ type ClientBuilder interface {
 	// OnClose register handler when client socket closed.
 	OnClose(func(error)) ClientBuilder
 	// OnConnect register handler when client socket connected.
-	OnConnect(func(error)) ClientBuilder
+	OnConnect(func(Client,error)) ClientBuilder
 	// Acceptor set acceptor for RSocket client.
 	Acceptor(acceptor ClientSocketAcceptor) ToClientStarter
 }
@@ -91,7 +91,7 @@ type clientBuilder struct {
 	setup          *socket.SetupInfo
 	acceptor       ClientSocketAcceptor
 	onCloses       []func(error)
-	onConnects     []func(error)
+	onConnects     []func(Client,error)
 	connectTimeout time.Duration
 }
 
@@ -119,7 +119,7 @@ func (cb *clientBuilder) Fragment(mtu int) ClientBuilder {
 	return cb
 }
 
-func (cb *clientBuilder) OnConnect(fn func(error)) ClientBuilder {
+func (cb *clientBuilder) OnConnect(fn func(Client,error)) ClientBuilder {
 	cb.onConnects = append(cb.onConnects, fn)
 	return cb
 }
@@ -215,11 +215,11 @@ func (cb *clientBuilder) Start(ctx context.Context) (client Client, err error) {
 
 	// trigger OnConnect
 	if len(cb.onConnects) > 0 {
-		var onConnects []func(error)
+		var onConnects []func(Client,error)
 		onConnects, cb.onConnects = cb.onConnects, nil
 		go func() {
 			for _, onConnect := range onConnects {
-				onConnect(err)
+				onConnect(client,err)
 			}
 		}()
 	}
