@@ -18,12 +18,12 @@ const (
 
 // LeaseFrame is Lease frame.
 type LeaseFrame struct {
-	*RawFrame
+	*baseDefaultFrame
 }
 
 // WriteableLeaseFrame is writeable Lease frame.
 type WriteableLeaseFrame struct {
-	*tinyFrame
+	baseWriteableFrame
 	ttl      [4]byte
 	n        [4]byte
 	metadata []byte
@@ -109,30 +109,35 @@ func NewWriteableLeaseFrame(ttl time.Duration, n uint32, metadata []byte) *Write
 		flag |= core.FlagMetadata
 	}
 	h := core.NewFrameHeader(0, core.FrameTypeLease, flag)
-	t := newTinyFrame(h)
+	t := newBaseWriteableFrame(h)
 	return &WriteableLeaseFrame{
-		tinyFrame: t,
-		ttl:       a,
-		n:         b,
-		metadata:  metadata,
+		baseWriteableFrame: t,
+		ttl:                a,
+		n:                  b,
+		metadata:           metadata,
 	}
 }
 
 // NewLeaseFrame creates a new LeaseFrame.
 func NewLeaseFrame(ttl time.Duration, n uint32, metadata []byte) *LeaseFrame {
-	bf := common.NewByteBuff()
-	if err := binary.Write(bf, binary.BigEndian, uint32(int64(ttl)/1e6)); err != nil {
+	b := common.BorrowByteBuff()
+	// NOTICE: be compatible with 1.11.
+	ttlInMills := uint32(int64(ttl) / 1e6)
+	if err := binary.Write(b, binary.BigEndian, ttlInMills); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
-	if err := binary.Write(bf, binary.BigEndian, n); err != nil {
+	if err := binary.Write(b, binary.BigEndian, n); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
 	var fg core.FrameFlag
 	if len(metadata) > 0 {
 		fg |= core.FlagMetadata
-		if _, err := bf.Write(metadata); err != nil {
+		if _, err := b.Write(metadata); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
-	return &LeaseFrame{NewRawFrame(core.NewFrameHeader(0, core.FrameTypeLease, fg), bf)}
+	return &LeaseFrame{newBaseDefaultFrame(core.NewFrameHeader(0, core.FrameTypeLease, fg), b)}
 }

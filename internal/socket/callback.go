@@ -63,14 +63,14 @@ func (s requestStreamCallbackReverse) stopWithError(err error) {
 	// TODO: fill error
 }
 
-type requestChannelCallbackReverse struct {
+type respondChannelCallback struct {
 	snd rx.Subscription
 	rcv flux.Processor
 }
 
-func (s requestChannelCallbackReverse) stopWithError(err error) {
+func (s respondChannelCallback) stopWithError(err error) {
 	if closer, ok := s.rcv.Raw().(io.Closer); ok {
-		closer.Close()
+		_ = closer.Close()
 	}
 	s.rcv.Error(err)
 	s.snd.Cancel()

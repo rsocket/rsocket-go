@@ -17,19 +17,59 @@ const (
 
 // ErrorFrame is error frame.
 type ErrorFrame struct {
-	*RawFrame
+	*baseDefaultFrame
 }
 
-// WriteableErrorFrame is writeable error frame.
-type WriteableErrorFrame struct {
-	*tinyFrame
+type frozenError struct {
 	code core.ErrorCode
 	data []byte
 }
 
-// Error returns error string.
-func (e WriteableErrorFrame) Error() string {
-	return makeErrorString(e.code, e.data)
+// WriteableErrorFrame is writeable error frame.
+type WriteableErrorFrame struct {
+	baseWriteableFrame
+	frozenError
+}
+
+// NewWriteableErrorFrame creates WriteableErrorFrame.
+func NewWriteableErrorFrame(id uint32, code core.ErrorCode, data []byte) *WriteableErrorFrame {
+	h := core.NewFrameHeader(id, core.FrameTypeError, 0)
+	t := newBaseWriteableFrame(h)
+	return &WriteableErrorFrame{
+		baseWriteableFrame: t,
+		frozenError: frozenError{
+			code: code,
+			data: data,
+		},
+	}
+}
+
+// NewErrorFrame returns a new error frame.
+func NewErrorFrame(streamID uint32, code core.ErrorCode, data []byte) *ErrorFrame {
+	b := common.BorrowByteBuff()
+	if err := binary.Write(b, binary.BigEndian, uint32(code)); err != nil {
+		common.ReturnByteBuff(b)
+		panic(err)
+	}
+	if _, err := b.Write(data); err != nil {
+		common.ReturnByteBuff(b)
+		panic(err)
+	}
+	return &ErrorFrame{
+		newBaseDefaultFrame(core.NewFrameHeader(streamID, core.FrameTypeError, 0), b),
+	}
+}
+
+func (c frozenError) Error() string {
+	return makeErrorString(c.ErrorCode(), c.ErrorData())
+}
+
+func (c frozenError) ErrorCode() core.ErrorCode {
+	return c.code
+}
+
+func (c frozenError) ErrorData() []byte {
+	return c.data
 }
 
 // WriteTo writes frame to writer.
@@ -60,6 +100,13 @@ func (e WriteableErrorFrame) Len() int {
 	return core.FrameHeaderLen + 4 + len(e.data)
 }
 
+func (p *ErrorFrame) ToError() error {
+	return frozenError{
+		code: p.ErrorCode(),
+		data: common.CloneBytes(p.ErrorData()),
+	}
+}
+
 // Validate returns error if frame is invalid.
 func (p *ErrorFrame) Validate() (err error) {
 	if p.body.Len() < minErrorFrameLen {
@@ -82,33 +129,6 @@ func (p *ErrorFrame) ErrorCode() core.ErrorCode {
 // ErrorData returns error data bytes.
 func (p *ErrorFrame) ErrorData() []byte {
 	return p.body.Bytes()[errDataOff:]
-}
-
-// NewWriteableErrorFrame creates WriteableErrorFrame.
-func NewWriteableErrorFrame(id uint32, code core.ErrorCode, data []byte) *WriteableErrorFrame {
-	h := core.NewFrameHeader(id, core.FrameTypeError, 0)
-	t := newTinyFrame(h)
-	return &WriteableErrorFrame{
-		tinyFrame: t,
-		code:      code,
-		data:      data,
-	}
-}
-
-// NewErrorFrame returns a new error frame.
-func NewErrorFrame(streamID uint32, code core.ErrorCode, data []byte) *ErrorFrame {
-	bf := common.NewByteBuff()
-	var b4 [4]byte
-	binary.BigEndian.PutUint32(b4[:], uint32(code))
-	if _, err := bf.Write(b4[:]); err != nil {
-		panic(err)
-	}
-	if _, err := bf.Write(data); err != nil {
-		panic(err)
-	}
-	return &ErrorFrame{
-		NewRawFrame(core.NewFrameHeader(streamID, core.FrameTypeError, 0), bf),
-	}
 }
 
 func makeErrorString(code core.ErrorCode, data []byte) string {

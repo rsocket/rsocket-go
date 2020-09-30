@@ -2,24 +2,29 @@ package fragmentation
 
 import (
 	"container/list"
-	"errors"
 	"fmt"
 
 	"github.com/rsocket/rsocket-go/core"
 )
 
-var errNoFrameInJoiner = errors.New("no frames in current joiner")
-
 type implJoiner struct {
 	root *list.List // list of HeaderAndPayload
 }
 
-func (p *implJoiner) First() core.Frame {
+func (p *implJoiner) Release() {
+	for cur := p.root.Front(); cur != nil; cur = cur.Next() {
+		if r, ok := cur.Value.(core.BufferedFrame); ok {
+			r.Release()
+		}
+	}
+}
+
+func (p *implJoiner) First() core.BufferedFrame {
 	first := p.root.Front()
 	if first == nil {
-		panic(errNoFrameInJoiner)
+		panic("no frames in current joiner")
 	}
-	return first.Value.(core.Frame)
+	return first.Value.(core.BufferedFrame)
 }
 
 func (p *implJoiner) Header() core.FrameHeader {

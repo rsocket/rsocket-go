@@ -8,12 +8,12 @@ import (
 
 // CancelFrame is frame of Cancel.
 type CancelFrame struct {
-	*RawFrame
+	*baseDefaultFrame
 }
 
 // WriteableCancelFrame is writeable frame of Cancel.
 type WriteableCancelFrame struct {
-	*tinyFrame
+	baseWriteableFrame
 }
 
 // WriteTo writes current frame to given writer.
@@ -45,13 +45,13 @@ func (f *CancelFrame) Validate() (err error) {
 func NewWriteableCancelFrame(id uint32) *WriteableCancelFrame {
 	h := core.NewFrameHeader(id, core.FrameTypeCancel, 0)
 	return &WriteableCancelFrame{
-		tinyFrame: newTinyFrame(h),
+		baseWriteableFrame: newBaseWriteableFrame(h),
 	}
 }
 
 // NewCancelFrame creates cancel frame.
 func NewCancelFrame(sid uint32) *CancelFrame {
 	return &CancelFrame{
-		NewRawFrame(core.NewFrameHeader(sid, core.FrameTypeCancel, 0), nil),
+		newBaseDefaultFrame(core.NewFrameHeader(sid, core.FrameTypeCancel, 0), nil),
 	}
 }

@@ -8,12 +8,23 @@ import (
 	"github.com/jjeffcaii/reactor-go/mono"
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
 
 type proxy struct {
 	mono.Mono
+}
+
+func newProxy(source mono.Mono) proxy {
+	return proxy{source}
+}
+
+func deepClone(any reactor.Any) (reactor.Any, error) {
+	src := any.(payload.Payload)
+	m, _ := src.Metadata()
+	return payload.New(common.CloneBytes(src.Data()), common.CloneBytes(m)), nil
 }
 
 func (p proxy) Raw() mono.Mono {
@@ -75,7 +86,7 @@ func (p proxy) SubscribeWithChan(ctx context.Context, valueChan chan<- payload.P
 }
 
 func (p proxy) Block(ctx context.Context) (pa payload.Payload, err error) {
-	v, err := p.Mono.Block(ctx)
+	v, err := p.Mono.Map(deepClone).Block(ctx)
 	if err != nil {
 		return
 	}
@@ -101,6 +112,10 @@ func (p proxy) FlatMap(transform func(payload.Payload) Mono) Mono {
 	return newProxy(p.Mono.FlatMap(func(any reactor.Any) mono.Mono {
 		return transform(any.(payload.Payload)).Raw()
 	}))
+}
+
+func (p proxy) DeepClone() Mono {
+	return newProxy(p.Mono.Map(deepClone))
 }
 
 func (p proxy) DoFinally(fn rx.FnFinally) Mono {
@@ -147,24 +162,7 @@ func (p proxy) SubscribeWith(ctx context.Context, actual rx.Subscriber) {
 	if actual == rx.EmptySubscriber {
 		sub = rx.EmptyRawSubscriber
 	} else {
-		sub = reactor.NewSubscriber(
-			reactor.OnNext(func(v reactor.Any) error {
-				return actual.OnNext(v.(payload.Payload))
-			}),
-			reactor.OnComplete(func() {
-				actual.OnComplete()
-			}),
-			reactor.OnSubscribe(func(ctx context.Context, su reactor.Subscription) {
-				actual.OnSubscribe(ctx, su)
-			}),
-			reactor.OnError(func(e error) {
-				actual.OnError(e)
-			}),
-		)
+		sub = rx.NewSubscriberFacade(actual)
 	}
 	p.Mono.SubscribeWith(ctx, sub)
-}
-
-func newProxy(source mono.Mono) proxy {
-	return proxy{source}
 }

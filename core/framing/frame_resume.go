@@ -22,12 +22,12 @@ const (
 
 // ResumeFrame is Resume frame.
 type ResumeFrame struct {
-	*RawFrame
+	*baseDefaultFrame
 }
 
 // WriteableResumeFrame is writeable Resume frame.
 type WriteableResumeFrame struct {
-	*tinyFrame
+	baseWriteableFrame
 	version  core.Version
 	token    []byte
 	posFirst [8]byte
@@ -124,17 +124,17 @@ func (r WriteableResumeFrame) Len() int {
 // NewWriteableResumeFrame creates a new WriteableResumeFrame.
 func NewWriteableResumeFrame(version core.Version, token []byte, firstAvailableClientPosition, lastReceivedServerPosition uint64) *WriteableResumeFrame {
 	h := core.NewFrameHeader(0, core.FrameTypeResume, 0)
-	t := newTinyFrame(h)
+	t := newBaseWriteableFrame(h)
 	var a, b [8]byte
 	binary.BigEndian.PutUint64(a[:], firstAvailableClientPosition)
 	binary.BigEndian.PutUint64(b[:], lastReceivedServerPosition)
 
 	return &WriteableResumeFrame{
-		tinyFrame: t,
-		version:   version,
-		token:     token,
-		posFirst:  a,
-		posLast:   b,
+		baseWriteableFrame: t,
+		version:            version,
+		token:              token,
+		posFirst:           a,
+		posLast:            b,
 	}
 }
 
@@ -144,25 +144,30 @@ func NewResumeFrame(version core.Version, token []byte, firstAvailableClientPosi
 	if n > math.MaxUint16 {
 		panic(errResumeTokenTooLarge)
 	}
-	bf := common.NewByteBuff()
-	if _, err := bf.Write(version.Bytes()); err != nil {
+	b := common.BorrowByteBuff()
+	if _, err := b.Write(version.Bytes()); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
-	if err := binary.Write(bf, binary.BigEndian, uint16(n)); err != nil {
+	if err := binary.Write(b, binary.BigEndian, uint16(n)); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
 	if n > 0 {
-		if _, err := bf.Write(token); err != nil {
+		if _, err := b.Write(token); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
-	if err := binary.Write(bf, binary.BigEndian, lastReceivedServerPosition); err != nil {
+	if err := binary.Write(b, binary.BigEndian, lastReceivedServerPosition); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
-	if err := binary.Write(bf, binary.BigEndian, firstAvailableClientPosition); err != nil {
+	if err := binary.Write(b, binary.BigEndian, firstAvailableClientPosition); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
 	return &ResumeFrame{
-		NewRawFrame(core.NewFrameHeader(0, core.FrameTypeResume, 0), bf),
+		newBaseDefaultFrame(core.NewFrameHeader(0, core.FrameTypeResume, 0), b),
 	}
 }

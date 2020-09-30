@@ -33,18 +33,18 @@ func (p *TCPConn) SetDeadline(deadline time.Time) error {
 }
 
 // Read reads next frame from Conn.
-func (p *TCPConn) Read() (f core.Frame, err error) {
+func (p *TCPConn) Read() (f core.BufferedFrame, err error) {
 	raw, err := p.decoder.Read()
 	if err == io.EOF {
 		return
 	}
 	if err != nil {
-		err = errors.Wrap(err, "read frame failed")
+		err = errors.Wrap(err, "read frame failed:")
 		return
 	}
 	f, err = framing.FromBytes(raw)
 	if err != nil {
-		err = errors.Wrap(err, "read frame failed")
+		err = errors.Wrap(err, "decode frame failed:")
 		return
 	}
 	if p.counter != nil && f.Header().Resumable() {
@@ -52,7 +52,7 @@ func (p *TCPConn) Read() (f core.Frame, err error) {
 	}
 	err = f.Validate()
 	if err != nil {
-		err = errors.Wrap(err, "read frame failed")
+		err = errors.Wrap(err, "validate frame failed:")
 		return
 	}
 	if logger.IsDebugEnabled() {

@@ -7,6 +7,8 @@ import (
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/core/transport"
+	"github.com/rsocket/rsocket-go/internal/bytesconv"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
 	"github.com/rsocket/rsocket-go/internal/session"
 	"github.com/rsocket/rsocket-go/internal/socket"
@@ -20,9 +22,10 @@ const (
 )
 
 var (
-	errUnavailableResume    = []byte("resume not supported")
-	errUnavailableLease     = []byte("lease not supported")
-	errDuplicatedSetupToken = []byte("duplicated setup token")
+	_errUnavailableResume    = "resume not supported"
+	_errUnavailableLease     = "lease not supported"
+	_errDuplicatedSetupToken = "duplicated setup token"
+	_errInvalidFirstFrame    = "first frame must be setup or resume"
 )
 
 type (
@@ -175,6 +178,8 @@ func (p *server) Serve(ctx context.Context) error {
 			return
 		}
 
+		defer first.Release()
+
 		switch frame := first.(type) {
 		case *framing.ResumeFrame:
 			p.doResume(frame, tp, socketChan)
@@ -191,7 +196,7 @@ func (p *server) Serve(ctx context.Context) error {
 				}
 			}(ctx, sendingSocket)
 		default:
-			err := framing.NewWriteableErrorFrame(0, core.ErrorCodeConnectionError, []byte("first frame must be setup or resume"))
+			err := framing.NewWriteableErrorFrame(0, core.ErrorCodeConnectionError, bytesconv.StringToBytes(_errInvalidFirstFrame))
 			_ = tp.Send(err, true)
 			_ = tp.Close()
 			return
@@ -212,9 +217,8 @@ func (p *server) Serve(ctx context.Context) error {
 }
 
 func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.WriteableErrorFrame) {
-
 	if frame.Header().Flag().Check(core.FlagLease) && p.leases == nil {
-		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeUnsupportedSetup, errUnavailableLease)
+		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeUnsupportedSetup, bytesconv.StringToBytes(_errUnavailableLease))
 		return
 	}
 
@@ -222,7 +226,7 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 
 	// 1. receive a token but server doesn't support resume.
 	if isResume && !p.resumeOpts.enable {
-		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeUnsupportedSetup, errUnavailableResume)
+		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeUnsupportedSetup, bytesconv.StringToBytes(_errUnavailableResume))
 		return
 	}
 
@@ -241,16 +245,18 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 		return
 	}
 
-	token := make([]byte, len(frame.Token()))
+	token := frame.Token()
 
 	// 3. resume reject because of duplicated token.
 	if _, ok := p.sm.Load(token); ok {
-		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedSetup, errDuplicatedSetupToken)
+		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedSetup, bytesconv.StringToBytes(_errDuplicatedSetupToken))
 		return
 	}
 
+	// clone token
+	token = common.CloneBytes(token)
+
 	// 4. resume success
-	copy(token, frame.Token())
 	sendingSocket = socket.NewResumableServerSocket(rawSocket, token)
 	if responder, e := p.acc(frame, sendingSocket); e != nil {
 		switch vv := e.(type) {
@@ -270,7 +276,7 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 func (p *server) doResume(frame *framing.ResumeFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) {
 	var sending core.WriteableFrame
 	if !p.resumeOpts.enable {
-		sending = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedResume, errUnavailableResume)
+		sending = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedResume, bytesconv.StringToBytes(_errUnavailableResume))
 	} else if s, ok := p.sm.Load(frame.Token()); ok {
 		sending = framing.NewWriteableResumeOKFrame(0)
 		s.Socket().SetTransport(tp)

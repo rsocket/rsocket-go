@@ -222,7 +222,7 @@ func TestBiDirection(t *testing.T) {
 				sendingSocket.
 					RequestResponse(fakeRequest).
 					DoOnSuccess(func(input payload.Payload) error {
-						res <- input
+						res <- payload.Clone(input)
 						return nil
 					}).
 					Subscribe(context.Background())
@@ -259,10 +259,10 @@ func TestBiDirection(t *testing.T) {
 					return mono.Just(msg)
 				}),
 				MetadataPush(func(msg payload.Payload) {
-					metadataPush <- msg
+					metadataPush <- payload.Clone(msg)
 				}),
 				FireAndForget(func(msg payload.Payload) {
-					fireAndForget <- msg
+					fireAndForget <- payload.Clone(msg)
 				}),
 			)
 		}).
@@ -341,7 +341,7 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 							s.Complete()
 						})
 					}),
-					RequestChannel(func(inputs rx.Publisher) flux.Flux {
+					RequestChannel(func(inputs flux.Flux) flux.Flux {
 						//var count int32
 						//countPointer := &count
 						done := make(chan struct{})
@@ -366,7 +366,7 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 							assert.Equal(t, channelElements, atomic.LoadInt32(success)+atomic.LoadInt32(failed))
 						}()
 
-						inputs.(flux.Flux).
+						inputs.
 							DoFinally(func(s rx.SignalType) {
 								close(done)
 							}).
@@ -604,7 +604,7 @@ func (d delayedRSocket) RequestStream(message payload.Payload) flux.Flux {
 	panic("implement me")
 }
 
-func (d delayedRSocket) RequestChannel(messages rx.Publisher) flux.Flux {
+func (d delayedRSocket) RequestChannel(messages flux.Flux) flux.Flux {
 	panic("implement me")
 }
 

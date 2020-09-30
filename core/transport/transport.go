@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -19,7 +20,7 @@ var (
 )
 
 // FrameHandler is an alias of frame handler.
-type FrameHandler = func(frame core.Frame) (err error)
+type FrameHandler = func(frame core.BufferedFrame) (err error)
 
 // ServerTransportAcceptor is an alias of server transport handler.
 type ServerTransportAcceptor = func(ctx context.Context, tp *Transport, onClose func(*Transport))
@@ -66,6 +67,19 @@ type Transport struct {
 	lastRcvPos  uint64
 	once        sync.Once
 	handlers    [handlerLen]FrameHandler
+}
+
+// NewTransport creates a new transport.
+func NewTransport(c Conn) *Transport {
+	return &Transport{
+		conn:        c,
+		maxLifetime: common.DefaultKeepaliveMaxLifetime,
+	}
+}
+
+// IsNoHandlerError returns true if input error means no handler registered.
+func IsNoHandlerError(err error) bool {
+	return err == errNoHandler
 }
 
 // Handle register event handlers
@@ -130,7 +144,7 @@ func (p *Transport) Close() (err error) {
 }
 
 // ReadFirst reads first frame.
-func (p *Transport) ReadFirst(ctx context.Context) (frame core.Frame, err error) {
+func (p *Transport) ReadFirst(ctx context.Context) (frame core.BufferedFrame, err error) {
 	select {
 	case <-ctx.Done():
 		err = ctx.Err()
@@ -164,13 +178,13 @@ func (p *Transport) Start(ctx context.Context) error {
 			if err == io.EOF {
 				return nil
 			}
-			return errors.Wrap(err, "dispatch incoming frame failed")
+			return errors.Wrap(err, "dispatch incoming frame failed:")
 		}
 	}
 }
 
 // DispatchFrame delivery incoming frames.
-func (p *Transport) DispatchFrame(_ context.Context, frame core.Frame) (err error) {
+func (p *Transport) DispatchFrame(_ context.Context, frame core.BufferedFrame) (err error) {
 	header := frame.Header()
 	t := header.Type()
 	sid := header.StreamID()
@@ -207,7 +221,7 @@ func (p *Transport) DispatchFrame(_ context.Context, frame core.Frame) (err erro
 		handler = p.getHandler(OnRequestN)
 	case core.FrameTypeError:
 		if sid == 0 {
-			err = errors.New(frame.(*framing.ErrorFrame).Error())
+			err = frame.(*framing.ErrorFrame).ToError()
 			if call := p.getHandler(OnErrorWithZeroStreamID); call != nil {
 				_ = call(frame)
 			}
@@ -240,7 +254,7 @@ func (p *Transport) DispatchFrame(_ context.Context, frame core.Frame) (err erro
 	// trigger handler
 	err = handler(frame)
 	if err != nil {
-		err = errors.Wrap(err, "exec frame handler failed")
+		err = errors.Wrap(err, fmt.Sprintf("handle frame %s failed:", frame.Header().Type()))
 	}
 	return
 }
@@ -249,17 +263,4 @@ func (p *Transport) getHandler(t EventType) FrameHandler {
 	p.RLock()
 	defer p.RUnlock()
 	return p.handlers[t]
-}
-
-// NewTransport creates a new transport.
-func NewTransport(c Conn) *Transport {
-	return &Transport{
-		conn:        c,
-		maxLifetime: common.DefaultKeepaliveMaxLifetime,
-	}
-}
-
-// IsNoHandlerError returns true if input error means no handler registered.
-func IsNoHandlerError(err error) bool {
-	return err == errNoHandler
 }

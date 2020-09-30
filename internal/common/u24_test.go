@@ -54,9 +54,11 @@ func TestUint24(t *testing.T) {
 }
 
 func TestUint24_WriteTo(t *testing.T) {
+	b := BorrowByteBuff()
+	defer ReturnByteBuff(b)
 	for _, n := range []int{0, 1, RandIntn(MaxUint24), MaxUint24} {
+		b.Reset()
 		v := MustNewUint24(n)
-		b := NewByteBuff()
 		wrote, err := v.WriteTo(b)
 		assert.NoError(t, err, "write uint24 failed")
 		assert.Equal(t, int64(3), wrote, "wrote bytes length should be 3")

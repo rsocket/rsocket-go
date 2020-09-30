@@ -34,13 +34,13 @@ func TestNewClient(t *testing.T) {
 	defer ctrl.Finish()
 
 	// For test
-	readChan := make(chan core.Frame, 64)
+	readChan := make(chan core.BufferedFrame, 64)
 
 	conn.EXPECT().Close().Times(1)
 	conn.EXPECT().SetCounter(gomock.Any()).Times(1)
 	conn.EXPECT().Write(gomock.Any()).Return(nil).AnyTimes()
 	conn.EXPECT().Flush().AnyTimes()
-	conn.EXPECT().Read().DoAndReturn(func() (core.Frame, error) {
+	conn.EXPECT().Read().DoAndReturn(func() (core.BufferedFrame, error) {
 		next, ok := <-readChan
 		if !ok {
 			return nil, io.EOF
@@ -105,13 +105,13 @@ func TestLease(t *testing.T) {
 	defer ctrl.Finish()
 
 	// For test
-	readChan := make(chan core.Frame, 64)
+	readChan := make(chan core.BufferedFrame, 64)
 
 	conn.EXPECT().Close().Times(1)
 	conn.EXPECT().SetCounter(gomock.Any()).Times(1)
 	conn.EXPECT().Write(gomock.Any()).Return(nil).AnyTimes()
 	conn.EXPECT().Flush().AnyTimes()
-	conn.EXPECT().Read().DoAndReturn(func() (core.Frame, error) {
+	conn.EXPECT().Read().DoAndReturn(func() (core.BufferedFrame, error) {
 		next, ok := <-readChan
 		if !ok {
 			return nil, io.EOF

@@ -47,7 +47,7 @@ func (p *WebsocketConn) SetDeadline(deadline time.Time) error {
 }
 
 // Read reads next frame from Conn.
-func (p *WebsocketConn) Read() (f core.Frame, err error) {
+func (p *WebsocketConn) Read() (f core.BufferedFrame, err error) {
 	t, raw, err := p.c.ReadMessage()
 
 	if err == io.EOF {

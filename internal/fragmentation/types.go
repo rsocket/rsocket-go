@@ -27,9 +27,10 @@ type HeaderAndPayload interface {
 
 // Joiner is used to join frames to a payload.
 type Joiner interface {
+	common.Releasable
 	HeaderAndPayload
 	// First returns the first frame.
-	First() core.Frame
+	First() core.BufferedFrame
 	// Push append a new frame and returns true if joiner is end.
 	Push(elem HeaderAndPayload) (end bool)
 }

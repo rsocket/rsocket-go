@@ -124,6 +124,9 @@ func (r *Runner) runClientMode(ctx context.Context) (err error) {
 		DataMimeType(r.DataFormat).
 		MetadataMimeType(r.MetadataFormat).
 		SetupPayload(setupPayload).
+		OnClose(func(err error) {
+			rsocket.TracePoolCount()
+		}).
 		Transport(tp).
 		Start(ctx)
 	if err != nil {
@@ -188,7 +191,7 @@ func (r *Runner) runServerMode(ctx context.Context) error {
 					r.showPayload(message)
 					return sendingPayloads
 				}))
-				options = append(options, rsocket.RequestChannel(func(messages rx.Publisher) flux.Flux {
+				options = append(options, rsocket.RequestChannel(func(messages flux.Flux) flux.Flux {
 					messages.Subscribe(ctx, rx.OnNext(func(input payload.Payload) error {
 						r.showPayload(input)
 						return nil

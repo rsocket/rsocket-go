@@ -7,7 +7,6 @@ import (
 
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
@@ -30,7 +29,7 @@ type Responder interface {
 	// RequestStream request a completable stream.
 	RequestStream(message payload.Payload) flux.Flux
 	// RequestChannel request a completable stream in both directions.
-	RequestChannel(messages rx.Publisher) flux.Flux
+	RequestChannel(messages flux.Flux) flux.Flux
 }
 
 // ClientSocket represents a client-side socket.

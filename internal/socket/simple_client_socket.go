@@ -27,14 +27,14 @@ func (p *simpleClientSocket) Setup(ctx context.Context, connectTimeout time.Dura
 
 	if setup.Lease {
 		p.refreshLease(0, 0)
-		tp.Handle(transport.OnLease, func(frame core.Frame) (err error) {
+		tp.Handle(transport.OnLease, func(frame core.BufferedFrame) (err error) {
 			lease := frame.(*framing.LeaseFrame)
 			p.refreshLease(lease.TimeToLive(), int64(lease.NumberOfRequests()))
 			return
 		})
 	}
 
-	tp.Handle(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
+	tp.Handle(transport.OnErrorWithZeroStreamID, func(frame core.BufferedFrame) (err error) {
 		p.socket.SetError(frame.(*framing.ErrorFrame))
 		return
 	})
@@ -57,8 +57,8 @@ func (p *simpleClientSocket) Setup(ctx context.Context, connectTimeout time.Dura
 func (p *simpleClientSocket) createTransport(ctx context.Context, connectTimeout time.Duration) (*transport.Transport, error) {
 	var tpCtx = ctx
 	if connectTimeout > 0 {
-		cctx, cancel := context.WithTimeout(ctx, connectTimeout)
-		tpCtx = cctx
+		c, cancel := context.WithTimeout(ctx, connectTimeout)
+		tpCtx = c
 		defer cancel()
 	}
 	return p.tp(tpCtx)

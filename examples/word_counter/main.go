@@ -31,9 +31,9 @@ func main() {
 
 func server(readyCh chan struct{}) {
 	// create a handler that will be called when the server receives the RequestChannel frame (FrameTypeRequestChannel - 0x07)
-	requestChannelHandler := rsocket.RequestChannel(func(msgs rx.Publisher) flux.Flux {
+	requestChannelHandler := rsocket.RequestChannel(func(requests flux.Flux) flux.Flux {
 		return flux.Create(func(ctx context.Context, s flux.Sink) {
-			msgs.(flux.Flux).DoOnNext(func(elem payload.Payload) error {
+			requests.DoOnNext(func(elem payload.Payload) error {
 				// for each payload in a flux stream respond with a word count
 				s.Next(payload.NewString(fmt.Sprintf("%d", wordCount(elem.DataUTF8())), ""))
 				return nil

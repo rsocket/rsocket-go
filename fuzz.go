@@ -10,7 +10,6 @@ import (
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/core/transport"
-	"github.com/rsocket/rsocket-go/internal/common"
 )
 
 func Fuzz(data []byte) int {
@@ -31,13 +30,12 @@ func isExpectedError(err error) bool {
 }
 
 func handleRaw(raw []byte) (err error) {
-	h := core.ParseFrameHeader(raw)
-	bf := common.NewByteBuff()
-	var frame core.Frame
-	frame, err = framing.FromRawFrame(framing.NewRawFrame(h, bf))
+	var frame core.BufferedFrame
+	frame, err = framing.FromBytes(raw)
 	if err != nil {
 		return
 	}
+	defer frame.Release()
 	err = frame.Validate()
 	if err != nil {
 		return

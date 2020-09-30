@@ -22,7 +22,7 @@ func TestSimpleServerSocket_Start(t *testing.T) {
 	defer ctrl.Finish()
 
 	// For test
-	readChan := make(chan core.Frame, 64)
+	readChan := make(chan core.BufferedFrame, 64)
 	setupFrame := framing.NewSetupFrame(
 		core.DefaultVersion,
 		30*time.Second,
@@ -40,7 +40,7 @@ func TestSimpleServerSocket_Start(t *testing.T) {
 	conn.EXPECT().SetCounter(gomock.Any()).AnyTimes()
 	conn.EXPECT().Write(gomock.Any()).Return(nil).AnyTimes()
 	conn.EXPECT().Flush().AnyTimes()
-	conn.EXPECT().Read().DoAndReturn(func() (core.Frame, error) {
+	conn.EXPECT().Read().DoAndReturn(func() (core.BufferedFrame, error) {
 		next, ok := <-readChan
 		if !ok {
 			return nil, io.EOF

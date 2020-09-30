@@ -14,12 +14,12 @@ const (
 
 // RequestStreamFrame is RequestStream frame.
 type RequestStreamFrame struct {
-	*RawFrame
+	*baseDefaultFrame
 }
 
 // WriteableRequestStreamFrame is writeable RequestStream frame.
 type WriteableRequestStreamFrame struct {
-	*tinyFrame
+	baseWriteableFrame
 	n        [4]byte
 	metadata []byte
 	data     []byte
@@ -103,36 +103,40 @@ func NewWriteableRequestStreamFrame(id uint32, n uint32, data, metadata []byte, 
 	var b [4]byte
 	binary.BigEndian.PutUint32(b[:], n)
 	h := core.NewFrameHeader(id, core.FrameTypeRequestStream, flag)
-	t := newTinyFrame(h)
+	t := newBaseWriteableFrame(h)
 	return &WriteableRequestStreamFrame{
-		tinyFrame: t,
-		n:         b,
-		metadata:  metadata,
-		data:      data,
+		baseWriteableFrame: t,
+		n:                  b,
+		metadata:           metadata,
+		data:               data,
 	}
 }
 
 // NewRequestStreamFrame returns a new RequestStreamFrame.
 func NewRequestStreamFrame(id uint32, n uint32, data, metadata []byte, flag core.FrameFlag) *RequestStreamFrame {
-	bf := common.NewByteBuff()
-	if err := binary.Write(bf, binary.BigEndian, n); err != nil {
+	b := common.BorrowByteBuff()
+	if err := binary.Write(b, binary.BigEndian, n); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
 	if len(metadata) > 0 {
 		flag |= core.FlagMetadata
-		if err := bf.WriteUint24(len(metadata)); err != nil {
+		if err := b.WriteUint24(len(metadata)); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
-		if _, err := bf.Write(metadata); err != nil {
+		if _, err := b.Write(metadata); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
 	if len(data) > 0 {
-		if _, err := bf.Write(data); err != nil {
+		if _, err := b.Write(data); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
 	return &RequestStreamFrame{
-		NewRawFrame(core.NewFrameHeader(id, core.FrameTypeRequestStream, flag), bf),
+		newBaseDefaultFrame(core.NewFrameHeader(id, core.FrameTypeRequestStream, flag), b),
 	}
 }

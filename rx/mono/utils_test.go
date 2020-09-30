@@ -134,7 +134,7 @@ func TestRaw(t *testing.T) {
 	fakePayload := payload.NewString("fake", "payload")
 	res, err := mono.Raw(rsMono.Just(fakePayload)).Block(context.Background())
 	assert.NoError(t, err)
-	assert.Equal(t, fakePayload, res)
+	assert.True(t, payload.Equal(fakePayload, res))
 }
 
 func TestSubscribeWithChan(t *testing.T) {

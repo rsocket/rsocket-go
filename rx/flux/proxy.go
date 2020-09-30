@@ -6,7 +6,6 @@ import (
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/flux"
 	"github.com/jjeffcaii/reactor-go/scheduler"
-	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -166,20 +165,7 @@ func (p proxy) SubscribeWith(ctx context.Context, s rx.Subscriber) {
 	if s == rx.EmptySubscriber {
 		sub = rx.EmptyRawSubscriber
 	} else {
-		sub = reactor.NewSubscriber(
-			reactor.OnNext(func(v reactor.Any) error {
-				return s.OnNext(v.(payload.Payload))
-			}),
-			reactor.OnError(func(e error) {
-				s.OnError(e)
-			}),
-			reactor.OnComplete(func() {
-				s.OnComplete()
-			}),
-			reactor.OnSubscribe(func(ctx context.Context, su reactor.Subscription) {
-				s.OnSubscribe(ctx, su)
-			}),
-		)
+		sub = rx.NewSubscriberFacade(s)
 	}
 	p.Flux.SubscribeWith(ctx, sub)
 }
@@ -187,7 +173,7 @@ func (p proxy) SubscribeWith(ctx context.Context, s rx.Subscriber) {
 func (p proxy) mustProcessor() flux.Processor {
 	processor, ok := p.Flux.(flux.Processor)
 	if !ok {
-		panic(errors.New("require flux.Processor"))
+		panic("require flux.Processor")
 	}
 	return processor
 }

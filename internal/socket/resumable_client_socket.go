@@ -2,10 +2,10 @@ package socket
 
 import (
 	"context"
-	"errors"
 	"math"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/core/transport"
@@ -45,9 +45,9 @@ func (r *resumeClientSocket) Close() (err error) {
 func (r *resumeClientSocket) createTransport(ctx context.Context, timeout time.Duration) (*transport.Transport, error) {
 	var tpCtx = ctx
 	if timeout > 0 {
-		cctx, cancel := context.WithTimeout(ctx, timeout)
+		c, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		tpCtx = cctx
+		tpCtx = c
 	}
 	return r.tp(tpCtx)
 }
@@ -86,64 +86,60 @@ func (r *resumeClientSocket) connect(ctx context.Context, timeout time.Duration)
 		}
 	}(ctx, tp)
 
-	var f core.WriteableFrame
-
 	// connect first time.
 	if len(r.setup.Token) < 1 || connects == 1 {
-		tp.Handle(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
-			r.socket.SetError(frame.(*framing.ErrorFrame))
+		tp.Handle(transport.OnErrorWithZeroStreamID, func(frame core.BufferedFrame) (err error) {
+			defer frame.Release()
+			r.socket.SetError(frame.(*framing.ErrorFrame).ToError())
 			r.markAsClosing()
 			return
 		})
-		f = r.setup.toFrame()
-		err = tp.Send(f, true)
+		err = tp.Send(r.setup.toFrame(), true)
 		r.socket.SetTransport(tp)
 		return
 	}
 
-	f = framing.NewWriteableResumeFrame(
-		core.DefaultVersion,
-		r.setup.Token,
-		r.socket.counter.WriteBytes(),
-		r.socket.counter.ReadBytes(),
-	)
+	resumeErr := make(chan error)
 
-	resumeErr := make(chan string)
-
-	tp.Handle(transport.OnResumeOK, func(frame core.Frame) (err error) {
+	tp.Handle(transport.OnResumeOK, func(frame core.BufferedFrame) (err error) {
+		defer frame.Release()
 		close(resumeErr)
 		return
 	})
 
-	tp.Handle(transport.OnErrorWithZeroStreamID, func(frame core.Frame) error {
+	tp.Handle(transport.OnErrorWithZeroStreamID, func(frame core.BufferedFrame) error {
+		defer frame.Release()
 		// TODO: process other error with zero StreamID
-		f := frame.(*framing.ErrorFrame)
-		if f.ErrorCode() == core.ErrorCodeRejectedResume {
+		errFrame := frame.(*framing.ErrorFrame)
+		if errFrame.ErrorCode() == core.ErrorCodeRejectedResume {
 			defer func() {
 				if err := recover(); err != nil {
 					logger.Warnf("handle reject resume failed: %s\n", err)
 				}
 			}()
-			resumeErr <- f.Error()
+			resumeErr <- errFrame.ToError()
 			close(resumeErr)
 		}
 		return nil
 	})
 
-	err = tp.Send(f, true)
+	err = tp.Send(framing.NewWriteableResumeFrame(
+		core.DefaultVersion,
+		r.setup.Token,
+		r.socket.counter.WriteBytes(),
+		r.socket.counter.ReadBytes(),
+	), true)
+
 	if err != nil {
 		return err
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, _resumeTimeout)
-	defer cancel()
-
 	select {
-	case <-timeoutCtx.Done():
-		err = timeoutCtx.Err()
+	case <-time.After(_resumeTimeout):
+		err = errors.New("resume timeout")
 	case reject, ok := <-resumeErr:
 		if ok {
-			err = errors.New(reject)
+			err = reject
 			r.markAsClosing()
 			err = r.connect(ctx, timeout)
 		} else {

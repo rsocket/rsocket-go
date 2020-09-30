@@ -10,5 +10,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.4.0
 	github.com/urfave/cli/v2 v2.1.1
+	github.com/valyala/bytebufferpool v1.0.0
 	go.uber.org/atomic v1.5.1
 )
+
+replace github.com/jjeffcaii/reactor-go => /Users/jeffsky/Workspaces/reactor-go

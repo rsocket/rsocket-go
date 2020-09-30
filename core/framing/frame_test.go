@@ -1,4 +1,4 @@
-package framing_test
+package framing
 
 import (
 	"bytes"
@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/rsocket/rsocket-go/core"
-	. "github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/stretchr/testify/assert"
 )
@@ -24,12 +23,14 @@ func TestFromBytes(t *testing.T) {
 	_, _ = frame.WriteTo(b)
 	frameActual, err := FromBytes(b.Bytes())
 	assert.NoError(t, err, "should not be error")
+	defer frameActual.Release()
 	assert.Equal(t, frame.Header(), frameActual.Header(), "header does not match")
 	assert.Equal(t, frame.Len(), frameActual.Len())
 }
 
 func TestFrameCancel(t *testing.T) {
 	f := NewCancelFrame(_sid)
+	defer f.Release()
 	checkBasic(t, f, core.FrameTypeCancel)
 	f2 := NewWriteableCancelFrame(_sid)
 	checkBytes(t, f, f2)
@@ -38,12 +39,19 @@ func TestFrameCancel(t *testing.T) {
 func TestFrameError(t *testing.T) {
 	errData := []byte(common.RandAlphanumeric(10))
 	f := NewErrorFrame(_sid, core.ErrorCodeApplicationError, errData)
+	defer f.Release()
 	checkBasic(t, f, core.FrameTypeError)
 	assert.Equal(t, core.ErrorCodeApplicationError, f.ErrorCode())
 	assert.Equal(t, errData, f.ErrorData())
 	assert.NotEmpty(t, f.Error())
 	f2 := NewWriteableErrorFrame(_sid, core.ErrorCodeApplicationError, errData)
 	checkBytes(t, f, f2)
+
+	e, ok := f.ToError().(core.CustomError)
+	assert.True(t, ok, "should implement CustomError interface")
+	assert.Equal(t, core.ErrorCodeApplicationError, e.ErrorCode())
+	assert.Equal(t, errData, e.ErrorData())
+	assert.NotEmpty(t, e.Error())
 }
 
 func TestFrameFNF(t *testing.T) {
@@ -61,6 +69,7 @@ func TestFrameFNF(t *testing.T) {
 	assert.False(t, f.Header().Flag().Check(core.FlagMetadata))
 	f2 := NewWriteableFireAndForgetFrame(_sid, b, nil, core.FlagNext)
 	checkBytes(t, f, f2)
+	f.Release()
 
 	// With Metadata
 	f = NewFireAndForgetFrame(_sid, nil, b, core.FlagNext)
@@ -73,12 +82,14 @@ func TestFrameFNF(t *testing.T) {
 	assert.True(t, f.Header().Flag().Check(core.FlagMetadata))
 	f2 = NewWriteableFireAndForgetFrame(_sid, nil, b, core.FlagNext)
 	checkBytes(t, f, f2)
+	f.Release()
 }
 
 func TestFrameKeepalive(t *testing.T) {
 	pos := uint64(common.RandIntn(math.MaxInt32))
 	d := []byte(common.RandAlphanumeric(100))
 	f := NewKeepaliveFrame(pos, d, true)
+	defer f.Release()
 	checkBasic(t, f, core.FrameTypeKeepalive)
 	assert.Equal(t, d, f.Data())
 	assert.Equal(t, pos, f.LastReceivedPosition())
@@ -91,6 +102,7 @@ func TestFrameLease(t *testing.T) {
 	metadata := []byte("foobar")
 	n := uint32(4444)
 	f := NewLeaseFrame(time.Second, n, metadata)
+	defer f.Release()
 	checkBasic(t, f, core.FrameTypeLease)
 	assert.Equal(t, time.Second, f.TimeToLive())
 	assert.Equal(t, n, f.NumberOfRequests())
@@ -102,6 +114,7 @@ func TestFrameLease(t *testing.T) {
 func TestFrameMetadataPush(t *testing.T) {
 	metadata := []byte("foobar")
 	f := NewMetadataPushFrame(metadata)
+	defer f.Release()
 	assert.Nil(t, f.Data(), "should not be nil")
 	assert.Equal(t, "", f.DataUTF8(), "should be zero string")
 	checkBasic(t, f, core.FrameTypeMetadataPush)
@@ -117,6 +130,7 @@ func TestFrameMetadataPush(t *testing.T) {
 func TestPayloadFrame(t *testing.T) {
 	b := []byte("foobar")
 	f := NewPayloadFrame(_sid, b, b, core.FlagNext)
+	defer f.Release()
 	checkBasic(t, f, core.FrameTypePayload)
 	m, ok := f.Metadata()
 	assert.True(t, ok)
@@ -140,6 +154,7 @@ func TestFrameRequestChannel(t *testing.T) {
 	b := []byte("foobar")
 	n := uint32(1)
 	f := NewRequestChannelFrame(_sid, n, b, b, core.FlagNext)
+	defer f.Release()
 	checkBasic(t, f, core.FrameTypeRequestChannel)
 	assert.Equal(t, n, f.InitialRequestN())
 	assert.Equal(t, b, f.Data())
@@ -157,6 +172,7 @@ func TestFrameRequestChannel(t *testing.T) {
 func TestFrameRequestN(t *testing.T) {
 	n := uint32(1234)
 	f := NewRequestNFrame(_sid, n, 0)
+	defer f.Release()
 	checkBasic(t, f, core.FrameTypeRequestN)
 	assert.Equal(t, n, f.N())
 	f2 := NewWriteableRequestNFrame(_sid, n, 0)
@@ -166,6 +182,7 @@ func TestFrameRequestN(t *testing.T) {
 func TestFrameRequestResponse(t *testing.T) {
 	b := []byte("foobar")
 	f := NewRequestResponseFrame(_sid, b, b, core.FlagNext)
+	defer f.Release()
 	checkBasic(t, f, core.FrameTypeRequestResponse)
 	assert.Equal(t, b, f.Data())
 	m, ok := f.Metadata()
@@ -182,6 +199,7 @@ func TestFrameRequestStream(t *testing.T) {
 	b := []byte("foobar")
 	n := uint32(1234)
 	f := NewRequestStreamFrame(_sid, n, b, b, core.FlagNext)
+	defer f.Release()
 	checkBasic(t, f, core.FrameTypeRequestStream)
 	assert.Equal(t, b, f.Data())
 	assert.Equal(t, n, f.InitialRequestN())
@@ -200,6 +218,7 @@ func TestFrameResume(t *testing.T) {
 	p1 := uint64(333)
 	p2 := uint64(444)
 	f := NewResumeFrame(v, token, p1, p2)
+	defer f.Release()
 	checkBasic(t, f, core.FrameTypeResume)
 	assert.Equal(t, token, f.Token())
 	assert.Equal(t, p1, f.FirstAvailableClientPosition())
@@ -213,6 +232,7 @@ func TestFrameResume(t *testing.T) {
 func TestFrameResumeOK(t *testing.T) {
 	pos := uint64(1234)
 	f := NewResumeOKFrame(pos)
+	defer f.Release()
 	checkBasic(t, f, core.FrameTypeResumeOK)
 	assert.Equal(t, pos, f.LastReceivedClientPosition())
 	f2 := NewWriteableResumeOKFrame(pos)
@@ -229,6 +249,7 @@ func TestFrameSetup(t *testing.T) {
 	d := []byte("你好")
 	m := []byte("世界")
 	f := NewSetupFrame(v, timeKeepalive, maxLifetime, token, mimeMetadata, mimeData, d, m, false)
+	defer f.Release()
 	checkBasic(t, f, core.FrameTypeSetup)
 	assert.Equal(t, v.Major(), f.Version().Major())
 	assert.Equal(t, v.Minor(), f.Version().Minor())
@@ -250,7 +271,7 @@ func TestFrameSetup(t *testing.T) {
 	checkBytes(t, f, fs)
 }
 
-func checkBasic(t *testing.T, f core.Frame, typ core.FrameType) {
+func checkBasic(t *testing.T, f core.BufferedFrame, typ core.FrameType) {
 	sid := _sid
 	switch typ {
 	case core.FrameTypeKeepalive, core.FrameTypeSetup, core.FrameTypeLease, core.FrameTypeResume, core.FrameTypeResumeOK, core.FrameTypeMetadataPush:
@@ -260,13 +281,9 @@ func checkBasic(t *testing.T, f core.Frame, typ core.FrameType) {
 	assert.NoError(t, f.Validate(), "validate frame type failed")
 	assert.Equal(t, typ, f.Header().Type(), "frame type doesn't match")
 	assert.True(t, f.Header().Type().String() != "UNKNOWN")
-	go func() {
-		f.Done()
-	}()
-	<-f.DoneNotify()
 }
 
-func checkBytes(t *testing.T, a core.Frame, b core.WriteableFrame) {
+func checkBytes(t *testing.T, a core.BufferedFrame, b core.WriteableFrame) {
 	assert.NoError(t, a.Validate())
 	assert.Equal(t, a.Len(), b.Len())
 	bf1, bf2 := &bytes.Buffer{}, &bytes.Buffer{}
@@ -276,9 +293,10 @@ func checkBytes(t *testing.T, a core.Frame, b core.WriteableFrame) {
 	assert.NoError(t, err, "write failed")
 	b1, b2 := bf1.Bytes(), bf2.Bytes()
 	assert.Equal(t, b1, b2, "bytes doesn't match")
-	bf := common.NewByteBuff()
+	bf := common.BorrowByteBuff()
+	defer common.ReturnByteBuff(bf)
 	_, _ = bf.Write(b1[core.FrameHeaderLen:])
-	raw := NewRawFrame(core.ParseFrameHeader(b1[:core.FrameHeaderLen]), bf)
+	raw := newBaseDefaultFrame(core.ParseFrameHeader(b1[:core.FrameHeaderLen]), bf)
 	_, err = FromRawFrame(raw)
 	assert.NoError(t, err, "create from raw failed")
 }

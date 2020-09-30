@@ -1,30 +1,50 @@
 package common
 
 import (
-	"bytes"
 	"io"
+
+	"github.com/valyala/bytebufferpool"
+	"go.uber.org/atomic"
 )
 
-// ByteBuff provides byte buffer, which can be used for minimizing.
-type ByteBuff bytes.Buffer
+var _borrowed = atomic.NewInt64(0)
 
-func (b *ByteBuff) pp() *bytes.Buffer {
-	return (*bytes.Buffer)(b)
+// ByteBuff provides byte buffer, which can be used for minimizing.
+type ByteBuff bytebufferpool.ByteBuffer
+
+func CountByteBuff() int64 {
+	return _borrowed.Load()
+}
+
+// BorrowByteBuff borrows a ByteBuff from pool.
+func BorrowByteBuff() *ByteBuff {
+	_borrowed.Inc()
+	return (*ByteBuff)(bytebufferpool.Get())
+}
+
+// ReturnByteBuff returns a ByteBuff to pool.
+func ReturnByteBuff(b *ByteBuff) {
+	_borrowed.Dec()
+	bytebufferpool.Put((*bytebufferpool.ByteBuffer)(b))
+}
+
+func (b *ByteBuff) Reset() {
+	b.bb().Reset()
 }
 
 // Len returns size of ByteBuff.
 func (b *ByteBuff) Len() (n int) {
-	return b.pp().Len()
+	return b.bb().Len()
 }
 
 // WriteTo write bytes to writer.
 func (b *ByteBuff) WriteTo(w io.Writer) (int64, error) {
-	return b.pp().WriteTo(w)
+	return b.bb().WriteTo(w)
 }
 
 // Writer write bytes to current ByteBuff.
 func (b *ByteBuff) Write(bs []byte) (int, error) {
-	return b.pp().Write(bs)
+	return b.bb().Write(bs)
 }
 
 // WriteUint24 encode and write Uint24 to current ByteBuff.
@@ -39,21 +59,20 @@ func (b *ByteBuff) WriteUint24(n int) (err error) {
 
 // WriteByte writes a byte to current ByteBuff.
 func (b *ByteBuff) WriteByte(c byte) error {
-	return b.pp().WriteByte(c)
+	return b.bb().WriteByte(c)
 }
 
 // WriteString writes a string to current ByteBuff.
 func (b *ByteBuff) WriteString(s string) (err error) {
-	_, err = b.pp().Write([]byte(s))
+	_, err = b.bb().WriteString(s)
 	return
 }
 
 // Bytes returns all bytes in ByteBuff.
 func (b *ByteBuff) Bytes() []byte {
-	return b.pp().Bytes()
+	return b.bb().Bytes()
 }
 
-// NewByteBuff creates a new ByteBuff.
-func NewByteBuff() *ByteBuff {
-	return (*ByteBuff)(&bytes.Buffer{})
+func (b *ByteBuff) bb() *bytebufferpool.ByteBuffer {
+	return (*bytebufferpool.ByteBuffer)(b)
 }

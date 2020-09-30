@@ -3,19 +3,19 @@ package socket
 import "sync"
 
 type map32 struct {
-	locker sync.RWMutex
-	store  map[uint32]interface{}
+	sync.RWMutex
+	store map[uint32]interface{}
 }
 
 func (p *map32) Destroy() {
-	p.locker.Lock()
+	p.Lock()
 	p.store = nil
-	p.locker.Unlock()
+	p.Unlock()
 }
 
 func (p *map32) Range(fn func(uint32, interface{}) bool) {
-	p.locker.RLock()
-	defer p.locker.RUnlock()
+	p.RLock()
+	defer p.RUnlock()
 	for key, value := range p.store {
 		if !fn(key, value) {
 			break
@@ -24,24 +24,24 @@ func (p *map32) Range(fn func(uint32, interface{}) bool) {
 }
 
 func (p *map32) Load(key uint32) (v interface{}, ok bool) {
-	p.locker.RLock()
+	p.RLock()
 	v, ok = p.store[key]
-	p.locker.RUnlock()
+	p.RUnlock()
 	return
 }
 
 func (p *map32) Store(key uint32, value interface{}) {
-	p.locker.Lock()
+	p.Lock()
 	if p.store != nil {
 		p.store[key] = value
 	}
-	p.locker.Unlock()
+	p.Unlock()
 }
 
 func (p *map32) Delete(key uint32) {
-	p.locker.Lock()
+	p.Lock()
 	delete(p.store, key)
-	p.locker.Unlock()
+	p.Unlock()
 }
 
 func newMap32() *map32 {

@@ -7,12 +7,11 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"strconv"
+	"strings"
 
-	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
@@ -53,7 +52,8 @@ func main() {
 			//	SubscribeOn(rx.ElasticScheduler()).
 			//	Subscribe(context.Background())
 			sendingSocket.OnClose(func(err error) {
-				log.Println("***** socket disconnected *****")
+				rsocket.TracePoolCount()
+				log.Println(strings.Repeat("=", 50))
 			})
 			// For SETUP_REJECT testing.
 			//if strings.EqualFold(setup.DataUTF8(), "REJECT_ME") {
@@ -135,13 +135,12 @@ func responder() rsocket.RSocket {
 				emitter.Complete()
 			})
 		}),
-		rsocket.RequestChannel(func(payloads rx.Publisher) flux.Flux {
+		rsocket.RequestChannel(func(payloads flux.Flux) flux.Flux {
 			//return payloads.(flux.Flux)
-			payloads.(flux.Flux).
+			payloads.
 				//LimitRate(1).
-				SubscribeOn(scheduler.Parallel()).
-				DoOnNext(func(elem payload.Payload) error {
-					log.Println("receiving:", elem)
+				DoOnNext(func(next payload.Payload) error {
+					log.Println("receiving:", next.DataUTF8())
 					return nil
 				}).
 				Subscribe(context.Background())
