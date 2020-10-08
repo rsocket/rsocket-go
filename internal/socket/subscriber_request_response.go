@@ -3,7 +3,6 @@ package socket
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/rsocket/rsocket-go/core"
@@ -12,12 +11,6 @@ import (
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
-
-var _requestResponseSubscriberRefs int32
-
-func CountRequestResponseRef() int32 {
-	return atomic.LoadInt32(&_requestResponseSubscriberRefs)
-}
 
 var _requestResponseSubscriberPool = sync.Pool{
 	New: func() interface{} {
@@ -32,7 +25,6 @@ type requestResponseSubscriber struct {
 }
 
 func borrowRequestResponseSubscriber(dc *DuplexConnection, sid uint32, receiving fragmentation.HeaderAndPayload) rx.Subscriber {
-	defer atomic.AddInt32(&_requestResponseSubscriberRefs, 1)
 	s := _requestResponseSubscriberPool.Get().(*requestResponseSubscriber)
 	s.receiving = receiving
 	s.dc = dc
@@ -45,7 +37,6 @@ func returnRequestResponseSubscriber(s rx.Subscriber) {
 	if !ok {
 		return
 	}
-	defer atomic.AddInt32(&_requestResponseSubscriberRefs, -1)
 	actual.dc = nil
 	actual.receiving = nil
 	_requestResponseSubscriberPool.Put(actual)

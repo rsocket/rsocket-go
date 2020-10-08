@@ -633,7 +633,7 @@ func TestContextTimeout(t *testing.T) {
 
 	connected := make(chan bool)
 	cli, err := Connect().
-		OnConnect(func(c Client,err error) {
+		OnConnect(func(c Client, err error) {
 			connected <- err == nil
 		}).
 		ConnectTimeout(100 * time.Millisecond).

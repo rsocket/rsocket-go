@@ -85,9 +85,6 @@ func createClient(mtu int) (rsocket.Client, error) {
 	return rsocket.Connect().
 		Fragment(mtu).
 		SetupPayload(payload.NewString("你好", "世界")).
-		OnClose(func(err error) {
-			rsocket.TracePoolCount()
-		}).
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
 			return rsocket.NewAbstractSocket(
 				rsocket.RequestResponse(func(p payload.Payload) mono.Mono {

@@ -12,7 +12,8 @@ var _borrowed = atomic.NewInt64(0)
 // ByteBuff provides byte buffer, which can be used for minimizing.
 type ByteBuff bytebufferpool.ByteBuffer
 
-func CountByteBuff() int64 {
+// CountBorrowed returns borrowed ByteBuff amount.
+func CountBorrowed() int64 {
 	return _borrowed.Load()
 }
 
@@ -28,6 +29,7 @@ func ReturnByteBuff(b *ByteBuff) {
 	bytebufferpool.Put((*bytebufferpool.ByteBuffer)(b))
 }
 
+// Reset resets ByteBuff.
 func (b *ByteBuff) Reset() {
 	b.bb().Reset()
 }
@@ -37,12 +39,12 @@ func (b *ByteBuff) Len() (n int) {
 	return b.bb().Len()
 }
 
-// WriteTo write bytes to writer.
+// WriteTo writes bytes to writer.
 func (b *ByteBuff) WriteTo(w io.Writer) (int64, error) {
 	return b.bb().WriteTo(w)
 }
 
-// Writer write bytes to current ByteBuff.
+// Write writes bytes to current ByteBuff.
 func (b *ByteBuff) Write(bs []byte) (int, error) {
 	return b.bb().Write(bs)
 }

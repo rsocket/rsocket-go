@@ -139,7 +139,7 @@ func (r *resumeClientSocket) connect(ctx context.Context, timeout time.Duration)
 		err = errors.New("resume timeout")
 	case reject, ok := <-resumeErr:
 		if ok {
-			err = reject
+			logger.Errorf("resume failed: %s\n", reject.Error())
 			r.markAsClosing()
 			err = r.connect(ctx, timeout)
 		} else {

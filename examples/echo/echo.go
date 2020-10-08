@@ -7,7 +7,6 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"strconv"
-	"strings"
 
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
@@ -52,8 +51,7 @@ func main() {
 			//	SubscribeOn(rx.ElasticScheduler()).
 			//	Subscribe(context.Background())
 			sendingSocket.OnClose(func(err error) {
-				rsocket.TracePoolCount()
-				log.Println(strings.Repeat("=", 50))
+				log.Println("*** socket disconnected ***")
 			})
 			// For SETUP_REJECT testing.
 			//if strings.EqualFold(setup.DataUTF8(), "REJECT_ME") {
