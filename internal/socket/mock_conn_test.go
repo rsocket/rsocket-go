@@ -76,10 +76,10 @@ func (mr *MockConnMockRecorder) SetCounter(c interface{}) *gomock.Call {
 }
 
 // Read mocks base method
-func (m *MockConn) Read() (core.Frame, error) {
+func (m *MockConn) Read() (core.BufferedFrame, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Read")
-	ret0, _ := ret[0].(core.Frame)
+	ret0, _ := ret[0].(core.BufferedFrame)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

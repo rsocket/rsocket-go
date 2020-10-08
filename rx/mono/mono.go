@@ -45,6 +45,8 @@ type Mono interface {
 	ToChan(ctx context.Context) (c <-chan payload.Payload, e <-chan error)
 	// Timeout sets the timeout value.
 	Timeout(timeout time.Duration) Mono
+	// DeepClone clones the original Payload.
+	DeepClone() Mono
 }
 
 // Sink is a wrapper API around an actual downstream Subscriber for emitting nothing, a single value or an error (mutually exclusive).

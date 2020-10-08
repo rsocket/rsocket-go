@@ -6,7 +6,6 @@ import (
 
 	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
@@ -49,7 +48,7 @@ func (p *BaseSocket) RequestStream(message payload.Payload) flux.Flux {
 }
 
 // RequestChannel sends RequestChannel request.
-func (p *BaseSocket) RequestChannel(messages rx.Publisher) flux.Flux {
+func (p *BaseSocket) RequestChannel(messages flux.Flux) flux.Flux {
 	if err := p.reqLease.allow(); err != nil {
 		return flux.Error(err)
 	}

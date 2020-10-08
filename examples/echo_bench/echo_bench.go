@@ -6,6 +6,8 @@ import (
 	"flag"
 	"log"
 	"math/rand"
+	"net/http"
+	_ "net/http/pprof"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/mono"
+	"go.uber.org/atomic"
 )
 
 var tp transport.ClientTransporter
@@ -23,6 +26,10 @@ func init() {
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
 	tp = rsocket.TCPClient().SetHostAndPort("127.0.0.1", 7878).Build()
+
+	go func() {
+		log.Println(http.ListenAndServe(":5555", nil))
+	}()
 }
 
 func main() {
@@ -48,6 +55,8 @@ func main() {
 
 	now := time.Now()
 
+	errCount := atomic.NewInt32(0)
+
 	sub := rx.NewSubscriber(
 		rx.OnNext(func(input payload.Payload) error {
 			//m2, _ := elem.MetadataUTF8()
@@ -55,25 +64,31 @@ func main() {
 			wg.Done()
 			return nil
 		}),
+		rx.OnError(func(e error) {
+			wg.Done()
+			errCount.Inc()
+		}),
 	)
+	request := payload.New(data, nil)
 	for i := 0; i < n; i++ {
-		client.RequestResponse(payload.New(data, nil)).SubscribeOn(scheduler.Parallel()).SubscribeWith(context.Background(), sub)
+		client.RequestResponse(request).SubscribeOn(scheduler.Parallel()).SubscribeWith(context.Background(), sub)
 	}
 	wg.Wait()
 	cost := time.Since(now)
-	log.Println(n, "COST:", cost)
-	log.Println(n, "QPS:", float64(n)/cost.Seconds())
+	log.Println("TOTAL:", n)
+	log.Println("COST:", cost)
+	log.Printf("QPS: %.02f\n", float64(n)/cost.Seconds())
+	log.Println("FAILED:", errCount.Load())
 }
 
 func createClient(mtu int) (rsocket.Client, error) {
-
 	return rsocket.Connect().
 		Fragment(mtu).
 		SetupPayload(payload.NewString("你好", "世界")).
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
 			return rsocket.NewAbstractSocket(
 				rsocket.RequestResponse(func(p payload.Payload) mono.Mono {
-					log.Println("rcv reqresp from server:", p)
+					log.Println("receive request from server:", p)
 					if bytes.Equal(p.Data(), []byte("ping")) {
 						return mono.Just(payload.NewString("pong", "from client"))
 					}

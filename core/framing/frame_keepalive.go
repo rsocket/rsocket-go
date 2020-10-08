@@ -15,12 +15,12 @@ const (
 
 // KeepaliveFrame is Keepalive frame.
 type KeepaliveFrame struct {
-	*RawFrame
+	*baseDefaultFrame
 }
 
 // WriteableKeepaliveFrame is writeable Keepalive frame.
 type WriteableKeepaliveFrame struct {
-	*tinyFrame
+	baseWriteableFrame
 	pos  [8]byte
 	data []byte
 }
@@ -84,12 +84,12 @@ func NewWriteableKeepaliveFrame(position uint64, data []byte, respond bool) *Wri
 	binary.BigEndian.PutUint64(b[:], position)
 
 	h := core.NewFrameHeader(0, core.FrameTypeKeepalive, flag)
-	t := newTinyFrame(h)
+	t := newBaseWriteableFrame(h)
 
 	return &WriteableKeepaliveFrame{
-		tinyFrame: t,
-		pos:       b,
-		data:      data,
+		baseWriteableFrame: t,
+		pos:                b,
+		data:               data,
 	}
 }
 
@@ -99,18 +99,18 @@ func NewKeepaliveFrame(position uint64, data []byte, respond bool) *KeepaliveFra
 	if respond {
 		fg |= core.FlagRespond
 	}
-	bf := common.NewByteBuff()
-	var b8 [8]byte
-	binary.BigEndian.PutUint64(b8[:], position)
-	if _, err := bf.Write(b8[:]); err != nil {
+	b := common.BorrowByteBuff()
+	if err := binary.Write(b, binary.BigEndian, position); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
 	if len(data) > 0 {
-		if _, err := bf.Write(data); err != nil {
+		if _, err := b.Write(data); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
 	return &KeepaliveFrame{
-		NewRawFrame(core.NewFrameHeader(0, core.FrameTypeKeepalive, fg), bf),
+		newBaseDefaultFrame(core.NewFrameHeader(0, core.FrameTypeKeepalive, fg), b),
 	}
 }

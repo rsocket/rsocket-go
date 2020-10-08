@@ -51,7 +51,7 @@ func TestTransport_RegisterHandler(t *testing.T) {
 	fakeMetadata := []byte("fake-metadata")
 	fakeMimeType := []byte("fake-mime-type")
 	fakeFlag := core.FrameFlag(0)
-	frames := []core.Frame{
+	frames := []core.BufferedFrame{
 		framing.NewSetupFrame(
 			core.NewVersion(1, 0),
 			30*time.Second,
@@ -79,7 +79,7 @@ func TestTransport_RegisterHandler(t *testing.T) {
 	}
 	conn.EXPECT().
 		Read().
-		DoAndReturn(func() (core.Frame, error) {
+		DoAndReturn(func() (core.BufferedFrame, error) {
 			defer func() {
 				cursor++
 			}()
@@ -91,7 +91,7 @@ func TestTransport_RegisterHandler(t *testing.T) {
 		AnyTimes()
 
 	calls := make(map[core.FrameType]int)
-	fakeHandler := func(frame core.Frame) (err error) {
+	fakeHandler := func(frame core.BufferedFrame) (err error) {
 		typ := frame.Header().Type()
 		calls[typ] = calls[typ] + 1
 		return nil
@@ -113,7 +113,7 @@ func TestTransport_RegisterHandler(t *testing.T) {
 	tp.Handle(transport.OnResumeOK, fakeHandler)
 	tp.Handle(transport.OnResume, fakeHandler)
 	tp.Handle(transport.OnLease, fakeHandler)
-	tp.Handle(transport.OnErrorWithZeroStreamID, func(frame core.Frame) (err error) {
+	tp.Handle(transport.OnErrorWithZeroStreamID, func(frame core.BufferedFrame) (err error) {
 		callsErrorWithZeroStreamID.Inc()
 		return
 	})
@@ -174,10 +174,10 @@ func TestTransport_Send(t *testing.T) {
 
 	var err error
 
-	err = tp.Send(framing.NewCancelFrame(1), false)
+	err = tp.Send(framing.NewWriteableCancelFrame(1), false)
 	assert.NoError(t, err, "send failed")
 
-	err = tp.Send(framing.NewCancelFrame(1), true)
+	err = tp.Send(framing.NewWriteableCancelFrame(1), true)
 	assert.NoError(t, err, "send failed")
 }
 
@@ -219,7 +219,7 @@ func TestTransport_HandlerReturnsError(t *testing.T) {
 	conn.EXPECT().Close().Times(1)
 	conn.EXPECT().Read().Return(framing.NewCancelFrame(1), nil).Times(1)
 
-	tp.Handle(transport.OnCancel, func(_ core.Frame) error {
+	tp.Handle(transport.OnCancel, func(_ core.BufferedFrame) error {
 		return fakeErr
 	})
 	err := tp.Start(context.Background())

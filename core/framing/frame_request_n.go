@@ -10,12 +10,12 @@ import (
 
 // RequestNFrame is RequestN frame.
 type RequestNFrame struct {
-	*RawFrame
+	*baseDefaultFrame
 }
 
 // WriteableRequestNFrame is writeable RequestN frame.
 type WriteableRequestNFrame struct {
-	*tinyFrame
+	baseWriteableFrame
 	n [4]byte
 }
 
@@ -57,20 +57,19 @@ func NewWriteableRequestNFrame(id uint32, n uint32, fg core.FrameFlag) *Writeabl
 	var b4 [4]byte
 	binary.BigEndian.PutUint32(b4[:], n)
 	return &WriteableRequestNFrame{
-		tinyFrame: newTinyFrame(core.NewFrameHeader(id, core.FrameTypeRequestN, fg)),
-		n:         b4,
+		baseWriteableFrame: newBaseWriteableFrame(core.NewFrameHeader(id, core.FrameTypeRequestN, fg)),
+		n:                  b4,
 	}
 }
 
 // NewRequestNFrame creates a new RequestNFrame.
 func NewRequestNFrame(sid, n uint32, fg core.FrameFlag) *RequestNFrame {
-	bf := common.NewByteBuff()
-	var b4 [4]byte
-	binary.BigEndian.PutUint32(b4[:], n)
-	if _, err := bf.Write(b4[:]); err != nil {
+	b := common.BorrowByteBuff()
+	if err := binary.Write(b, binary.BigEndian, n); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
 	return &RequestNFrame{
-		NewRawFrame(core.NewFrameHeader(sid, core.FrameTypeRequestN, fg), bf),
+		newBaseDefaultFrame(core.NewFrameHeader(sid, core.FrameTypeRequestN, fg), b),
 	}
 }

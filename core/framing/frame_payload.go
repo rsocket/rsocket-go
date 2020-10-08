@@ -9,14 +9,53 @@ import (
 
 // PayloadFrame is payload frame.
 type PayloadFrame struct {
-	*RawFrame
+	*baseDefaultFrame
 }
 
 // WriteablePayloadFrame is writeable Payload frame.
 type WriteablePayloadFrame struct {
-	*tinyFrame
+	baseWriteableFrame
 	metadata []byte
 	data     []byte
+}
+
+// NewWriteablePayloadFrame returns a new WriteablePayloadFrame.
+func NewWriteablePayloadFrame(id uint32, data, metadata []byte, flag core.FrameFlag) *WriteablePayloadFrame {
+	if len(metadata) > 0 {
+		flag |= core.FlagMetadata
+	}
+	h := core.NewFrameHeader(id, core.FrameTypePayload, flag)
+	t := newBaseWriteableFrame(h)
+	return &WriteablePayloadFrame{
+		baseWriteableFrame: t,
+		metadata:           metadata,
+		data:               data,
+	}
+}
+
+// NewPayloadFrame returns a new PayloadFrame.
+func NewPayloadFrame(id uint32, data, metadata []byte, flag core.FrameFlag) *PayloadFrame {
+	b := common.BorrowByteBuff()
+	if len(metadata) > 0 {
+		flag |= core.FlagMetadata
+		if err := b.WriteUint24(len(metadata)); err != nil {
+			common.ReturnByteBuff(b)
+			panic(err)
+		}
+		if _, err := b.Write(metadata); err != nil {
+			common.ReturnByteBuff(b)
+			panic(err)
+		}
+	}
+	if len(data) > 0 {
+		if _, err := b.Write(data); err != nil {
+			common.ReturnByteBuff(b)
+			panic(err)
+		}
+	}
+	return &PayloadFrame{
+		newBaseDefaultFrame(core.NewFrameHeader(id, core.FrameTypePayload, flag), b),
+	}
 }
 
 // Validate returns error if frame is invalid.
@@ -101,40 +140,4 @@ func (p WriteablePayloadFrame) WriteTo(w io.Writer) (n int64, err error) {
 // Len returns length of frame.
 func (p WriteablePayloadFrame) Len() int {
 	return CalcPayloadFrameSize(p.data, p.metadata)
-}
-
-// NewWriteablePayloadFrame returns a new WriteablePayloadFrame.
-func NewWriteablePayloadFrame(id uint32, data, metadata []byte, flag core.FrameFlag) *WriteablePayloadFrame {
-	if len(metadata) > 0 {
-		flag |= core.FlagMetadata
-	}
-	h := core.NewFrameHeader(id, core.FrameTypePayload, flag)
-	t := newTinyFrame(h)
-	return &WriteablePayloadFrame{
-		tinyFrame: t,
-		metadata:  metadata,
-		data:      data,
-	}
-}
-
-// NewPayloadFrame returns a new PayloadFrame.
-func NewPayloadFrame(id uint32, data, metadata []byte, flag core.FrameFlag) *PayloadFrame {
-	bf := common.NewByteBuff()
-	if len(metadata) > 0 {
-		flag |= core.FlagMetadata
-		if err := bf.WriteUint24(len(metadata)); err != nil {
-			panic(err)
-		}
-		if _, err := bf.Write(metadata); err != nil {
-			panic(err)
-		}
-	}
-	if len(data) > 0 {
-		if _, err := bf.Write(data); err != nil {
-			panic(err)
-		}
-	}
-	return &PayloadFrame{
-		NewRawFrame(core.NewFrameHeader(id, core.FrameTypePayload, flag), bf),
-	}
 }

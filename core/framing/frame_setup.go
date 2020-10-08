@@ -19,12 +19,12 @@ const (
 
 // SetupFrame is Setup frame.
 type SetupFrame struct {
-	*RawFrame
+	*baseDefaultFrame
 }
 
 // WriteableSetupFrame is writeable Setup frame.
 type WriteableSetupFrame struct {
-	*tinyFrame
+	baseWriteableFrame
 	version      core.Version
 	keepalive    [4]byte
 	lifetime     [4]byte
@@ -246,21 +246,21 @@ func NewWriteableSetupFrame(
 		flag |= core.FlagMetadata
 	}
 	h := core.NewFrameHeader(0, core.FrameTypeSetup, flag)
-	t := newTinyFrame(h)
+	t := newBaseWriteableFrame(h)
 
 	var a, b [4]byte
 	binary.BigEndian.PutUint32(a[:], uint32(timeBetweenKeepalive.Nanoseconds()/1e6))
 	binary.BigEndian.PutUint32(b[:], uint32(maxLifetime.Nanoseconds()/1e6))
 	return &WriteableSetupFrame{
-		tinyFrame:    t,
-		version:      version,
-		keepalive:    a,
-		lifetime:     b,
-		token:        token,
-		mimeMetadata: mimeMetadata,
-		mimeData:     mimeData,
-		metadata:     metadata,
-		data:         data,
+		baseWriteableFrame: t,
+		version:            version,
+		keepalive:          a,
+		lifetime:           b,
+		token:              token,
+		mimeMetadata:       mimeMetadata,
+		mimeData:           mimeData,
+		metadata:           metadata,
+		data:               data,
 	}
 }
 
@@ -277,59 +277,70 @@ func NewSetupFrame(
 	lease bool,
 ) *SetupFrame {
 	var fg core.FrameFlag
-	bf := common.NewByteBuff()
-	if _, err := bf.Write(version.Bytes()); err != nil {
+	b := common.BorrowByteBuff()
+	if _, err := b.Write(version.Bytes()); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
-	var b4 [4]byte
-	binary.BigEndian.PutUint32(b4[:], uint32(timeBetweenKeepalive.Nanoseconds()/1e6))
-	if _, err := bf.Write(b4[:]); err != nil {
+	if err := binary.Write(b, binary.BigEndian, uint32(timeBetweenKeepalive.Nanoseconds()/1e6)); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
-	binary.BigEndian.PutUint32(b4[:], uint32(maxLifetime.Nanoseconds()/1e6))
-	if _, err := bf.Write(b4[:]); err != nil {
+
+	if err := binary.Write(b, binary.BigEndian, uint32(maxLifetime.Nanoseconds()/1e6)); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
+
 	if lease {
 		fg |= core.FlagLease
 	}
+
 	if len(token) > 0 {
 		fg |= core.FlagResume
-		binary.BigEndian.PutUint16(b4[:2], uint16(len(token)))
-		if _, err := bf.Write(b4[:2]); err != nil {
+		if err := binary.Write(b, binary.BigEndian, uint16(len(token))); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
-		if _, err := bf.Write(token); err != nil {
+		if _, err := b.Write(token); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
-	if err := bf.WriteByte(byte(len(mimeMetadata))); err != nil {
+	if err := b.WriteByte(byte(len(mimeMetadata))); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
-	if _, err := bf.Write(mimeMetadata); err != nil {
+	if _, err := b.Write(mimeMetadata); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
-	if err := bf.WriteByte(byte(len(mimeData))); err != nil {
+	if err := b.WriteByte(byte(len(mimeData))); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
-	if _, err := bf.Write(mimeData); err != nil {
+	if _, err := b.Write(mimeData); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
 	if len(metadata) > 0 {
 		fg |= core.FlagMetadata
-		if err := bf.WriteUint24(len(metadata)); err != nil {
+		if err := b.WriteUint24(len(metadata)); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
-		if _, err := bf.Write(metadata); err != nil {
+		if _, err := b.Write(metadata); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
 	if len(data) > 0 {
-		if _, err := bf.Write(data); err != nil {
+		if _, err := b.Write(data); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
 	return &SetupFrame{
-		NewRawFrame(core.NewFrameHeader(0, core.FrameTypeSetup, fg), bf),
+		newBaseDefaultFrame(core.NewFrameHeader(0, core.FrameTypeSetup, fg), b),
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
+	"github.com/rsocket/rsocket-go/internal/fragmentation"
 	"github.com/rsocket/rsocket-go/rx"
 )
 
@@ -66,6 +67,23 @@ func tryRecover(e interface{}) (err error) {
 		err = errors.New(v)
 	default:
 		err = errors.Errorf("error: %s", v)
+	}
+	return
+}
+
+func extractRequestStreamInitN(receiving fragmentation.HeaderAndPayload) (n uint32) {
+	switch v := receiving.(type) {
+	case *framing.RequestStreamFrame:
+		n = v.InitialRequestN()
+	case *framing.RequestChannelFrame:
+		n = v.InitialRequestN()
+	case fragmentation.Joiner:
+		switch first := v.First().(type) {
+		case *framing.RequestStreamFrame:
+			n = first.InitialRequestN()
+		case *framing.RequestChannelFrame:
+			n = first.InitialRequestN()
+		}
 	}
 	return
 }

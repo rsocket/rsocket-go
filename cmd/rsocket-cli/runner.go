@@ -188,7 +188,7 @@ func (r *Runner) runServerMode(ctx context.Context) error {
 					r.showPayload(message)
 					return sendingPayloads
 				}))
-				options = append(options, rsocket.RequestChannel(func(messages rx.Publisher) flux.Flux {
+				options = append(options, rsocket.RequestChannel(func(messages flux.Flux) flux.Flux {
 					messages.Subscribe(ctx, rx.OnNext(func(input payload.Payload) error {
 						r.showPayload(input)
 						return nil

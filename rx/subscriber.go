@@ -17,12 +17,12 @@ var (
 )
 
 // Subscription represents a one-to-one lifecycle of a Subscriber subscribing to a Publisher.
-type Subscription reactor.Subscription
+type Subscription = reactor.Subscription
 
 // Subscriber will receive call to OnSubscribe(Subscription) once after passing an instance of Subscriber to Publisher#SubscribeWith
 type Subscriber interface {
 	// OnNext represents data notification sent by the Publisher in response to requests to Subscription#Request.
-	OnNext(payload payload.Payload) error
+	OnNext(payload payload.Payload)
 	// OnError represents failed terminal state.
 	OnError(error)
 	// OnComplete represents successful terminal state.
@@ -32,6 +32,10 @@ type Subscriber interface {
 	OnSubscribe(context.Context, Subscription)
 }
 
+type subscriberFacade struct {
+	Subscriber
+}
+
 type subscriber struct {
 	fnOnSubscribe FnOnSubscribe
 	fnOnNext      FnOnNext
@@ -39,11 +43,23 @@ type subscriber struct {
 	fnOnError     FnOnError
 }
 
-func (s *subscriber) OnNext(payload payload.Payload) error {
-	if s == nil || s.fnOnNext == nil {
-		return nil
+func NewSubscriberFacade(s Subscriber) reactor.Subscriber {
+	return subscriberFacade{
+		Subscriber: s,
 	}
-	return s.fnOnNext(payload)
+}
+
+func (s subscriberFacade) OnNext(any reactor.Any) {
+	s.Subscriber.OnNext(any.(payload.Payload))
+}
+
+func (s *subscriber) OnNext(payload payload.Payload) {
+	if s == nil || s.fnOnNext == nil {
+		return
+	}
+	if err := s.fnOnNext(payload); err != nil {
+		s.OnError(err)
+	}
 }
 
 func (s *subscriber) OnError(err error) {

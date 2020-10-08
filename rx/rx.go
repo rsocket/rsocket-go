@@ -3,9 +3,20 @@ package rx
 import (
 	"context"
 
-	reactor "github.com/jjeffcaii/reactor-go"
+	"github.com/jjeffcaii/reactor-go"
+	"github.com/jjeffcaii/reactor-go/hooks"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 )
+
+func init() {
+	hooks.OnNextDrop(func(v reactor.Any) {
+		common.TryRelease(v)
+	})
+	hooks.OnErrorDrop(func(e error) {
+		common.TryRelease(e)
+	})
+}
 
 // RequestMax represents unbounded request amount.
 const RequestMax = reactor.RequestInfinite

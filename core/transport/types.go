@@ -28,7 +28,7 @@ type Conn interface {
 	// SetCounter bind a counter which can count r/w bytes.
 	SetCounter(c *core.TrafficCounter)
 	// Read reads next frame from Conn.
-	Read() (core.Frame, error)
+	Read() (core.BufferedFrame, error)
 	// Write writes a frame to Conn.
 	Write(core.WriteableFrame) error
 	// Flush.

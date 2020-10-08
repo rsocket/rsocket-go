@@ -20,37 +20,37 @@ func CalcPayloadFrameSize(data, metadata []byte) int {
 	return size
 }
 
-// FromRawFrame creates a frame from a RawFrame.
-func FromRawFrame(f *RawFrame) (frame core.Frame, err error) {
+// FromRawFrame creates a frame from a baseDefaultFrame.
+func FromRawFrame(f *baseDefaultFrame) (frame core.BufferedFrame, err error) {
 	switch f.header.Type() {
 	case core.FrameTypeSetup:
-		frame = &SetupFrame{RawFrame: f}
+		frame = &SetupFrame{baseDefaultFrame: f}
 	case core.FrameTypeKeepalive:
-		frame = &KeepaliveFrame{RawFrame: f}
+		frame = &KeepaliveFrame{baseDefaultFrame: f}
 	case core.FrameTypeRequestResponse:
-		frame = &RequestResponseFrame{RawFrame: f}
+		frame = &RequestResponseFrame{baseDefaultFrame: f}
 	case core.FrameTypeRequestFNF:
-		frame = &FireAndForgetFrame{RawFrame: f}
+		frame = &FireAndForgetFrame{baseDefaultFrame: f}
 	case core.FrameTypeRequestStream:
-		frame = &RequestStreamFrame{RawFrame: f}
+		frame = &RequestStreamFrame{baseDefaultFrame: f}
 	case core.FrameTypeRequestChannel:
-		frame = &RequestChannelFrame{RawFrame: f}
+		frame = &RequestChannelFrame{baseDefaultFrame: f}
 	case core.FrameTypeCancel:
-		frame = &CancelFrame{RawFrame: f}
+		frame = &CancelFrame{baseDefaultFrame: f}
 	case core.FrameTypePayload:
-		frame = &PayloadFrame{RawFrame: f}
+		frame = &PayloadFrame{baseDefaultFrame: f}
 	case core.FrameTypeMetadataPush:
-		frame = &MetadataPushFrame{RawFrame: f}
+		frame = &MetadataPushFrame{baseDefaultFrame: f}
 	case core.FrameTypeError:
-		frame = &ErrorFrame{RawFrame: f}
+		frame = &ErrorFrame{baseDefaultFrame: f}
 	case core.FrameTypeRequestN:
-		frame = &RequestNFrame{RawFrame: f}
+		frame = &RequestNFrame{baseDefaultFrame: f}
 	case core.FrameTypeLease:
-		frame = &LeaseFrame{RawFrame: f}
+		frame = &LeaseFrame{baseDefaultFrame: f}
 	case core.FrameTypeResume:
-		frame = &ResumeFrame{RawFrame: f}
+		frame = &ResumeFrame{baseDefaultFrame: f}
 	case core.FrameTypeResumeOK:
-		frame = &ResumeOKFrame{RawFrame: f}
+		frame = &ResumeOKFrame{baseDefaultFrame: f}
 	default:
 		err = core.ErrInvalidFrame
 	}
@@ -58,7 +58,7 @@ func FromRawFrame(f *RawFrame) (frame core.Frame, err error) {
 }
 
 // PrintFrame prints frame in bytes dump.
-func PrintFrame(f core.WriteableFrame) string {
+func PrintFrame(f core.Frame) string {
 	var initN, reqN uint32
 	var metadata, data []byte
 

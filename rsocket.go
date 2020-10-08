@@ -4,7 +4,6 @@ import (
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/socket"
 	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
@@ -55,7 +54,7 @@ type (
 		// RequestStream request a completable stream.
 		RequestStream(message payload.Payload) flux.Flux
 		// RequestChannel request a completable stream in both directions.
-		RequestChannel(messages rx.Publisher) flux.Flux
+		RequestChannel(messages flux.Flux) flux.Flux
 	}
 
 	// CloseableRSocket is RSocket which can be closed and handle close event.
@@ -107,7 +106,7 @@ func RequestStream(fn func(request payload.Payload) (responses flux.Flux)) OptAb
 }
 
 // RequestChannel register request handler for RequestChannel.
-func RequestChannel(fn func(requests rx.Publisher) (responses flux.Flux)) OptAbstractSocket {
+func RequestChannel(fn func(requests flux.Flux) (responses flux.Flux)) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.RC = fn
 	}

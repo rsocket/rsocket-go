@@ -10,12 +10,12 @@ import (
 
 // ResumeOKFrame is ResumeOK frame.
 type ResumeOKFrame struct {
-	*RawFrame
+	*baseDefaultFrame
 }
 
 // WriteableResumeOKFrame is writeable ResumeOK frame.
 type WriteableResumeOKFrame struct {
-	*tinyFrame
+	baseWriteableFrame
 	pos [8]byte
 }
 
@@ -59,25 +59,23 @@ func (r WriteableResumeOKFrame) Len() int {
 // NewWriteableResumeOKFrame creates a new WriteableResumeOKFrame.
 func NewWriteableResumeOKFrame(position uint64) *WriteableResumeOKFrame {
 	h := core.NewFrameHeader(0, core.FrameTypeResumeOK, 0)
-	t := newTinyFrame(h)
+	t := newBaseWriteableFrame(h)
 	var b [8]byte
 	binary.BigEndian.PutUint64(b[:], position)
 	return &WriteableResumeOKFrame{
-		tinyFrame: t,
-		pos:       b,
+		baseWriteableFrame: t,
+		pos:                b,
 	}
 }
 
 // NewResumeOKFrame creates a new ResumeOKFrame.
 func NewResumeOKFrame(position uint64) *ResumeOKFrame {
-	var b8 [8]byte
-	binary.BigEndian.PutUint64(b8[:], position)
-	bf := common.NewByteBuff()
-	_, err := bf.Write(b8[:])
-	if err != nil {
+	b := common.BorrowByteBuff()
+	if err := binary.Write(b, binary.BigEndian, position); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
 	return &ResumeOKFrame{
-		NewRawFrame(core.NewFrameHeader(0, core.FrameTypeResumeOK, 0), bf),
+		newBaseDefaultFrame(core.NewFrameHeader(0, core.FrameTypeResumeOK, 0), b),
 	}
 }

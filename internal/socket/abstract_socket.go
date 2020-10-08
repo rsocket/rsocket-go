@@ -4,7 +4,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
-	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
@@ -23,7 +22,7 @@ type AbstractRSocket struct {
 	MP func(payload.Payload)
 	RR func(payload.Payload) mono.Mono
 	RS func(payload.Payload) flux.Flux
-	RC func(rx.Publisher) flux.Flux
+	RC func(flux.Flux) flux.Flux
 }
 
 // MetadataPush starts a request of MetadataPush.
@@ -61,7 +60,7 @@ func (a AbstractRSocket) RequestStream(message payload.Payload) flux.Flux {
 }
 
 // RequestChannel starts a request of RequestChannel.
-func (a AbstractRSocket) RequestChannel(messages rx.Publisher) flux.Flux {
+func (a AbstractRSocket) RequestChannel(messages flux.Flux) flux.Flux {
 	if a.RC == nil {
 		return flux.Error(errUnimplementedRequestChannel)
 	}

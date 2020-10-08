@@ -62,7 +62,7 @@ func TestTcpConn_Read(t *testing.T) {
 			return bf.Read(b)
 		}).
 		AnyTimes()
-	var results []core.Frame
+	var results []core.BufferedFrame
 	for {
 		next, err := tc.Read()
 		if err == io.EOF {

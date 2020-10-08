@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/jjeffcaii/reactor-go"
-	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
 	. "github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
@@ -222,7 +221,7 @@ func TestBiDirection(t *testing.T) {
 				sendingSocket.
 					RequestResponse(fakeRequest).
 					DoOnSuccess(func(input payload.Payload) error {
-						res <- input
+						res <- payload.Clone(input)
 						return nil
 					}).
 					Subscribe(context.Background())
@@ -259,10 +258,10 @@ func TestBiDirection(t *testing.T) {
 					return mono.Just(msg)
 				}),
 				MetadataPush(func(msg payload.Payload) {
-					metadataPush <- msg
+					metadataPush <- payload.Clone(msg)
 				}),
 				FireAndForget(func(msg payload.Payload) {
-					fireAndForget <- msg
+					fireAndForget <- payload.Clone(msg)
 				}),
 			)
 		}).
@@ -341,37 +340,17 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 							s.Complete()
 						})
 					}),
-					RequestChannel(func(inputs rx.Publisher) flux.Flux {
-						//var count int32
-						//countPointer := &count
-						done := make(chan struct{})
-						receives := make(chan payload.Payload)
-						receiveErrors := make(chan error)
-
-						go func() {
-							success := new(int32)
-							failed := new(int32)
-
-						L:
-							for {
-								select {
-								case <-done:
-									break L
-								case <-receives:
-									atomic.AddInt32(success, 1)
-								case <-receiveErrors:
-									atomic.AddInt32(failed, 1)
-								}
-							}
-							assert.Equal(t, channelElements, atomic.LoadInt32(success)+atomic.LoadInt32(failed))
-						}()
-
-						inputs.(flux.Flux).
+					RequestChannel(func(inputs flux.Flux) flux.Flux {
+						received := new(int32)
+						inputs.
 							DoFinally(func(s rx.SignalType) {
-								close(done)
+								assert.Equal(t, channelElements, atomic.LoadInt32(received))
 							}).
-							SubscribeOn(scheduler.Parallel()).
-							SubscribeWithChan(context.Background(), receives, receiveErrors)
+							DoOnNext(func(input payload.Payload) error {
+								atomic.AddInt32(received, 1)
+								return nil
+							}).
+							Subscribe(context.Background())
 
 						return flux.Create(func(ctx context.Context, s flux.Sink) {
 							for i := 0; i < int(channelElements); i++ {
@@ -604,7 +583,7 @@ func (d delayedRSocket) RequestStream(message payload.Payload) flux.Flux {
 	panic("implement me")
 }
 
-func (d delayedRSocket) RequestChannel(messages rx.Publisher) flux.Flux {
+func (d delayedRSocket) RequestChannel(messages flux.Flux) flux.Flux {
 	panic("implement me")
 }
 
@@ -633,7 +612,7 @@ func TestContextTimeout(t *testing.T) {
 
 	connected := make(chan bool)
 	cli, err := Connect().
-		OnConnect(func(c Client,err error) {
+		OnConnect(func(c Client, err error) {
 			connected <- err == nil
 		}).
 		ConnectTimeout(100 * time.Millisecond).

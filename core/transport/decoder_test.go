@@ -45,7 +45,7 @@ func TestLengthBasedFrameDecoder_ReadBroken(t *testing.T) {
 
 func TestLengthBasedFrameDecoder_Read(t *testing.T) {
 	b := &bytes.Buffer{}
-	frames := []core.Frame{
+	frames := []core.BufferedFrame{
 		framing.NewSetupFrame(
 			core.DefaultVersion,
 			30*time.Second,
@@ -70,7 +70,7 @@ func TestLengthBasedFrameDecoder_Read(t *testing.T) {
 		assert.NoError(t, err, "write frame failed")
 	}
 
-	var results []core.Frame
+	var results []core.BufferedFrame
 
 	decoder := transport.NewLengthBasedFrameDecoder(b)
 	for {

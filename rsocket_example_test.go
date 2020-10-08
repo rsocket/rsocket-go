@@ -85,8 +85,8 @@ func ExampleReceive() {
 						s.Complete()
 					})
 				}),
-				rsocket.RequestChannel(func(msgs rx.Publisher) flux.Flux {
-					return msgs.(flux.Flux)
+				rsocket.RequestChannel(func(requests flux.Flux) flux.Flux {
+					return requests
 				}),
 			), nil
 		}).

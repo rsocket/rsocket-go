@@ -34,13 +34,13 @@ func TestNewResumableClientSocket(t *testing.T) {
 	defer ctrl.Finish()
 
 	// For test
-	readChan := make(chan core.Frame, 64)
+	readChan := make(chan core.BufferedFrame, 64)
 
 	conn.EXPECT().Close().Times(1)
 	conn.EXPECT().SetCounter(gomock.Any()).Times(1)
 	conn.EXPECT().Write(gomock.Any()).Return(nil).AnyTimes()
 	conn.EXPECT().Flush().AnyTimes()
-	conn.EXPECT().Read().DoAndReturn(func() (core.Frame, error) {
+	conn.EXPECT().Read().DoAndReturn(func() (core.BufferedFrame, error) {
 		next, ok := <-readChan
 		if !ok {
 			return nil, io.EOF
@@ -124,7 +124,7 @@ func TestResumeClientSocket_Setup(t *testing.T) {
 
 	ds := socket.NewClientDuplexConnection(fragmentation.MaxFragment, 90*time.Second)
 
-	readChanChan := make(chan chan core.Frame, 64)
+	readChanChan := make(chan chan core.BufferedFrame, 64)
 
 	createTimes := atomic.NewInt32(0)
 	rcs := socket.NewResumableClientSocket(func(ctx context.Context) (*transport.Transport, error) {
@@ -135,13 +135,13 @@ func TestResumeClientSocket_Setup(t *testing.T) {
 		conn, tp := InitTransportWithController(ctrl)
 
 		// For test
-		readChan := make(chan core.Frame, 64)
+		readChan := make(chan core.BufferedFrame, 64)
 
 		conn.EXPECT().Close().AnyTimes()
 		conn.EXPECT().SetCounter(gomock.Any()).Times(1)
 		conn.EXPECT().Write(gomock.Any()).Return(nil).AnyTimes()
 		conn.EXPECT().Flush().AnyTimes()
-		conn.EXPECT().Read().DoAndReturn(func() (core.Frame, error) {
+		conn.EXPECT().Read().DoAndReturn(func() (core.BufferedFrame, error) {
 			next, ok := <-readChan
 			if !ok {
 				return nil, io.EOF

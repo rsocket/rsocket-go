@@ -9,12 +9,12 @@ import (
 
 // RequestResponseFrame is RequestResponse frame.
 type RequestResponseFrame struct {
-	*RawFrame
+	*baseDefaultFrame
 }
 
 // WriteableRequestResponseFrame is writeable RequestResponse frame.
 type WriteableRequestResponseFrame struct {
-	*tinyFrame
+	baseWriteableFrame
 	metadata []byte
 	data     []byte
 }
@@ -76,31 +76,34 @@ func NewWriteableRequestResponseFrame(id uint32, data, metadata []byte, fg core.
 	if len(metadata) > 0 {
 		fg |= core.FlagMetadata
 	}
-	return &WriteableRequestResponseFrame{
-		tinyFrame: newTinyFrame(core.NewFrameHeader(id, core.FrameTypeRequestResponse, fg)),
-		metadata:  metadata,
-		data:      data,
+	return WriteableRequestResponseFrame{
+		baseWriteableFrame: newBaseWriteableFrame(core.NewFrameHeader(id, core.FrameTypeRequestResponse, fg)),
+		metadata:           metadata,
+		data:               data,
 	}
 }
 
 // NewRequestResponseFrame returns a new RequestResponseFrame.
 func NewRequestResponseFrame(id uint32, data, metadata []byte, fg core.FrameFlag) *RequestResponseFrame {
-	bf := common.NewByteBuff()
+	b := common.BorrowByteBuff()
 	if len(metadata) > 0 {
 		fg |= core.FlagMetadata
-		if err := bf.WriteUint24(len(metadata)); err != nil {
+		if err := b.WriteUint24(len(metadata)); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
-		if _, err := bf.Write(metadata); err != nil {
+		if _, err := b.Write(metadata); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
 	if len(data) > 0 {
-		if _, err := bf.Write(data); err != nil {
+		if _, err := b.Write(data); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
 	return &RequestResponseFrame{
-		NewRawFrame(core.NewFrameHeader(id, core.FrameTypeRequestResponse, fg), bf),
+		newBaseDefaultFrame(core.NewFrameHeader(id, core.FrameTypeRequestResponse, fg), b),
 	}
 }

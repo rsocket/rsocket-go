@@ -1,7 +1,7 @@
 package common_test
 
 import (
-	"os"
+	"io/ioutil"
 	"testing"
 
 	"github.com/rsocket/rsocket-go/internal/common"
@@ -10,7 +10,8 @@ import (
 
 func TestByteBuff_Bytes(t *testing.T) {
 	data := []byte("foobar")
-	b := common.NewByteBuff()
+	b := common.BorrowByteBuff()
+	defer common.ReturnByteBuff(b)
 	wrote, err := b.Write(data)
 	assert.NoError(t, err, "write failed")
 	assert.Equal(t, len(data), wrote, "wrong wrote size")
@@ -18,7 +19,8 @@ func TestByteBuff_Bytes(t *testing.T) {
 }
 
 func TestByteBuff_WriteUint24(t *testing.T) {
-	b := common.NewByteBuff()
+	b := common.BorrowByteBuff()
+	defer common.ReturnByteBuff(b)
 	var err error
 	err = b.WriteUint24(0)
 	assert.NoError(t, err, "write uint24 failed")
@@ -29,7 +31,8 @@ func TestByteBuff_WriteUint24(t *testing.T) {
 }
 
 func TestByteBuff_Len(t *testing.T) {
-	b := common.NewByteBuff()
+	b := common.BorrowByteBuff()
+	defer common.ReturnByteBuff(b)
 	// 3+1+6
 	_ = b.WriteUint24(1)
 	_ = b.WriteByte('c')
@@ -38,15 +41,13 @@ func TestByteBuff_Len(t *testing.T) {
 }
 
 func TestByteBuff_WriteTo(t *testing.T) {
-	b := common.NewByteBuff()
-	f, err := os.OpenFile("/dev/null", os.O_WRONLY, os.ModeAppend)
-	assert.NoError(t, err, "open /dev/null failed")
-	defer f.Close()
+	b := common.BorrowByteBuff()
+	defer common.ReturnByteBuff(b)
 	// 1MB
 	s := common.RandAlphanumeric(1 * 1024 * 1024)
-	err = b.WriteString(s)
+	err := b.WriteString(s)
 	assert.NoError(t, err)
-	n, err := b.WriteTo(f)
+	n, err := b.WriteTo(ioutil.Discard)
 	assert.NoError(t, err, "WriteTo failed")
 	assert.Equal(t, len(s), int(n), "wrong length")
 }

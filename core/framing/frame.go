@@ -10,44 +10,75 @@ import (
 
 var errIncompleteFrame = errors.New("incomplete frame")
 
-type tinyFrame struct {
+type baseWriteableFrame struct {
 	header core.FrameHeader
 	done   chan struct{}
 }
 
-func (t *tinyFrame) Header() core.FrameHeader {
+// FromBytes creates frame from a byte slice.
+func FromBytes(b []byte) (f core.BufferedFrame, err error) {
+	if len(b) < core.FrameHeaderLen {
+		err = errIncompleteFrame
+		return
+	}
+	header := core.ParseFrameHeader(b[:core.FrameHeaderLen])
+	bb := common.BorrowByteBuff()
+	_, err = bb.Write(b[core.FrameHeaderLen:])
+	if err != nil {
+		common.ReturnByteBuff(bb)
+		return
+	}
+	raw := newBaseDefaultFrame(header, bb)
+	f, err = FromRawFrame(raw)
+	if err != nil {
+		common.ReturnByteBuff(bb)
+	}
+	return
+}
+
+func (t baseWriteableFrame) Header() core.FrameHeader {
 	return t.header
 }
 
 // Done can be invoked when a frame has been been processed.
-func (t *tinyFrame) Done() (closed bool) {
+func (t baseWriteableFrame) Done() (closed bool) {
 	defer func() {
-		if e := recover(); e != nil {
-			closed = true
-		}
+		closed = recover() != nil
 	}()
 	close(t.done)
 	return
 }
 
 // DoneNotify notify when frame has been done.
-func (t *tinyFrame) DoneNotify() <-chan struct{} {
+func (t baseWriteableFrame) DoneNotify() <-chan struct{} {
 	return t.done
 }
 
-// RawFrame is basic frame implementation.
-type RawFrame struct {
-	*tinyFrame
-	body *common.ByteBuff
+// baseDefaultFrame is basic frame implementation.
+type baseDefaultFrame struct {
+	header core.FrameHeader
+	body   *common.ByteBuff
+}
+
+func (f *baseDefaultFrame) Header() core.FrameHeader {
+	return f.header
+}
+
+// Release releases resource.
+func (f *baseDefaultFrame) Release() {
+	if f != nil && f.body != nil {
+		common.ReturnByteBuff(f.body)
+		f.body = nil
+	}
 }
 
 // Body returns frame body.
-func (f *RawFrame) Body() *common.ByteBuff {
+func (f *baseDefaultFrame) Body() *common.ByteBuff {
 	return f.body
 }
 
 // Len returns length of frame.
-func (f *RawFrame) Len() int {
+func (f *baseDefaultFrame) Len() int {
 	if f.body == nil {
 		return core.FrameHeaderLen
 	}
@@ -55,7 +86,7 @@ func (f *RawFrame) Len() int {
 }
 
 // WriteTo write frame to writer.
-func (f *RawFrame) WriteTo(w io.Writer) (n int64, err error) {
+func (f *baseDefaultFrame) WriteTo(w io.Writer) (n int64, err error) {
 	var wrote int64
 	wrote, err = f.header.WriteTo(w)
 	if err != nil {
@@ -72,7 +103,7 @@ func (f *RawFrame) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (f *RawFrame) trySeekMetadataLen(offset int) (n int, hasMetadata bool) {
+func (f *baseDefaultFrame) trySeekMetadataLen(offset int) (n int, hasMetadata bool) {
 	raw := f.body.Bytes()
 	if offset > 0 {
 		raw = raw[offset:]
@@ -89,7 +120,7 @@ func (f *RawFrame) trySeekMetadataLen(offset int) (n int, hasMetadata bool) {
 	return
 }
 
-func (f *RawFrame) trySliceMetadata(offset int) ([]byte, bool) {
+func (f *baseDefaultFrame) trySliceMetadata(offset int) ([]byte, bool) {
 	n, ok := f.trySeekMetadataLen(offset)
 	if !ok || n < 0 {
 		return nil, false
@@ -97,7 +128,7 @@ func (f *RawFrame) trySliceMetadata(offset int) ([]byte, bool) {
 	return f.body.Bytes()[offset+3 : offset+3+n], true
 }
 
-func (f *RawFrame) trySliceData(offset int) []byte {
+func (f *baseDefaultFrame) trySliceData(offset int) []byte {
 	n, ok := f.trySeekMetadataLen(offset)
 	if !ok {
 		return f.body.Bytes()[offset:]
@@ -108,32 +139,16 @@ func (f *RawFrame) trySliceData(offset int) []byte {
 	return f.body.Bytes()[offset+n+3:]
 }
 
-func newTinyFrame(header core.FrameHeader) *tinyFrame {
-	return &tinyFrame{
+func newBaseWriteableFrame(header core.FrameHeader) baseWriteableFrame {
+	return baseWriteableFrame{
 		header: header,
 		done:   make(chan struct{}),
 	}
 }
 
-// NewRawFrame returns a new RawFrame.
-func NewRawFrame(header core.FrameHeader, body *common.ByteBuff) *RawFrame {
-	return &RawFrame{
-		tinyFrame: newTinyFrame(header),
-		body:      body,
+func newBaseDefaultFrame(header core.FrameHeader, body *common.ByteBuff) *baseDefaultFrame {
+	return &baseDefaultFrame{
+		header: header,
+		body:   body,
 	}
-}
-
-// FromBytes creates frame from a byte slice.
-func FromBytes(b []byte) (core.Frame, error) {
-	if len(b) < core.FrameHeaderLen {
-		return nil, errIncompleteFrame
-	}
-	header := core.ParseFrameHeader(b[:core.FrameHeaderLen])
-	bb := common.NewByteBuff()
-	_, err := bb.Write(b[core.FrameHeaderLen:])
-	if err != nil {
-		return nil, err
-	}
-	raw := NewRawFrame(header, bb)
-	return FromRawFrame(raw)
 }

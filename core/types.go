@@ -3,6 +3,8 @@ package core
 import (
 	"io"
 	"strings"
+
+	"github.com/rsocket/rsocket-go/internal/common"
 )
 
 // FrameType is type of frame.
@@ -108,22 +110,28 @@ func (f FrameFlag) Check(flag FrameFlag) bool {
 	return flag&f == flag
 }
 
-// WriteableFrame means writeable frame.
-type WriteableFrame interface {
-	io.WriterTo
+type Frame interface {
 	// FrameHeader returns frame FrameHeader.
 	Header() FrameHeader
 	// Len returns length of frame.
 	Len() int
+}
+
+// WriteableFrame means writeable frame.
+type WriteableFrame interface {
+	Frame
+	io.WriterTo
 	// Done marks current frame has been sent.
 	Done() (closed bool)
 	// DoneNotify notifies when frame done.
 	DoneNotify() <-chan struct{}
 }
 
-// Frame is a single message containing a request, response, or protocol processing.
-type Frame interface {
-	WriteableFrame
+// BufferedFrame is a single message containing a request, response, or protocol processing.
+type BufferedFrame interface {
+	Frame
+	io.WriterTo
+	common.Releasable
 	// Validate returns error if frame is invalid.
 	Validate() error
 }

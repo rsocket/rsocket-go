@@ -9,12 +9,12 @@ import (
 
 // FireAndForgetFrame is FireAndForget frame.
 type FireAndForgetFrame struct {
-	*RawFrame
+	*baseDefaultFrame
 }
 
 // WriteableFireAndForgetFrame is writeable FireAndForget frame.
 type WriteableFireAndForgetFrame struct {
-	*tinyFrame
+	baseWriteableFrame
 	metadata []byte
 	data     []byte
 }
@@ -79,30 +79,33 @@ func NewWriteableFireAndForgetFrame(sid uint32, data, metadata []byte, flag core
 		flag |= core.FlagMetadata
 	}
 	h := core.NewFrameHeader(sid, core.FrameTypeRequestFNF, flag)
-	t := newTinyFrame(h)
+	t := newBaseWriteableFrame(h)
 	return &WriteableFireAndForgetFrame{
-		tinyFrame: t,
-		metadata:  metadata,
-		data:      data,
+		baseWriteableFrame: t,
+		metadata:           metadata,
+		data:               data,
 	}
 }
 
 // NewFireAndForgetFrame returns a new FireAndForgetFrame.
 func NewFireAndForgetFrame(sid uint32, data, metadata []byte, flag core.FrameFlag) *FireAndForgetFrame {
-	bf := common.NewByteBuff()
+	b := common.BorrowByteBuff()
 	if len(metadata) > 0 {
 		flag |= core.FlagMetadata
-		if err := bf.WriteUint24(len(metadata)); err != nil {
+		if err := b.WriteUint24(len(metadata)); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
-		if _, err := bf.Write(metadata); err != nil {
+		if _, err := b.Write(metadata); err != nil {
+			common.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
-	if _, err := bf.Write(data); err != nil {
+	if _, err := b.Write(data); err != nil {
+		common.ReturnByteBuff(b)
 		panic(err)
 	}
 	return &FireAndForgetFrame{
-		NewRawFrame(core.NewFrameHeader(sid, core.FrameTypeRequestFNF, flag), bf),
+		newBaseDefaultFrame(core.NewFrameHeader(sid, core.FrameTypeRequestFNF, flag), b),
 	}
 }

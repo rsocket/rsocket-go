@@ -75,7 +75,7 @@ func TestWsConn_Read(t *testing.T) {
 		}).
 		AnyTimes()
 
-	var results []core.Frame
+	var results []core.BufferedFrame
 	for {
 		next, err := wc.Read()
 		if err == io.EOF {
