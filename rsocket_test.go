@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/jjeffcaii/reactor-go"
-	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
 	. "github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
@@ -342,36 +341,16 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 						})
 					}),
 					RequestChannel(func(inputs flux.Flux) flux.Flux {
-						//var count int32
-						//countPointer := &count
-						done := make(chan struct{})
-						receives := make(chan payload.Payload)
-						receiveErrors := make(chan error)
-
-						go func() {
-							success := new(int32)
-							failed := new(int32)
-
-						L:
-							for {
-								select {
-								case <-done:
-									break L
-								case <-receives:
-									atomic.AddInt32(success, 1)
-								case <-receiveErrors:
-									atomic.AddInt32(failed, 1)
-								}
-							}
-							assert.Equal(t, channelElements, atomic.LoadInt32(success)+atomic.LoadInt32(failed))
-						}()
-
+						received := new(int32)
 						inputs.
 							DoFinally(func(s rx.SignalType) {
-								close(done)
+								assert.Equal(t, channelElements, atomic.LoadInt32(received))
 							}).
-							SubscribeOn(scheduler.Parallel()).
-							SubscribeWithChan(context.Background(), receives, receiveErrors)
+							DoOnNext(func(input payload.Payload) error {
+								atomic.AddInt32(received, 1)
+								return nil
+							}).
+							Subscribe(context.Background())
 
 						return flux.Create(func(ctx context.Context, s flux.Sink) {
 							for i := 0; i < int(channelElements); i++ {
