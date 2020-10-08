@@ -124,9 +124,6 @@ func (r *Runner) runClientMode(ctx context.Context) (err error) {
 		DataMimeType(r.DataFormat).
 		MetadataMimeType(r.MetadataFormat).
 		SetupPayload(setupPayload).
-		OnClose(func(err error) {
-			rsocket.TracePoolCount()
-		}).
 		Transport(tp).
 		Start(ctx)
 	if err != nil {
