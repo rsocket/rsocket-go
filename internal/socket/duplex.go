@@ -390,9 +390,7 @@ func (dc *DuplexConnection) RequestChannel(sending flux.Flux) (ret flux.Flux) {
 				rcv:          receiving,
 				result:       sendResult,
 			}
-			go func() {
-				sending.SubscribeWith(context.Background(), sub)
-			}()
+			sending.SubscribeOn(scheduler.Parallel()).SubscribeWith(context.Background(), sub)
 		})
 	return ret
 }
