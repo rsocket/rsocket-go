@@ -76,7 +76,7 @@ func responder() rsocket.RSocket {
 		}),
 		rsocket.RequestResponse(func(pl payload.Payload) mono.Mono {
 			// just echo
-			return mono.Just(pl)
+			return mono.JustOneshot(pl)
 
 			// Graceful with context API.
 			//return rx.NewMono(func(ctx context.Context, sink rx.MonoProducer) {

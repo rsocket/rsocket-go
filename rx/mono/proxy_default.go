@@ -7,8 +7,6 @@ import (
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/mono"
 	"github.com/jjeffcaii/reactor-go/scheduler"
-	"github.com/pkg/errors"
-	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -21,68 +19,28 @@ func newProxy(source mono.Mono) proxy {
 	return proxy{source}
 }
 
-func deepClone(any reactor.Any) (reactor.Any, error) {
-	src := any.(payload.Payload)
-	m, _ := src.Metadata()
-	return payload.New(common.CloneBytes(src.Data()), common.CloneBytes(m)), nil
-}
-
 func (p proxy) Raw() mono.Mono {
 	return p.Mono
 }
 
-func (p proxy) mustProcessor() mono.Processor {
-	m, ok := p.Mono.(mono.Processor)
-	if !ok {
-		panic(errors.Errorf("require processor but %v", p.Mono))
-	}
-	return m
-}
-
 func (p proxy) Success(v payload.Payload) {
-	p.mustProcessor().Success(v)
+	mustProcessor(p.Mono).Success(v)
 }
 
 func (p proxy) Error(e error) {
-	p.mustProcessor().Error(e)
+	mustProcessor(p.Mono).Error(e)
 }
 
 func (p proxy) ToChan(ctx context.Context) (<-chan payload.Payload, <-chan error) {
-	value := make(chan payload.Payload, 1)
-	err := make(chan error, 1)
-	p.subscribeWithChan(ctx, value, err, true)
-	return value, err
+	return toChan(ctx, p.Mono)
 }
 
 func (p proxy) SubscribeOn(sc scheduler.Scheduler) Mono {
 	return newProxy(p.Mono.SubscribeOn(sc))
 }
 
-func (p proxy) subscribeWithChan(ctx context.Context, valueChan chan<- payload.Payload, errChan chan<- error, autoClose bool) {
-	p.Mono.
-		DoFinally(func(s reactor.SignalType) {
-			if autoClose {
-				defer close(valueChan)
-				defer close(errChan)
-			}
-			if s == reactor.SignalTypeCancel {
-				errChan <- reactor.ErrSubscribeCancelled
-			}
-		}).
-		Subscribe(
-			ctx,
-			reactor.OnNext(func(v reactor.Any) error {
-				valueChan <- v.(payload.Payload)
-				return nil
-			}),
-			reactor.OnError(func(e error) {
-				errChan <- e
-			}),
-		)
-}
-
 func (p proxy) SubscribeWithChan(ctx context.Context, valueChan chan<- payload.Payload, errChan chan<- error) {
-	p.subscribeWithChan(ctx, valueChan, errChan, false)
+	subscribeWithChan(ctx, p.Mono, valueChan, errChan, false)
 }
 
 func (p proxy) Block(ctx context.Context) (pa payload.Payload, err error) {
