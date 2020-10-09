@@ -193,3 +193,31 @@ func TestTimeout(t *testing.T) {
 	assert.Error(t, err, "should return error")
 	assert.True(t, reactor.IsCancelledError(err), "should be cancelled error")
 }
+
+func BenchmarkJust(b *testing.B) {
+	m := Just(payload.NewString("monodata","mono metadata"))
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		s := rx.NewSubscriber(rx.OnNext(func(v payload.Payload) error {
+			return nil
+		}))
+		for pb.Next() {
+			m.SubscribeWith(context.Background(), s)
+		}
+	})
+}
+
+func BenchmarkCreate(b *testing.B) {
+	m := Create(func(i context.Context, sink Sink) {
+		sink.Success(payload.NewString("monodata","mono metadata"))
+	})
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		s := rx.NewSubscriber(rx.OnNext(func(v payload.Payload) error {
+			return nil
+		}))
+		for pb.Next() {
+			m.SubscribeWith(context.Background(), s)
+		}
+	})
+}
