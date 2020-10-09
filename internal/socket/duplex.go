@@ -10,6 +10,7 @@ import (
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/core/transport"
+	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
 	"github.com/rsocket/rsocket-go/internal/queue"
@@ -389,9 +390,9 @@ func (dc *DuplexConnection) RequestChannel(sending flux.Flux) (ret flux.Flux) {
 				rcv:          receiving,
 				result:       sendResult,
 			}
-			sending.
-				SubscribeOn(scheduler.Parallel()).
-				SubscribeWith(context.Background(), sub)
+			go func() {
+				sending.SubscribeWith(context.Background(), sub)
+			}()
 		})
 	return ret
 }
@@ -408,7 +409,7 @@ func (dc *DuplexConnection) onFrameRequestResponse(frame core.BufferedFrame) err
 func (dc *DuplexConnection) respondRequestResponse(receiving fragmentation.HeaderAndPayload) error {
 	sid := receiving.Header().StreamID()
 
-	// 1. execute socket handler
+	// execute socket handler
 	sending, err := func() (mono mono.Mono, err error) {
 		defer func() {
 			if e := recover(); e != nil {
@@ -419,22 +420,29 @@ func (dc *DuplexConnection) respondRequestResponse(receiving fragmentation.Heade
 		mono = dc.responder.RequestResponse(receiving)
 		return
 	}()
-	// 2. sending error with panic
+	// sending error with panic
 	if err != nil {
 		common.TryRelease(receiving)
 		dc.writeError(sid, err)
 		return nil
 	}
-	// 3. sending error with unsupported handler
+	// sending error with unsupported handler
 	if sending == nil {
 		common.TryRelease(receiving)
 		dc.writeError(sid, framing.NewWriteableErrorFrame(sid, core.ErrorCodeApplicationError, unsupportedRequestResponse))
 		return nil
 	}
 
-	// 4. async subscribe publisher
+	// async subscribe publisher
 	sub := borrowRequestResponseSubscriber(dc, sid, receiving)
-	sending.SubscribeOn(scheduler.Parallel()).SubscribeWith(context.Background(), sub)
+	if mono.IsSubscribeAsync(sending) {
+		sending.SubscribeWith(context.Background(), sub)
+	} else {
+		go func() {
+			sending.SubscribeWith(context.Background(), sub)
+		}()
+	}
+
 	return nil
 }
 
@@ -516,16 +524,19 @@ func (dc *DuplexConnection) respondRequestChannel(req fragmentation.HeaderAndPay
 	// Ensure registering message success before func end.
 	subscribed := make(chan struct{})
 
-	// Create subscriber
-	sub := respondChannelSubscriber{
-		sid:        sid,
-		n:          initRequestN,
-		dc:         dc,
-		rcv:        receivingProcessor,
-		subscribed: subscribed,
-		calls:      finallyRequests,
-	}
-	sending.SubscribeOn(scheduler.Parallel()).SubscribeWith(context.Background(), sub)
+	go func() {
+		// Create subscriber
+		sub := respondChannelSubscriber{
+			sid:        sid,
+			n:          initRequestN,
+			dc:         dc,
+			rcv:        receivingProcessor,
+			subscribed: subscribed,
+			calls:      finallyRequests,
+		}
+		sending.SubscribeWith(context.Background(), sub)
+	}()
+
 	<-subscribed
 
 	return nil
@@ -594,8 +605,11 @@ func (dc *DuplexConnection) respondRequestStream(receiving fragmentation.HeaderA
 		dc.writeError(sid, err)
 		return nil
 	}
+
 	// async subscribe publisher
-	sending.SubscribeOn(scheduler.Parallel()).SubscribeWith(context.Background(), borrowRequestStreamSubscriber(receiving, dc, sid, n))
+	sub := borrowRequestStreamSubscriber(receiving, dc, sid, n)
+	sending.SubscribeOn(scheduler.Parallel()).SubscribeWith(context.Background(), sub)
+
 	return nil
 }
 
@@ -610,7 +624,12 @@ func (dc *DuplexConnection) writeError(sid uint32, e error) {
 	case core.CustomError:
 		dc.sendFrame(framing.NewWriteableErrorFrame(sid, err.ErrorCode(), err.ErrorData()))
 	default:
-		dc.sendFrame(framing.NewWriteableErrorFrame(sid, core.ErrorCodeApplicationError, []byte(e.Error())))
+		errFrame := framing.NewWriteableErrorFrame(
+			sid,
+			core.ErrorCodeApplicationError,
+			bytesconv.StringToBytes(e.Error()),
+		)
+		dc.sendFrame(errFrame)
 	}
 }
 

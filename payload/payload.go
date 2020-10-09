@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/internal/common"
 )
 
 type (
@@ -48,34 +49,26 @@ func Clone(payload Payload) Payload {
 	}
 	switch v := payload.(type) {
 	case *rawPayload:
-		var data []byte
-		if v.data != nil {
-			data = make([]byte, len(v.data))
-			copy(data, v.data)
+		data := common.CloneBytes(v.data)
+		metadata := common.CloneBytes(v.metadata)
+		return &rawPayload{
+			data:     data,
+			metadata: metadata,
 		}
-		var metadata []byte
-		if v.metadata != nil {
-			metadata = make([]byte, len(v.metadata))
-			copy(metadata, v.metadata)
-		}
-		return &rawPayload{data: data, metadata: metadata}
 	case *strPayload:
-		return &strPayload{data: v.data, metadata: v.metadata}
+		return &strPayload{
+			data:     v.data,
+			metadata: v.metadata,
+		}
 	default:
-		ret := &rawPayload{}
-		if d := payload.Data(); len(d) > 0 {
-			clone := make([]byte, len(d))
-			copy(clone, d)
-			ret.data = clone
+		data := common.CloneBytes(v.Data())
+		metadata, _ := v.Metadata()
+		metadata = common.CloneBytes(metadata)
+		return &rawPayload{
+			data:     data,
+			metadata: metadata,
 		}
-		if m, ok := payload.Metadata(); ok && len(m) > 0 {
-			clone := make([]byte, len(m))
-			copy(clone, m)
-			ret.metadata = clone
-		}
-		return ret
 	}
-
 }
 
 // New create a new payload with bytes.
