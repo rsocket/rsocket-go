@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -11,10 +12,12 @@ import (
 	"time"
 
 	"github.com/jjeffcaii/reactor-go"
+	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
 	. "github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/extension"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/lease"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
@@ -527,7 +530,7 @@ func startProxy(addr string, ch chan net.Listener, upstreamAddr string) {
 		for _, upstream := range upstreams {
 			_ = upstream.Close()
 		}
-		fmt.Println("PROXY KILLED")
+		log.Println("PROXY KILLED")
 	}()
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -635,4 +638,51 @@ func TestContextTimeout(t *testing.T) {
 
 	_, err = cli.RequestResponse(fakeRequest).Timeout(400 * time.Millisecond).Block(context.Background())
 	assert.NoError(t, err)
+}
+
+func TestEchoParallel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	started := make(chan struct{})
+
+	go func() {
+		_ = Receive().
+			OnStart(func() {
+				close(started)
+			}).
+			Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
+				return NewAbstractSocket(RequestResponse(func(request payload.Payload) (response mono.Mono) {
+					response = mono.Just(request)
+					return
+				})), nil
+			}).
+			Transport(TCPServer().SetHostAndPort("127.0.0.1", 7878).Build()).
+			Serve(ctx)
+	}()
+
+	<-started
+
+	cli, err := Connect().Transport(TCPClient().SetHostAndPort("127.0.0.1", 7878).Build()).Start(ctx)
+	assert.NoError(t, err)
+	defer cli.Close()
+
+	const total = 10000
+
+	wg := new(sync.WaitGroup)
+	wg.Add(total)
+
+	for i := 0; i < total; i++ {
+		req := payload.NewString(common.RandAlphanumeric(30), common.RandAlphanumeric(30))
+		cli.RequestResponse(req).
+			DoFinally(func(s rx.SignalType) {
+				wg.Done()
+			}).
+			SubscribeOn(scheduler.Parallel()).
+			Subscribe(ctx, rx.OnNext(func(res payload.Payload) error {
+				assert.True(t, payload.Equal(req, res), "should be same payload")
+				return nil
+			}))
+	}
+	wg.Wait()
 }

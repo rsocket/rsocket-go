@@ -75,7 +75,14 @@ func NewFrameHeader(streamID uint32, frameType FrameType, fg FrameFlag) FrameHea
 	binary.BigEndian.PutUint32(h[:], streamID)
 	binary.BigEndian.PutUint16(h[4:], uint16(frameType)<<10|uint16(fg))
 	return h
+}
 
+// WriteFrameHeader writes frame header into a io.Writer.
+func WriteFrameHeader(w io.Writer, streamID uint32, frameType FrameType, fg FrameFlag) error {
+	if err := binary.Write(w, binary.BigEndian, streamID); err != nil {
+		return err
+	}
+	return binary.Write(w, binary.BigEndian, uint16(frameType)<<10|uint16(fg))
 }
 
 // ParseFrameHeader parse a header from bytes.

@@ -99,8 +99,12 @@ func (r respondChannelSubscriber) OnComplete() {
 		r.dc.unregister(r.sid)
 	}
 	complete := framing.NewWriteablePayloadFrame(r.sid, nil, nil, core.FlagComplete)
+	done := make(chan struct{})
+	complete.HandleDone(func() {
+		close(done)
+	})
 	if r.dc.sendFrame(complete) {
-		<-complete.DoneNotify()
+		<-done
 	}
 }
 

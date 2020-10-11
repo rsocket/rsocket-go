@@ -11,46 +11,42 @@ import (
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
-// CalcPayloadFrameSize returns payload frame size.
-func CalcPayloadFrameSize(data, metadata []byte) int {
-	size := core.FrameHeaderLen + len(data)
-	if n := len(metadata); n > 0 {
-		size += 3 + n
-	}
-	return size
+type frozenError struct {
+	code core.ErrorCode
+	data []byte
 }
 
-// FromRawFrame creates a frame from a baseDefaultFrame.
-func FromRawFrame(f *baseDefaultFrame) (frame core.BufferedFrame, err error) {
-	switch f.header.Type() {
+// FromRawFrame creates a frame from a bufferedFrame.
+func convert(f *bufferedFrame) (frame core.BufferedFrame, err error) {
+	switch f.Header().Type() {
 	case core.FrameTypeSetup:
-		frame = &SetupFrame{baseDefaultFrame: f}
+		frame = &SetupFrame{bufferedFrame: f}
 	case core.FrameTypeKeepalive:
-		frame = &KeepaliveFrame{baseDefaultFrame: f}
+		frame = &KeepaliveFrame{bufferedFrame: f}
 	case core.FrameTypeRequestResponse:
-		frame = &RequestResponseFrame{baseDefaultFrame: f}
+		frame = &RequestResponseFrame{bufferedFrame: f}
 	case core.FrameTypeRequestFNF:
-		frame = &FireAndForgetFrame{baseDefaultFrame: f}
+		frame = &FireAndForgetFrame{bufferedFrame: f}
 	case core.FrameTypeRequestStream:
-		frame = &RequestStreamFrame{baseDefaultFrame: f}
+		frame = &RequestStreamFrame{bufferedFrame: f}
 	case core.FrameTypeRequestChannel:
-		frame = &RequestChannelFrame{baseDefaultFrame: f}
+		frame = &RequestChannelFrame{bufferedFrame: f}
 	case core.FrameTypeCancel:
-		frame = &CancelFrame{baseDefaultFrame: f}
+		frame = &CancelFrame{bufferedFrame: f}
 	case core.FrameTypePayload:
-		frame = &PayloadFrame{baseDefaultFrame: f}
+		frame = &PayloadFrame{bufferedFrame: f}
 	case core.FrameTypeMetadataPush:
-		frame = &MetadataPushFrame{baseDefaultFrame: f}
+		frame = &MetadataPushFrame{bufferedFrame: f}
 	case core.FrameTypeError:
-		frame = &ErrorFrame{baseDefaultFrame: f}
+		frame = &ErrorFrame{bufferedFrame: f}
 	case core.FrameTypeRequestN:
-		frame = &RequestNFrame{baseDefaultFrame: f}
+		frame = &RequestNFrame{bufferedFrame: f}
 	case core.FrameTypeLease:
-		frame = &LeaseFrame{baseDefaultFrame: f}
+		frame = &LeaseFrame{bufferedFrame: f}
 	case core.FrameTypeResume:
-		frame = &ResumeFrame{baseDefaultFrame: f}
+		frame = &ResumeFrame{bufferedFrame: f}
 	case core.FrameTypeResumeOK:
-		frame = &ResumeOKFrame{baseDefaultFrame: f}
+		frame = &ResumeOKFrame{bufferedFrame: f}
 	default:
 		err = core.ErrInvalidFrame
 	}
@@ -166,4 +162,25 @@ func writePayload(w io.Writer, data []byte, metadata []byte) (n int64, err error
 		n += int64(v)
 	}
 	return
+}
+
+func makeErrorString(code core.ErrorCode, data []byte) string {
+	bu := strings.Builder{}
+	bu.WriteString(code.String())
+	bu.WriteByte(':')
+	bu.WriteByte(' ')
+	bu.Write(data)
+	return bu.String()
+}
+
+func (c frozenError) Error() string {
+	return makeErrorString(c.ErrorCode(), c.ErrorData())
+}
+
+func (c frozenError) ErrorCode() core.ErrorCode {
+	return c.code
+}
+
+func (c frozenError) ErrorData() []byte {
+	return c.data
 }

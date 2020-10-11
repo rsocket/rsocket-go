@@ -193,32 +193,46 @@ func (dc *DuplexConnection) MetadataPush(payload payload.Payload) {
 }
 
 // RequestResponse start a request of RequestResponse.
-func (dc *DuplexConnection) RequestResponse(pl payload.Payload) (result mono.Mono) {
+func (dc *DuplexConnection) RequestResponse(req payload.Payload) (res mono.Mono) {
 	if dc.closed.Load() {
-		result = mono.Error(errSocketClosed)
+		res = mono.Error(errSocketClosed)
 		return
 	}
 
 	sid := dc.nextStreamID()
 	processor := mono.CreateProcessor()
 
-	dc.register(sid, requestResponseCallback{pc: processor})
+	handler := &requestResponseCallback{
+		pc: processor,
+	}
 
-	data := pl.Data()
-	metadata, _ := pl.Metadata()
+	dc.register(sid, handler)
 
-	result = processor.
+	res = processor.
 		DoFinally(func(s rx.SignalType) {
+			if handler.cache != nil {
+				common.TryRelease(handler.cache)
+			}
 			if s == rx.SignalCancel {
 				dc.sendFrame(framing.NewWriteableCancelFrame(sid))
 			}
 			dc.unregister(sid)
 		})
 
+	data := req.Data()
+	metadata, _ := req.Metadata()
+
 	// sending...
 	size := framing.CalcPayloadFrameSize(data, metadata)
 	if !dc.shouldSplit(size) {
-		if ok := dc.sendFrame(framing.NewWriteableRequestResponseFrame(sid, data, metadata, 0)); !ok {
+		toBeSent := framing.NewWriteableRequestResponseFrame(sid, data, metadata, 0)
+		if releasable, ok := req.(common.Releasable); ok {
+			releasable.IncRef()
+			toBeSent.HandleDone(func() {
+				releasable.Release()
+			})
+		}
+		if ok := dc.sendFrame(toBeSent); !ok {
 			dc.killCallback(sid)
 		}
 		return
@@ -283,9 +297,13 @@ func (dc *DuplexConnection) RequestStream(sending payload.Payload) (ret flux.Flu
 
 			// Send RequestN at first time.
 			if !requested.CAS(false, true) {
+				done := make(chan struct{})
 				frameN := framing.NewWriteableRequestNFrame(sid, n32, 0)
+				frameN.HandleDone(func() {
+					close(done)
+				})
 				if dc.sendFrame(frameN) {
-					<-frameN.DoneNotify()
+					<-done
 				}
 				return
 			}
@@ -358,8 +376,12 @@ func (dc *DuplexConnection) RequestChannel(sending flux.Flux) (ret flux.Flux) {
 				dc.writeError(sid, e)
 			} else {
 				complete := framing.NewWriteablePayloadFrame(sid, nil, nil, core.FlagComplete)
+				done := make(chan struct{})
+				complete.HandleDone(func() {
+					close(done)
+				})
 				if dc.sendFrame(complete) {
-					<-complete.DoneNotify()
+					<-done
 				}
 			}
 		}).
@@ -376,8 +398,12 @@ func (dc *DuplexConnection) RequestChannel(sending flux.Flux) (ret flux.Flux) {
 			n := ToUint32RequestN(initN)
 			if !rcvRequested.CAS(false, true) {
 				frameN := framing.NewWriteableRequestNFrame(sid, n, 0)
+				done := make(chan struct{})
+				frameN.HandleDone(func() {
+					close(done)
+				})
 				if dc.sendFrame(frameN) {
-					<-frameN.DoneNotify()
+					<-done
 				}
 				return
 			}
@@ -490,8 +516,12 @@ func (dc *DuplexConnection) respondRequestChannel(req fragmentation.HeaderAndPay
 		}).
 		DoOnRequest(func(n int) {
 			frameN := framing.NewWriteableRequestNFrame(sid, ToUint32RequestN(n), 0)
+			done := make(chan struct{})
+			frameN.HandleDone(func() {
+				close(done)
+			})
 			if dc.sendFrame(frameN) {
-				<-frameN.DoneNotify()
+				<-done
 			}
 		}).
 		SubscribeOn(scheduler.Parallel())
@@ -688,7 +718,7 @@ func (dc *DuplexConnection) onFrameError(input core.BufferedFrame) error {
 	f := input.(*framing.ErrorFrame)
 	sid := f.Header().StreamID()
 
-	// Deep clone error
+	// TODO: avoid clone error
 	err := f.ToError()
 
 	v, ok := dc.messages.Load(sid)
@@ -699,7 +729,7 @@ func (dc *DuplexConnection) onFrameError(input core.BufferedFrame) error {
 	}
 
 	switch vv := v.(type) {
-	case requestResponseCallback:
+	case *requestResponseCallback:
 		vv.pc.Error(err)
 	case requestStreamCallback:
 		vv.pc.Error(err)
@@ -781,46 +811,46 @@ func (dc *DuplexConnection) onFramePayload(frame core.BufferedFrame) error {
 		return nil
 	}
 
-	switch vv := v.(type) {
-	case requestResponseCallback:
-		vv.pc.Success(next)
-		common.TryRelease(next)
+	switch handler := v.(type) {
+	case *requestResponseCallback:
+		handler.cache = next
+		handler.pc.Success(next)
 	case requestStreamCallback:
 		fg := h.Flag()
 		isNext := fg.Check(core.FlagNext)
 		if isNext {
-			vv.pc.Next(next)
+			handler.pc.Next(next)
 		}
 		if fg.Check(core.FlagComplete) {
 			if !isNext {
 				common.TryRelease(next)
 			}
 			// Release pure complete payload
-			vv.pc.Complete()
+			handler.pc.Complete()
 		}
 	case requestChannelCallback:
 		fg := h.Flag()
 		isNext := fg.Check(core.FlagNext)
 		if isNext {
-			vv.rcv.Next(next)
+			handler.rcv.Next(next)
 		}
 		if fg.Check(core.FlagComplete) {
 			if !isNext {
 				common.TryRelease(next)
 			}
-			vv.rcv.Complete()
+			handler.rcv.Complete()
 		}
 	case respondChannelCallback:
 		fg := h.Flag()
 		isNext := fg.Check(core.FlagNext)
 		if isNext {
-			vv.rcv.Next(next)
+			handler.rcv.Next(next)
 		}
 		if fg.Check(core.FlagComplete) {
 			if !isNext {
 				common.TryRelease(next)
 			}
-			vv.rcv.Complete()
+			handler.rcv.Complete()
 		}
 	}
 	return nil
@@ -870,6 +900,9 @@ func (dc *DuplexConnection) SetTransport(tp *transport.Transport) (ok bool) {
 func (dc *DuplexConnection) sendFrame(f core.WriteableFrame) (ok bool) {
 	defer func() {
 		ok = recover() == nil
+		if !ok {
+			f.Done()
+		}
 	}()
 	dc.outs <- f
 	return
@@ -885,7 +918,14 @@ func (dc *DuplexConnection) sendPayload(
 	size := framing.CalcPayloadFrameSize(d, m)
 
 	if !dc.shouldSplit(size) {
-		dc.sendFrame(framing.NewWriteablePayloadFrame(sid, d, m, frameFlag))
+		toBeSent := framing.NewWriteablePayloadFrame(sid, d, m, frameFlag)
+		if r, ok := sending.(common.Releasable); ok {
+			r.IncRef()
+			toBeSent.HandleDone(func() {
+				r.Release()
+			})
+		}
+		dc.sendFrame(toBeSent)
 		return
 	}
 	dc.doSplit(d, m, func(index int, result fragmentation.SplitResult) {
@@ -895,6 +935,7 @@ func (dc *DuplexConnection) sendPayload(
 		} else {
 			flag |= core.FlagNext
 		}
+		// TODO: lazy release
 		dc.sendFrame(framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, flag))
 	})
 }

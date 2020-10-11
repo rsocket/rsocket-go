@@ -42,8 +42,8 @@ func returnRequestResponseSubscriber(s rx.Subscriber) {
 	_requestResponseSubscriberPool.Put(actual)
 }
 
-func (r *requestResponseSubscriber) OnNext(payload payload.Payload) {
-	r.dc.sendPayload(r.sid, payload, core.FlagNext|core.FlagComplete)
+func (r *requestResponseSubscriber) OnNext(next payload.Payload) {
+	r.dc.sendPayload(r.sid, next, core.FlagNext|core.FlagComplete)
 }
 
 func (r *requestResponseSubscriber) OnError(err error) {
