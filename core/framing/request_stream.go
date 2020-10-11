@@ -34,7 +34,6 @@ func NewRequestStreamFrame(id uint32, n uint32, data, metadata []byte, flag core
 		panic(err)
 	}
 	if len(metadata) > 0 {
-		flag |= core.FlagMetadata
 		if err := bb.WriteUint24(len(metadata)); err != nil {
 			common.ReturnByteBuff(bb)
 			panic(err)

@@ -45,7 +45,6 @@ func NewLeaseFrame(ttl time.Duration, n uint32, metadata []byte) *LeaseFrame {
 	}
 
 	if len(metadata) > 0 {
-		fg |= core.FlagMetadata
 		if _, err := b.Write(metadata); err != nil {
 			common.ReturnByteBuff(b)
 			panic(err)
