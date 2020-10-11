@@ -295,8 +295,8 @@ func checkBytes(t *testing.T, a core.BufferedFrame, b core.WriteableFrame) {
 	assert.Equal(t, b1, b2, "bytes doesn't match")
 	bf := common.BorrowByteBuff()
 	defer common.ReturnByteBuff(bf)
-	_, _ = bf.Write(b1[core.FrameHeaderLen:])
-	raw := newBaseDefaultFrame(core.ParseFrameHeader(b1[:core.FrameHeaderLen]), bf)
-	_, err = FromRawFrame(raw)
+	_, _ = bf.Write(b1)
+	raw := newBufferedFrame(bf)
+	_, err = convert(raw)
 	assert.NoError(t, err, "create from raw failed")
 }

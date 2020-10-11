@@ -12,6 +12,8 @@ const (
 )
 
 type Releasable interface {
+	IncRef() int32
+	RefCnt() int32
 	Release()
 }
 
@@ -39,4 +41,8 @@ func SafeCloseDoneChan(c chan<- struct{}) (ok bool) {
 	}()
 	close(c)
 	return
+}
+
+func ToMilliseconds(duration time.Duration) int64 {
+	return int64(duration) / 1e6
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
@@ -51,7 +52,7 @@ func main() {
 			//	SubscribeOn(rx.ElasticScheduler()).
 			//	Subscribe(context.Background())
 			sendingSocket.OnClose(func(err error) {
-				log.Println("*** socket disconnected ***")
+				log.Println("*** socket disconnected ***", common.CountBorrowed())
 			})
 			// For SETUP_REJECT testing.
 			//if strings.EqualFold(setup.DataUTF8(), "REJECT_ME") {

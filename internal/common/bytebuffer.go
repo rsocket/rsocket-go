@@ -1,16 +1,23 @@
 package common
 
 import (
+	"bytes"
 	"io"
+	"sync"
 
-	"github.com/valyala/bytebufferpool"
 	"go.uber.org/atomic"
 )
+
+var _byteBuffPool = sync.Pool{
+	New: func() interface{} {
+		return new(ByteBuff)
+	},
+}
 
 var _borrowed = atomic.NewInt64(0)
 
 // ByteBuff provides byte buffer, which can be used for minimizing.
-type ByteBuff bytebufferpool.ByteBuffer
+type ByteBuff bytes.Buffer
 
 // CountBorrowed returns borrowed ByteBuff amount.
 func CountBorrowed() int64 {
@@ -20,13 +27,15 @@ func CountBorrowed() int64 {
 // BorrowByteBuff borrows a ByteBuff from pool.
 func BorrowByteBuff() *ByteBuff {
 	_borrowed.Inc()
-	return (*ByteBuff)(bytebufferpool.Get())
+	b := _byteBuffPool.Get().(*ByteBuff)
+	b.Reset()
+	return b
 }
 
 // ReturnByteBuff returns a ByteBuff to pool.
 func ReturnByteBuff(b *ByteBuff) {
 	_borrowed.Dec()
-	bytebufferpool.Put((*bytebufferpool.ByteBuffer)(b))
+	_byteBuffPool.Put(b)
 }
 
 // Reset resets ByteBuff.
@@ -41,7 +50,8 @@ func (b *ByteBuff) Len() (n int) {
 
 // WriteTo writes bytes to writer.
 func (b *ByteBuff) WriteTo(w io.Writer) (int64, error) {
-	return b.bb().WriteTo(w)
+	n, err := w.Write(b.bb().Bytes())
+	return int64(n), err
 }
 
 // Write writes bytes to current ByteBuff.
@@ -75,6 +85,6 @@ func (b *ByteBuff) Bytes() []byte {
 	return b.bb().Bytes()
 }
 
-func (b *ByteBuff) bb() *bytebufferpool.ByteBuffer {
-	return (*bytebufferpool.ByteBuffer)(b)
+func (b *ByteBuff) bb() *bytes.Buffer {
+	return (*bytes.Buffer)(b)
 }

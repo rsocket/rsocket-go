@@ -25,7 +25,8 @@ func (s requestStreamCallback) stopWithError(err error) {
 }
 
 type requestResponseCallback struct {
-	pc mono.Processor
+	pc    mono.Processor
+	cache interface{}
 }
 
 func (s requestResponseCallback) stopWithError(err error) {

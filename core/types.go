@@ -122,9 +122,8 @@ type WriteableFrame interface {
 	Frame
 	io.WriterTo
 	// Done marks current frame has been sent.
-	Done() (closed bool)
-	// DoneNotify notifies when frame done.
-	DoneNotify() <-chan struct{}
+	Done()
+	HandleDone(func())
 }
 
 // BufferedFrame is a single message containing a request, response, or protocol processing.

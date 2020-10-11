@@ -11,6 +11,19 @@ type implJoiner struct {
 	root *list.List // list of HeaderAndPayload
 }
 
+func (p *implJoiner) IncRef() (refs int32) {
+	for cur := p.root.Front(); cur != nil; cur = cur.Next() {
+		if r, ok := cur.Value.(core.BufferedFrame); ok {
+			refs = r.IncRef()
+		}
+	}
+	return
+}
+
+func (p *implJoiner) RefCnt() int32 {
+	return p.root.Front().Value.(core.BufferedFrame).RefCnt()
+}
+
 func (p *implJoiner) Release() {
 	for cur := p.root.Front(); cur != nil; cur = cur.Next() {
 		if r, ok := cur.Value.(core.BufferedFrame); ok {
