@@ -1,6 +1,7 @@
 package framing
 
 import (
+	"encoding/binary"
 	"io"
 	"sync/atomic"
 
@@ -14,11 +15,11 @@ type bufferedFrame struct {
 	refs  int32
 }
 
-func (f *bufferedFrame) bodyLen() int {
-	if l := f.Len(); l > core.FrameHeaderLen {
-		return f.Len() - core.FrameHeaderLen
+func newBufferedFrame(inner *common.ByteBuff) *bufferedFrame {
+	return &bufferedFrame{
+		inner: inner,
+		refs:  1,
 	}
-	return 0
 }
 
 func (f *bufferedFrame) IncRef() int32 {
@@ -30,11 +31,22 @@ func (f *bufferedFrame) RefCnt() int32 {
 }
 
 func (f *bufferedFrame) Header() core.FrameHeader {
+	if f.inner == nil {
+		panic("frame has been released!")
+	}
 	b := f.inner.Bytes()
 	_ = b[core.FrameHeaderLen-1]
 	var h core.FrameHeader
 	copy(h[:], b)
 	return h
+}
+
+func (f *bufferedFrame) HasFlag(flag core.FrameFlag) bool {
+	if f.inner == nil {
+		panic("frame has been released!")
+	}
+	n := binary.BigEndian.Uint16(f.inner.Bytes()[4:6])
+	return core.FrameFlag(n&0x03FF)&flag == flag
 }
 
 // Release releases resource.
@@ -47,6 +59,9 @@ func (f *bufferedFrame) Release() {
 
 // Body returns frame body.
 func (f *bufferedFrame) Body() []byte {
+	if f.inner == nil {
+		return nil
+	}
 	b := f.inner.Bytes()
 	_ = b[core.FrameHeaderLen-1]
 	return b[core.FrameHeaderLen:]
@@ -62,7 +77,7 @@ func (f *bufferedFrame) Len() int {
 
 // WriteTo write frame to writer.
 func (f *bufferedFrame) WriteTo(w io.Writer) (n int64, err error) {
-	if f == nil {
+	if f == nil || f.inner == nil {
 		return
 	}
 	n, err = f.inner.WriteTo(w)
@@ -74,7 +89,7 @@ func (f *bufferedFrame) trySeekMetadataLen(offset int) (n int, hasMetadata bool)
 	if offset > 0 {
 		raw = raw[offset:]
 	}
-	hasMetadata = f.Header().Flag().Check(core.FlagMetadata)
+	hasMetadata = f.HasFlag(core.FlagMetadata)
 	if !hasMetadata {
 		return
 	}
@@ -105,9 +120,9 @@ func (f *bufferedFrame) trySliceData(offset int) []byte {
 	return f.Body()[offset+n+3:]
 }
 
-func newBufferedFrame(inner *common.ByteBuff) *bufferedFrame {
-	return &bufferedFrame{
-		inner: inner,
-		refs:  1,
+func (f *bufferedFrame) bodyLen() int {
+	if l := f.Len(); l > core.FrameHeaderLen {
+		return f.Len() - core.FrameHeaderLen
 	}
+	return 0
 }

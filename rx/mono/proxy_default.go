@@ -7,6 +7,7 @@ import (
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/mono"
 	"github.com/jjeffcaii/reactor-go/scheduler"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -17,6 +18,9 @@ type proxy struct {
 
 func newProxy(source mono.Mono) proxy {
 	return proxy{source}
+}
+
+func noopRelease() {
 }
 
 func (p proxy) Raw() mono.Mono {
@@ -43,15 +47,31 @@ func (p proxy) SubscribeWithChan(ctx context.Context, valueChan chan<- payload.P
 	subscribeWithChan(ctx, p.Mono, valueChan, errChan, false)
 }
 
-func (p proxy) Block(ctx context.Context) (pa payload.Payload, err error) {
-	v, err := p.Mono.Map(deepClone).Block(ctx)
+func (p proxy) BlockUnsafe(ctx context.Context) (payload.Payload, ReleaseFunc, error) {
+	v, err := toBlock(ctx, p.Mono)
 	if err != nil {
-		return
+		return nil, nil, err
 	}
-	if v != nil {
-		pa = v.(payload.Payload)
+	r, ok := v.(common.Releasable)
+	if !ok {
+		return v, noopRelease, nil
 	}
-	return
+	return v, r.Release, nil
+}
+
+func (p proxy) Block(ctx context.Context) (payload.Payload, error) {
+	v, r, err := p.BlockUnsafe(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer r()
+	if v == nil {
+		return nil, nil
+	}
+	if _, ok := v.(common.Releasable); ok {
+		return payload.Clone(v), nil
+	}
+	return v, nil
 }
 
 func (p proxy) Filter(fn rx.FnPredicate) Mono {
@@ -70,10 +90,6 @@ func (p proxy) FlatMap(transform func(payload.Payload) Mono) Mono {
 	return newProxy(p.Mono.FlatMap(func(any reactor.Any) mono.Mono {
 		return transform(any.(payload.Payload)).Raw()
 	}))
-}
-
-func (p proxy) DeepClone() Mono {
-	return newProxy(p.Mono.Map(deepClone))
 }
 
 func (p proxy) DoFinally(fn rx.FnFinally) Mono {

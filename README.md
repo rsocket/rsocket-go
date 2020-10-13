@@ -85,10 +85,11 @@ func main() {
 	}
 	defer cli.Close()
 	// Send request
-	result, err := cli.RequestResponse(payload.NewString("你好", "世界")).Block(context.Background())
+	result, release, err := cli.RequestResponse(payload.NewString("你好", "世界")).Block(context.Background())
 	if err != nil {
 		panic(err)
 	}
+	defer release()
 	log.Println("response:", result)
 }
 ```

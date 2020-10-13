@@ -1,6 +1,9 @@
 package framing
 
-import "github.com/rsocket/rsocket-go/internal/common"
+import (
+	"github.com/rsocket/rsocket-go/internal/bytesconv"
+	"github.com/rsocket/rsocket-go/internal/common"
+)
 
 // MetadataPushFrame is MetadataPush frame.
 type MetadataPushFrame struct {
@@ -45,7 +48,7 @@ func (m *MetadataPushFrame) Data() []byte {
 func (m *MetadataPushFrame) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := m.Metadata()
 	if ok {
-		metadata = string(raw)
+		metadata = bytesconv.BytesToString(raw)
 	}
 	return
 }

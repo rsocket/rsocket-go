@@ -19,13 +19,14 @@ func TestFromBytes(t *testing.T) {
 	assert.Error(t, err, "should be error")
 
 	b := &bytes.Buffer{}
-	frame := NewWriteableRequestResponseFrame(42, []byte("fake-data"), []byte("fake-metadata"), 0)
+	frame := NewWriteableRequestResponseFrame(42, []byte("fake-data"), []byte("fake-metadata"), core.FlagNext)
 	_, _ = frame.WriteTo(b)
 	frameActual, err := FromBytes(b.Bytes())
 	assert.NoError(t, err, "should not be error")
 	defer frameActual.Release()
 	assert.Equal(t, frame.Header(), frameActual.Header(), "header does not match")
 	assert.Equal(t, frame.Len(), frameActual.Len())
+	assert.True(t, frameActual.HasFlag(core.FlagNext))
 }
 
 func TestFrameCancel(t *testing.T) {

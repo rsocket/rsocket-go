@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 
 	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
@@ -61,7 +62,7 @@ func (r *RequestStreamFrame) Validate() error {
 	if l < minRequestStreamFrameLen {
 		return errIncompleteFrame
 	}
-	if r.Header().Flag().Check(core.FlagMetadata) && l < minRequestStreamFrameLen+3 {
+	if r.HasFlag(core.FlagMetadata) && l < minRequestStreamFrameLen+3 {
 		return errIncompleteFrame
 	}
 	return nil
@@ -86,12 +87,16 @@ func (r *RequestStreamFrame) Data() []byte {
 func (r *RequestStreamFrame) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := r.Metadata()
 	if ok {
-		metadata = string(raw)
+		metadata = bytesconv.BytesToString(raw)
 	}
 	return
 }
 
 // DataUTF8 returns data as UTF8 string.
-func (r *RequestStreamFrame) DataUTF8() string {
-	return string(r.Data())
+func (r *RequestStreamFrame) DataUTF8() (data string) {
+	b := r.Data()
+	if len(b) > 0 {
+		data = bytesconv.BytesToString(b)
+	}
+	return
 }

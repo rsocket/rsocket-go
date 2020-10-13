@@ -224,10 +224,16 @@ func (dc *DuplexConnection) RequestResponse(req payload.Payload) (res mono.Mono)
 
 	// sending...
 	size := framing.CalcPayloadFrameSize(data, metadata)
+
+	releasable, isReleasable := req.(common.Releasable)
+	if isReleasable {
+		releasable.IncRef()
+	}
+
+	// mtu disabled
 	if !dc.shouldSplit(size) {
 		toBeSent := framing.NewWriteableRequestResponseFrame(sid, data, metadata, 0)
-		if releasable, ok := req.(common.Releasable); ok {
-			releasable.IncRef()
+		if isReleasable {
 			toBeSent.HandleDone(func() {
 				releasable.Release()
 			})
@@ -237,14 +243,24 @@ func (dc *DuplexConnection) RequestResponse(req payload.Payload) (res mono.Mono)
 		}
 		return
 	}
+
+	// mtu enabled
 	dc.doSplit(data, metadata, func(index int, result fragmentation.SplitResult) {
-		var f core.WriteableFrame
+		var toBeSent core.WriteableFrame
 		if index == 0 {
-			f = framing.NewWriteableRequestResponseFrame(sid, result.Data, result.Metadata, result.Flag)
+			toBeSent = framing.NewWriteableRequestResponseFrame(sid, result.Data, result.Metadata, result.Flag)
 		} else {
-			f = framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
+			toBeSent = framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
 		}
-		if ok := dc.sendFrame(f); !ok {
+
+		// Add release hook at last frame.
+		if !result.Flag.Check(core.FlagFollow) && isReleasable {
+			toBeSent.HandleDone(func() {
+				releasable.Release()
+			})
+		}
+
+		if ok := dc.sendFrame(toBeSent); !ok {
 			dc.killCallback(sid)
 		}
 	})
@@ -669,7 +685,7 @@ func (dc *DuplexConnection) SetResponder(responder Responder) {
 func (dc *DuplexConnection) onFrameKeepalive(frame core.BufferedFrame) (err error) {
 	defer frame.Release()
 	f := frame.(*framing.KeepaliveFrame)
-	if !f.Header().Flag().Check(core.FlagRespond) {
+	if !f.HasFlag(core.FlagRespond) {
 		return
 
 	}
@@ -917,12 +933,16 @@ func (dc *DuplexConnection) sendPayload(
 	m, _ := sending.Metadata()
 	size := framing.CalcPayloadFrameSize(d, m)
 
+	releasable, isReleasable := sending.(common.Releasable)
+	if isReleasable {
+		releasable.IncRef()
+	}
+
 	if !dc.shouldSplit(size) {
 		toBeSent := framing.NewWriteablePayloadFrame(sid, d, m, frameFlag)
-		if r, ok := sending.(common.Releasable); ok {
-			r.IncRef()
+		if isReleasable {
 			toBeSent.HandleDone(func() {
-				r.Release()
+				releasable.Release()
 			})
 		}
 		dc.sendFrame(toBeSent)
@@ -935,8 +955,17 @@ func (dc *DuplexConnection) sendPayload(
 		} else {
 			flag |= core.FlagNext
 		}
-		// TODO: lazy release
-		dc.sendFrame(framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, flag))
+
+		// lazy release at last frame
+		next := framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, flag)
+
+		if !result.Flag.Check(core.FlagFollow) {
+			next.HandleDone(func() {
+				releasable.Release()
+			})
+		}
+		// TODO: error handling
+		dc.sendFrame(next)
 	})
 }
 

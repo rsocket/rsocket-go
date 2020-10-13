@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
@@ -140,7 +141,7 @@ func (p *SetupFrame) MaxLifetime() time.Duration {
 
 // Token returns token of setup.
 func (p *SetupFrame) Token() []byte {
-	if !p.Header().Flag().Check(core.FlagResume) {
+	if !p.HasFlag(core.FlagResume) {
 		return nil
 	}
 	raw := p.Body()
@@ -162,7 +163,7 @@ func (p *SetupFrame) MetadataMimeType() string {
 
 // Metadata returns metadata bytes.
 func (p *SetupFrame) Metadata() ([]byte, bool) {
-	if !p.Header().Flag().Check(core.FlagMetadata) {
+	if !p.HasFlag(core.FlagMetadata) {
 		return nil, false
 	}
 	offset := p.seekMIME()
@@ -176,7 +177,7 @@ func (p *SetupFrame) Data() []byte {
 	offset := p.seekMIME()
 	m1, m2 := p.mime()
 	offset += 2 + len(m1) + len(m2)
-	if !p.Header().Flag().Check(core.FlagMetadata) {
+	if !p.HasFlag(core.FlagMetadata) {
 		return p.Body()[offset:]
 	}
 	return p.trySliceData(offset)
@@ -186,14 +187,18 @@ func (p *SetupFrame) Data() []byte {
 func (p *SetupFrame) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := p.Metadata()
 	if ok {
-		metadata = string(raw)
+		metadata = bytesconv.BytesToString(raw)
 	}
 	return
 }
 
 // DataUTF8 returns data as UTF8 string.
-func (p *SetupFrame) DataUTF8() string {
-	return string(p.Data())
+func (p *SetupFrame) DataUTF8() (data string) {
+	b := p.Data()
+	if len(b) > 0 {
+		data = bytesconv.BytesToString(b)
+	}
+	return
 }
 
 func (p *SetupFrame) mime() (metadata []byte, data []byte) {
@@ -210,7 +215,7 @@ func (p *SetupFrame) mime() (metadata []byte, data []byte) {
 }
 
 func (p *SetupFrame) seekMIME() int {
-	if !p.Header().Flag().Check(core.FlagResume) {
+	if !p.HasFlag(core.FlagResume) {
 		return 12
 	}
 	l := binary.BigEndian.Uint16(p.Body()[12:])

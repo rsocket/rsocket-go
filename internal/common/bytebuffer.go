@@ -28,13 +28,13 @@ func CountBorrowed() int64 {
 func BorrowByteBuff() *ByteBuff {
 	_borrowed.Inc()
 	b := _byteBuffPool.Get().(*ByteBuff)
-	b.Reset()
 	return b
 }
 
 // ReturnByteBuff returns a ByteBuff to pool.
 func ReturnByteBuff(b *ByteBuff) {
 	_borrowed.Dec()
+	b.Reset()
 	_byteBuffPool.Put(b)
 }
 

@@ -28,8 +28,6 @@ func init() {
 func main() {
 	//logger.SetLevel(logger.LevelDebug)
 	err := rsocket.Receive().
-		//Fragment(65535).
-		//Resume().
 		OnStart(func() {
 			log.Println("server start success!")
 		}).
