@@ -217,12 +217,12 @@ func (p *server) Serve(ctx context.Context) error {
 }
 
 func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.WriteableErrorFrame) {
-	if frame.Header().Flag().Check(core.FlagLease) && p.leases == nil {
+	if frame.HasFlag(core.FlagLease) && p.leases == nil {
 		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeUnsupportedSetup, bytesconv.StringToBytes(_errUnavailableLease))
 		return
 	}
 
-	isResume := frame.Header().Flag().Check(core.FlagResume)
+	isResume := frame.HasFlag(core.FlagResume)
 
 	// 1. receive a token but server doesn't support resume.
 	if isResume && !p.resumeOpts.enable {

@@ -235,10 +235,11 @@ func (r *Runner) execFireAndForget(_ context.Context, c rsocket.Client, send pay
 }
 
 func (r *Runner) execRequestResponse(ctx context.Context, c rsocket.Client, send payload.Payload) (err error) {
-	res, err := c.RequestResponse(send).Block(ctx)
+	res, release, err := c.RequestResponse(send).BlockUnsafe(ctx)
 	if err != nil {
 		return
 	}
+	defer release()
 	r.showPayload(res)
 	return
 }

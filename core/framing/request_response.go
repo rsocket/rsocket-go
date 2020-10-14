@@ -2,6 +2,7 @@ package framing
 
 import (
 	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
@@ -46,7 +47,7 @@ func NewRequestResponseFrame(id uint32, data, metadata []byte, fg core.FrameFlag
 
 // Validate returns error if frame is invalid.
 func (r *RequestResponseFrame) Validate() (err error) {
-	if r.Header().Flag().Check(core.FlagMetadata) && r.bodyLen() < 3 {
+	if r.HasFlag(core.FlagMetadata) && r.bodyLen() < 3 {
 		err = errIncompleteFrame
 	}
 	return
@@ -66,12 +67,16 @@ func (r *RequestResponseFrame) Data() []byte {
 func (r *RequestResponseFrame) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := r.Metadata()
 	if ok {
-		metadata = string(raw)
+		metadata = bytesconv.BytesToString(raw)
 	}
 	return
 }
 
 // DataUTF8 returns data as UTF8 string.
-func (r *RequestResponseFrame) DataUTF8() string {
-	return string(r.Data())
+func (r *RequestResponseFrame) DataUTF8() (data string) {
+	b := r.Data()
+	if len(b) > 0 {
+		data = bytesconv.BytesToString(b)
+	}
+	return
 }

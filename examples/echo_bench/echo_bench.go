@@ -14,6 +14,7 @@ import (
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/mono"
@@ -84,6 +85,9 @@ func main() {
 func createClient(mtu int) (rsocket.Client, error) {
 	return rsocket.Connect().
 		Fragment(mtu).
+		OnClose(func(err error) {
+			log.Println("*** disconnected ***", common.CountBorrowed())
+		}).
 		SetupPayload(payload.NewString("你好", "世界")).
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
 			return rsocket.NewAbstractSocket(

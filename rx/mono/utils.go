@@ -6,7 +6,6 @@ import (
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/mono"
 	"github.com/pkg/errors"
-	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 )
 
@@ -116,12 +115,6 @@ func CreateFromChannel(payloads <-chan payload.Payload, err <-chan error) Mono {
 	})
 }
 
-func deepClone(any reactor.Any) (reactor.Any, error) {
-	src := any.(payload.Payload)
-	m, _ := src.Metadata()
-	return payload.New(common.CloneBytes(src.Data()), common.CloneBytes(m)), nil
-}
-
 func subscribeWithChan(ctx context.Context, publisher mono.Mono, valueChan chan<- payload.Payload, errChan chan<- error, autoClose bool) {
 	publisher.
 		DoFinally(func(s reactor.SignalType) {
@@ -158,4 +151,25 @@ func mustProcessor(origin mono.Mono) mono.Processor {
 		panic(errors.Errorf("require processor but %v", origin))
 	}
 	return m
+}
+
+func toBlock(ctx context.Context, m mono.Mono) (payload.Payload, error) {
+	done := make(chan struct{})
+	vchan := make(chan payload.Payload, 1)
+	echan := make(chan error, 1)
+	b := newBlockSubscriber(done, vchan, echan)
+	m.SubscribeWith(ctx, b)
+	<-done
+
+	defer close(vchan)
+	defer close(echan)
+
+	select {
+	case value := <-vchan:
+		return value, nil
+	case err := <-echan:
+		return nil, err
+	default:
+		return nil, nil
+	}
 }

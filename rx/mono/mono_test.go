@@ -57,9 +57,7 @@ func TestJust(t *testing.T) {
 }
 
 func TestMono_Raw(t *testing.T) {
-
 	Just(payload.NewString("hello", "world")).Raw()
-
 }
 
 func TestProxy_SubscribeOn(t *testing.T) {
@@ -86,7 +84,6 @@ func TestProxy_Block(t *testing.T) {
 	assert.Equal(t, "hello", v.DataUTF8())
 	m, _ := v.MetadataUTF8()
 	assert.Equal(t, "world", m)
-
 }
 
 func TestProcessor(t *testing.T) {
@@ -192,4 +189,51 @@ func TestTimeout(t *testing.T) {
 	_, err := Create(gen).Timeout(10 * time.Millisecond).Block(context.Background())
 	assert.Error(t, err, "should return error")
 	assert.True(t, reactor.IsCancelledError(err), "should be cancelled error")
+}
+
+func TestBlockRelease(t *testing.T) {
+	input := (*mockPayload)(atomic.NewInt32(0))
+	_, release, err := Just(input).BlockUnsafe(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, int32(1), input.RefCnt())
+	release()
+	assert.Equal(t, int32(0), input.RefCnt())
+}
+
+func TestBlockClone(t *testing.T) {
+	input := (*mockPayload)(atomic.NewInt32(0))
+	v, err := Just(input).Block(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, int32(0), input.RefCnt())
+	assert.NotEqual(t, input, v)
+}
+
+type mockPayload atomic.Int32
+
+func (m *mockPayload) IncRef() int32 {
+	return (*atomic.Int32)(m).Inc()
+}
+
+func (m *mockPayload) RefCnt() int32 {
+	return (*atomic.Int32)(m).Load()
+}
+
+func (m *mockPayload) Release() {
+	(*atomic.Int32)(m).Dec()
+}
+
+func (m *mockPayload) Metadata() (metadata []byte, ok bool) {
+	return
+}
+
+func (m *mockPayload) MetadataUTF8() (metadata string, ok bool) {
+	return
+}
+
+func (m *mockPayload) Data() []byte {
+	return []byte("foobar")
+}
+
+func (m *mockPayload) DataUTF8() string {
+	return string(m.Data())
 }

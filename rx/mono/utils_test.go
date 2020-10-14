@@ -25,9 +25,7 @@ func TestCreateFromChannel(t *testing.T) {
 	}()
 
 	background := context.Background()
-	last, e :=
-		mono.CreateFromChannel(payloads, err).
-			Block(background)
+	last, e := mono.CreateFromChannel(payloads, err).Block(background)
 	if e != nil {
 		t.Error(e)
 	}

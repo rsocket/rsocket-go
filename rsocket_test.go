@@ -45,7 +45,11 @@ var (
 func TestResume(t *testing.T) {
 	sessionTimeout := 2 * time.Second
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	defer func() {
+		cancel()
+		time.Sleep(1 * time.Second)
+		assert.Zero(t, common.CountBorrowed())
+	}()
 
 	started := make(chan struct{})
 
@@ -94,9 +98,10 @@ func TestResume(t *testing.T) {
 	assert.NoError(t, err, "connect failed")
 	defer cli.Close()
 
-	res, err := cli.RequestResponse(fakeRequest).Block(ctx)
+	res, release, err := cli.RequestResponse(fakeRequest).BlockUnsafe(ctx)
 	assert.NoError(t, err, "request failed")
 	assert.True(t, payload.Equal(res, fakeRequest))
+	release()
 
 	// shutdown the proxy
 	_ = (<-ch).Close()
@@ -106,9 +111,10 @@ func TestResume(t *testing.T) {
 	go startProxy(proxyAddr, ch, upstreamAddr)
 
 	// client should request correctly.
-	res, err = cli.RequestResponse(fakeRequest).Block(ctx)
+	res, release, err = cli.RequestResponse(fakeRequest).BlockUnsafe(ctx)
 	assert.NoError(t, err, "request failed")
 	assert.True(t, payload.Equal(res, fakeRequest))
+	release()
 
 	// shutdown the proxy again and sleep until server session expired
 	_ = (<-ch).Close()
@@ -120,9 +126,8 @@ func TestResume(t *testing.T) {
 	defer (<-ch).Close()
 
 	// client should request failed
-	_, err = cli.RequestResponse(payload.NewString("vvv", "vvv")).Block(ctx)
+	_, _, err = cli.RequestResponse(payload.NewString("vvv", "vvv")).BlockUnsafe(ctx)
 	assert.Error(t, err, "should return error")
-
 }
 
 func TestReceiveWithBadArgs(t *testing.T) {
@@ -185,7 +190,7 @@ func TestConnectBroken(t *testing.T) {
 		cli, err := Connect().Resume().Transport(TCPClient().SetHostAndPort("127.0.0.1", port).Build()).Start(ctx)
 		require.NoError(t, err, "connect failed")
 		defer cli.Close()
-		_, err = cli.RequestResponse(fakeRequest).Block(ctx)
+		_, _, err = cli.RequestResponse(fakeRequest).BlockUnsafe(ctx)
 		assert.Error(t, err, "should connect failed")
 	}()
 
@@ -194,7 +199,7 @@ func TestConnectBroken(t *testing.T) {
 		cli, err := Connect().Lease().Transport(TCPClient().SetHostAndPort("127.0.0.1", port).Build()).Start(ctx)
 		require.NoError(t, err, "connect failed")
 		defer cli.Close()
-		_, err = cli.RequestResponse(fakeRequest).Block(ctx)
+		_, _, err = cli.RequestResponse(fakeRequest).BlockUnsafe(ctx)
 		assert.Error(t, err, "should connect failed")
 	}()
 	wg.Wait()
@@ -404,8 +409,9 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 
 func testRequestResponse(ctx context.Context, cli Client, t *testing.T) {
 	req := payload.NewString("ping", fakeData)
-	elem, err := cli.RequestResponse(req).Block(ctx)
+	elem, release, err := cli.RequestResponse(req).BlockUnsafe(ctx)
 	assert.NoError(t, err, "call RequestResponse failed")
+	defer release()
 	assert.Equal(t, "pong", elem.DataUTF8(), "bad pong")
 	expect, _ := req.MetadataUTF8()
 	actual, _ := elem.MetadataUTF8()
@@ -628,16 +634,17 @@ func TestContextTimeout(t *testing.T) {
 	ctx, cancel2 := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel2()
 
-	_, err = cli.RequestResponse(fakeRequest).Block(ctx)
+	_, _, err = cli.RequestResponse(fakeRequest).BlockUnsafe(ctx)
 	assert.Error(t, err, "should return error")
 	assert.True(t, reactor.IsCancelledError(err), "should be cancelled error")
 
-	_, err = cli.RequestResponse(fakeRequest).Timeout(100 * time.Millisecond).Block(context.Background())
+	_, _, err = cli.RequestResponse(fakeRequest).Timeout(100 * time.Millisecond).BlockUnsafe(context.Background())
 	assert.Error(t, err, "should return error")
 	assert.True(t, reactor.IsCancelledError(err), "should be cancelled error")
 
-	_, err = cli.RequestResponse(fakeRequest).Timeout(400 * time.Millisecond).Block(context.Background())
+	_, release, err := cli.RequestResponse(fakeRequest).Timeout(400 * time.Millisecond).BlockUnsafe(context.Background())
 	assert.NoError(t, err)
+	release()
 }
 
 func TestEchoParallel(t *testing.T) {

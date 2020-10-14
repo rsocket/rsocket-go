@@ -77,7 +77,7 @@ func (l *LeaseFrame) NumberOfRequests() uint32 {
 
 // Metadata returns metadata bytes.
 func (l *LeaseFrame) Metadata() []byte {
-	if !l.Header().Flag().Check(core.FlagMetadata) {
+	if !l.HasFlag(core.FlagMetadata) {
 		return nil
 	}
 	return l.Body()[8:]

@@ -133,4 +133,6 @@ type BufferedFrame interface {
 	common.Releasable
 	// Validate returns error if frame is invalid.
 	Validate() error
+	// HasFlag returns true if target frame flag is enabled.
+	HasFlag(FrameFlag) bool
 }

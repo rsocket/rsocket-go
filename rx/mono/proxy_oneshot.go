@@ -8,6 +8,7 @@ import (
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/mono"
 	"github.com/jjeffcaii/reactor-go/scheduler"
+	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -117,15 +118,28 @@ func (o *oneshotProxy) SubscribeWithChan(ctx context.Context, valueChan chan<- p
 	subscribeWithChan(ctx, returnOneshotProxy(o), valueChan, errChan, false)
 }
 
-func (o *oneshotProxy) Block(ctx context.Context) (result payload.Payload, err error) {
-	v, err := returnOneshotProxy(o).Map(deepClone).Block(ctx)
+func (o *oneshotProxy) BlockUnsafe(ctx context.Context) (payload.Payload, ReleaseFunc, error) {
+	v, err := toBlock(ctx, returnOneshotProxy(o))
 	if err != nil {
-		return
+		return nil, nil, err
 	}
-	if v != nil {
-		result = v.(payload.Payload)
+	r, ok := v.(common.Releasable)
+	if !ok {
+		return v, noopRelease, nil
 	}
-	return
+	return v, r.Release, nil
+}
+
+func (o *oneshotProxy) Block(ctx context.Context) (payload.Payload, error) {
+	v, r, err := o.BlockUnsafe(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer r()
+	if v == nil {
+		return nil, nil
+	}
+	return payload.Clone(v), nil
 }
 
 func (o *oneshotProxy) SwitchIfEmpty(alternative Mono) Mono {
@@ -143,10 +157,5 @@ func (o *oneshotProxy) ToChan(ctx context.Context) (c <-chan payload.Payload, e 
 
 func (o *oneshotProxy) Timeout(timeout time.Duration) Mono {
 	o.Mono = o.Mono.Timeout(timeout)
-	return o
-}
-
-func (o *oneshotProxy) DeepClone() Mono {
-	o.Mono = o.Mono.Map(deepClone)
 	return o
 }

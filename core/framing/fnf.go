@@ -2,6 +2,7 @@ package framing
 
 import (
 	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
@@ -45,7 +46,7 @@ func NewFireAndForgetFrame(sid uint32, data, metadata []byte, flag core.FrameFla
 
 // Validate returns error if frame is invalid.
 func (f *FireAndForgetFrame) Validate() (err error) {
-	if f.Header().Flag().Check(core.FlagMetadata) && f.bodyLen() < 3 {
+	if f.HasFlag(core.FlagMetadata) && f.bodyLen() < 3 {
 		err = errIncompleteFrame
 	}
 	return
@@ -65,12 +66,16 @@ func (f *FireAndForgetFrame) Data() []byte {
 func (f *FireAndForgetFrame) MetadataUTF8() (metadata string, ok bool) {
 	raw, ok := f.Metadata()
 	if ok {
-		metadata = string(raw)
+		metadata = bytesconv.BytesToString(raw)
 	}
 	return
 }
 
 // DataUTF8 returns data as UTF8 string.
-func (f *FireAndForgetFrame) DataUTF8() string {
-	return string(f.Data())
+func (f *FireAndForgetFrame) DataUTF8() (data string) {
+	b := f.Data()
+	if len(b) > 0 {
+		data = bytesconv.BytesToString(b)
+	}
+	return
 }
