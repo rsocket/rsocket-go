@@ -1,12 +1,11 @@
 # rsocket-go
 ![logo](./logo.jpg)
 
-[![Build Status](https://travis-ci.com/rsocket/rsocket-go.svg?branch=master)](https://travis-ci.com/rsocket/rsocket-go)
+![GitHub Workflow Status](https://github.com/rsocket/rsocket-go/workflows/Go/badge.svg)
 [![codecov](https://codecov.io/gh/rsocket/rsocket-go/branch/master/graph/badge.svg)](https://codecov.io/gh/rsocket/rsocket-go)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rsocket/rsocket-go)](https://goreportcard.com/report/github.com/rsocket/rsocket-go)
-[![Slack](https://img.shields.io/badge/slack-rsocket--go-blue.svg?logo=slack)](https://rsocket.slack.com/messages/C9VGZ5MV3)
 [![GoDoc](https://godoc.org/github.com/rsocket/rsocket-go?status.svg)](https://godoc.org/github.com/rsocket/rsocket-go)
-[![License](https://img.shields.io/github/license/rsocket/rsocket-go.svg)](https://github.com/rsocket/rsocket-go/blob/master/LICENSE)
+![License](https://img.shields.io/github/license/rsocket/rsocket-go.svg)
 [![GitHub Release](https://img.shields.io/github/release-pre/rsocket/rsocket-go.svg)](https://github.com/rsocket/rsocket-go/releases)
 
 > rsocket-go is an implementation of the [RSocket](http://rsocket.io/) protocol in Go.
@@ -85,11 +84,10 @@ func main() {
 	}
 	defer cli.Close()
 	// Send request
-	result, release, err := cli.RequestResponse(payload.NewString("你好", "世界")).Block(context.Background())
+	result, err := cli.RequestResponse(payload.NewString("你好", "世界")).Block(context.Background())
 	if err != nil {
 		panic(err)
 	}
-	defer release()
 	log.Println("response:", result)
 }
 ```
