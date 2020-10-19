@@ -26,12 +26,12 @@ func (s requestStreamCallback) stopWithError(err error) {
 }
 
 type requestResponseCallback struct {
-	pc    mono.Processor
+	sink  mono.Sink
 	cache interface{}
 }
 
 func (s requestResponseCallback) stopWithError(err error) {
-	s.pc.Error(err)
+	s.sink.Error(err)
 	common.TryRelease(s.cache)
 }
 

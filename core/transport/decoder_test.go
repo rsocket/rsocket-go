@@ -9,14 +9,14 @@ import (
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/core/transport"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/u24"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestLengthBasedFrameDecoder_ReadBroken(t *testing.T) {
 	b := &bytes.Buffer{}
 
-	_, _ = common.MustNewUint24(5).WriteTo(b)
+	_, _ = u24.MustNewUint24(5).WriteTo(b)
 	_, _ = b.Write([]byte{'_', 'f', 'a', 'k', 'e'})
 	decoder := transport.NewLengthBasedFrameDecoder(b)
 	_, err := decoder.Read()
@@ -35,7 +35,7 @@ func TestLengthBasedFrameDecoder_ReadBroken(t *testing.T) {
 	assert.Equal(t, io.EOF, err, "should read nothing")
 
 	b.Reset()
-	_, _ = common.MustNewUint24(10).WriteTo(b)
+	_, _ = u24.MustNewUint24(10).WriteTo(b)
 	var notEnough [7]byte
 	_, _ = b.Write(notEnough[:])
 	decoder = transport.NewLengthBasedFrameDecoder(b)
@@ -62,7 +62,7 @@ func TestLengthBasedFrameDecoder_Read(t *testing.T) {
 	}
 
 	for _, it := range frames {
-		n, err := common.NewUint24(it.Len())
+		n, err := u24.NewUint24(it.Len())
 		assert.NoError(t, err, "convert to uint24 failed")
 		_, err = n.WriteTo(b)
 		assert.NoError(t, err, "write length failed")

@@ -674,13 +674,14 @@ func TestEchoParallel(t *testing.T) {
 	assert.NoError(t, err)
 	defer cli.Close()
 
-	const total = 10000
+	const total = 1
 
 	wg := new(sync.WaitGroup)
 	wg.Add(total)
 
+	req := payload.NewString(common.RandAlphanumeric(30), common.RandAlphanumeric(30))
+
 	for i := 0; i < total; i++ {
-		req := payload.NewString(common.RandAlphanumeric(30), common.RandAlphanumeric(30))
 		cli.RequestResponse(req).
 			DoFinally(func(s rx.SignalType) {
 				wg.Done()

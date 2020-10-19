@@ -23,10 +23,7 @@ import (
 	"go.uber.org/atomic"
 )
 
-const (
-	_outChanSize   = 64
-	_schedulerSize = 64
-)
+const _outChanSize = 64
 
 var errSocketClosed = errors.New("rsocket: socket closed already")
 var errRequestFailed = errors.New("rsocket: send request failed")
@@ -40,24 +37,23 @@ var (
 
 // DuplexConnection represents a socket of RSocket which can be a requester or a responder.
 type DuplexConnection struct {
-	locker       sync.RWMutex
-	counter      *core.TrafficCounter
-	tp           *transport.Transport
-	outs         chan core.WriteableFrame
-	outsPriority []core.WriteableFrame
-	responder    Responder
-	messages     *map32 // key=streamID, value=callback
-	sids         StreamID
-	mtu          int
-	fragments    *map32 // key=streamID, value=Joiner
-	writeDone    chan struct{}
-	keepaliver   *Keepaliver
-	cond         sync.Cond
-	sc           scheduler.Scheduler
-	e            error
-	leases       lease.Factory
-	closed       *atomic.Bool
-	ready        *atomic.Bool
+	locker     sync.RWMutex
+	counter    *core.TrafficCounter
+	tp         *transport.Transport
+	sndQueue   chan core.WriteableFrame
+	sndBacklog []core.WriteableFrame
+	responder  Responder
+	messages   *map32 // key=streamID, value=callback
+	sids       StreamID
+	mtu        int
+	fragments  *map32 // key=streamID, value=Joiner
+	writeDone  chan struct{}
+	keepaliver *Keepaliver
+	cond       sync.Cond
+	e          error
+	leases     lease.Factory
+	closed     *atomic.Bool
+	ready      *atomic.Bool
 }
 
 // SetError sets error for current socket.
@@ -96,28 +92,37 @@ func (dc *DuplexConnection) Close() error {
 		return nil
 	}
 
-	defer func() {
-		dc.messages.Destroy()
-		dc.fragments.Range(func(u uint32, i interface{}) bool {
-			common.TryRelease(i)
-			return true
-		})
-		dc.fragments.Destroy()
-	}()
-
 	if dc.keepaliver != nil {
 		dc.keepaliver.Stop()
 	}
-	_ = dc.sc.Close()
-	close(dc.outs)
+	close(dc.sndQueue)
 
 	dc.cond.L.Lock()
 	dc.cond.Broadcast()
 	dc.cond.L.Unlock()
 
+	// wait for write loop end
 	<-dc.writeDone
 
+	dc.destroyTransport()
+
+	err := dc.GetError()
+	if err == nil {
+		dc.destroyHandler(errSocketClosed)
+	} else {
+		dc.destroyHandler(err)
+	}
+
+	dc.destroySndQueue()
+	dc.destroySndBacklog()
+	dc.destroyFragment()
+
+	return err
+}
+
+func (dc *DuplexConnection) destroyTransport() {
 	dc.locker.Lock()
+	defer dc.locker.Unlock()
 	if tp := dc.tp; tp != nil {
 		if dc.e == nil {
 			dc.e = tp.Close()
@@ -125,38 +130,42 @@ func (dc *DuplexConnection) Close() error {
 			_ = tp.Close()
 		}
 	}
-	dc.locker.Unlock()
+}
 
-	var e error
-
-	dc.locker.RLock()
-	if dc.e != nil {
-		e = dc.e
-	}
-	dc.locker.RUnlock()
-
-	stopErr := errSocketClosed
-	if e != nil {
-		stopErr = e
-	}
-
-	toBeStopped := make(chan callback)
-	defer close(toBeStopped)
-
-	go func(toBeStopped <-chan callback) {
-		for cb := range toBeStopped {
-			cb.stopWithError(stopErr)
-		}
-	}(toBeStopped)
-
+func (dc *DuplexConnection) destroyHandler(err error) {
+	defer dc.messages.Destroy()
+	// TODO: optimize callback map
+	var callbacks []callback
 	dc.messages.Range(func(sid uint32, v interface{}) bool {
-		if cb, ok := v.(callback); ok {
-			toBeStopped <- cb
-		}
+		callbacks = append(callbacks, v.(callback))
 		return true
 	})
+	for _, next := range callbacks {
+		next.stopWithError(err)
+	}
+}
 
-	return e
+func (dc *DuplexConnection) destroyFragment() {
+	dc.fragments.Range(func(u uint32, i interface{}) bool {
+		common.TryRelease(i)
+		return true
+	})
+	dc.fragments.Destroy()
+}
+
+func (dc *DuplexConnection) destroySndQueue() {
+	for next := range dc.sndQueue {
+		next.Done()
+	}
+}
+
+func (dc *DuplexConnection) destroySndBacklog() {
+	n := len(dc.sndBacklog)
+	for i := 0; i < n; i++ {
+		dc.sndBacklog[i].Done()
+		dc.sndBacklog[i] = nil
+	}
+	dc.sndBacklog = nil
 }
 
 // FireAndForget start a request of FireAndForget.
@@ -200,24 +209,24 @@ func (dc *DuplexConnection) RequestResponse(req payload.Payload) (res mono.Mono)
 	}
 
 	sid := dc.nextStreamID()
-	processor := mono.CreateProcessor()
+
+	m, s := mono.CreateProcessorOneshot()
 
 	handler := &requestResponseCallback{
-		pc: processor,
+		sink: s,
 	}
 
 	dc.register(sid, handler)
 
-	res = processor.
-		DoFinally(func(s rx.SignalType) {
-			if handler.cache != nil {
-				common.TryRelease(handler.cache)
-			}
-			if s == rx.SignalCancel {
-				dc.sendFrame(framing.NewWriteableCancelFrame(sid))
-			}
-			dc.unregister(sid)
-		})
+	res = m.DoFinally(func(s rx.SignalType) {
+		if handler.cache != nil {
+			common.TryRelease(handler.cache)
+		}
+		if s == rx.SignalCancel {
+			dc.sendFrame(framing.NewWriteableCancelFrame(sid))
+		}
+		dc.unregister(sid)
+	})
 
 	data := req.Data()
 	metadata, _ := req.Metadata()
@@ -324,25 +333,47 @@ func (dc *DuplexConnection) RequestStream(sending payload.Payload) (ret flux.Flu
 				return
 			}
 
+			releasable, isReleasable := sending.(common.Releasable)
+
+			if isReleasable {
+				releasable.IncRef()
+			}
+
 			data := sending.Data()
 			metadata, _ := sending.Metadata()
 
 			size := framing.CalcPayloadFrameSize(data, metadata) + 4
 			if !dc.shouldSplit(size) {
-				if ok := dc.sendFrame(framing.NewWriteableRequestStreamFrame(sid, n32, data, metadata, 0)); !ok {
+				toBeSent := framing.NewWriteableRequestStreamFrame(sid, n32, data, metadata, 0)
+
+				if isReleasable {
+					toBeSent.HandleDone(func() {
+						releasable.Release()
+					})
+				}
+
+				if ok := dc.sendFrame(toBeSent); !ok {
 					dc.killCallback(sid)
 				}
 				return
 			}
 
 			dc.doSplitSkip(4, data, metadata, func(index int, result fragmentation.SplitResult) {
-				var f core.WriteableFrame
+				var toBeSent core.WriteableFrame
 				if index == 0 {
-					f = framing.NewWriteableRequestStreamFrame(sid, n32, result.Data, result.Metadata, result.Flag)
+					toBeSent = framing.NewWriteableRequestStreamFrame(sid, n32, result.Data, result.Metadata, result.Flag)
 				} else {
-					f = framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
+					toBeSent = framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
 				}
-				if ok := dc.sendFrame(f); !ok {
+
+				// Add release hook at last frame.
+				if !result.Flag.Check(core.FlagFollow) && isReleasable {
+					toBeSent.HandleDone(func() {
+						releasable.Release()
+					})
+				}
+
+				if ok := dc.sendFrame(toBeSent); !ok {
 					dc.killCallback(sid)
 				}
 			})
@@ -477,12 +508,13 @@ func (dc *DuplexConnection) respondRequestResponse(receiving fragmentation.Heade
 	sub := borrowRequestResponseSubscriber(dc, sid, receiving)
 	if mono.IsSubscribeAsync(sending) {
 		sending.SubscribeWith(context.Background(), sub)
-	} else {
-		go func() {
-			sending.SubscribeWith(context.Background(), sub)
-		}()
+		return nil
 	}
-
+	if err := scheduler.Elastic().Worker().Do(func() {
+		sending.SubscribeWith(context.Background(), sub)
+	}); err != nil {
+		go sending.SubscribeWith(context.Background(), sub)
+	}
 	return nil
 }
 
@@ -568,18 +600,21 @@ func (dc *DuplexConnection) respondRequestChannel(req fragmentation.HeaderAndPay
 	// Ensure registering message success before func end.
 	subscribed := make(chan struct{})
 
-	go func() {
-		// Create subscriber
-		sub := respondChannelSubscriber{
-			sid:        sid,
-			n:          initRequestN,
-			dc:         dc,
-			rcv:        receivingProcessor,
-			subscribed: subscribed,
-			calls:      finallyRequests,
-		}
+	// Create subscriber
+	sub := respondChannelSubscriber{
+		sid:        sid,
+		n:          initRequestN,
+		dc:         dc,
+		rcv:        receivingProcessor,
+		subscribed: subscribed,
+		calls:      finallyRequests,
+	}
+
+	if err := scheduler.Elastic().Worker().Do(func() {
 		sending.SubscribeWith(context.Background(), sub)
-	}()
+	}); err != nil {
+		go sending.SubscribeWith(context.Background(), sub)
+	}
 
 	<-subscribed
 
@@ -587,12 +622,14 @@ func (dc *DuplexConnection) respondRequestChannel(req fragmentation.HeaderAndPay
 }
 
 func (dc *DuplexConnection) respondMetadataPush(input core.BufferedFrame) (err error) {
+	p := input.(*framing.MetadataPushFrame)
 	defer func() {
+		p.Release()
 		if e := recover(); e != nil {
 			logger.Errorf("respond METADATA_PUSH failed: %s\n", e)
 		}
 	}()
-	dc.responder.MetadataPush(input.(*framing.MetadataPushFrame))
+	dc.responder.MetadataPush(p)
 	return
 }
 
@@ -608,7 +645,7 @@ func (dc *DuplexConnection) respondFNF(receiving fragmentation.HeaderAndPayload)
 	defer func() {
 		common.TryRelease(receiving)
 		if e := recover(); e != nil {
-			logger.Errorf("rsocket: respond FIRE_AND_FORGET failed: %s\n", e)
+			logger.Errorf("respond FIRE_AND_FORGET failed: %s\n", e)
 		}
 	}()
 	dc.responder.FireAndForget(receiving)
@@ -653,7 +690,6 @@ func (dc *DuplexConnection) respondRequestStream(receiving fragmentation.HeaderA
 	// async subscribe publisher
 	sub := borrowRequestStreamSubscriber(receiving, dc, sid, n)
 	sending.SubscribeOn(scheduler.Parallel()).SubscribeWith(context.Background(), sub)
-
 	return nil
 }
 
@@ -746,7 +782,7 @@ func (dc *DuplexConnection) onFrameError(input core.BufferedFrame) error {
 
 	switch vv := v.(type) {
 	case *requestResponseCallback:
-		vv.pc.Error(err)
+		vv.sink.Error(err)
 	case requestStreamCallback:
 		vv.pc.Error(err)
 	case requestChannelCallback:
@@ -830,7 +866,7 @@ func (dc *DuplexConnection) onFramePayload(frame core.BufferedFrame) error {
 	switch handler := v.(type) {
 	case *requestResponseCallback:
 		handler.cache = next
-		handler.pc.Success(next)
+		handler.sink.Success(next)
 	case requestStreamCallback:
 		fg := h.Flag()
 		isNext := fg.Check(core.FlagNext)
@@ -914,13 +950,18 @@ func (dc *DuplexConnection) SetTransport(tp *transport.Transport) (ok bool) {
 }
 
 func (dc *DuplexConnection) sendFrame(f core.WriteableFrame) (ok bool) {
+	if dc.closed.Load() {
+		f.Done()
+		return
+	}
 	defer func() {
-		ok = recover() == nil
-		if !ok {
+		if e := recover(); e == nil {
+			ok = true
+		} else {
 			f.Done()
 		}
 	}()
-	dc.outs <- f
+	dc.sndQueue <- f
 	return
 }
 
@@ -929,6 +970,7 @@ func (dc *DuplexConnection) sendPayload(
 	sending payload.Payload,
 	frameFlag core.FrameFlag,
 ) {
+
 	d := sending.Data()
 	m, _ := sending.Metadata()
 	size := framing.CalcPayloadFrameSize(d, m)
@@ -964,13 +1006,12 @@ func (dc *DuplexConnection) sendPayload(
 				releasable.Release()
 			})
 		}
-		// TODO: error handling
 		dc.sendFrame(next)
 	})
 }
 
 func (dc *DuplexConnection) drainWithKeepaliveAndLease(leaseChan <-chan lease.Lease) (ok bool) {
-	if len(dc.outs) > 0 {
+	if len(dc.sndQueue) > 0 {
 		dc.drain(nil)
 	}
 	var out core.WriteableFrame
@@ -991,27 +1032,27 @@ func (dc *DuplexConnection) drainWithKeepaliveAndLease(leaseChan <-chan lease.Le
 		}
 		out = framing.NewWriteableLeaseFrame(ls.TimeToLive, ls.NumberOfRequests, ls.Metadata)
 		if tp := dc.currentTransport(); tp == nil {
-			dc.outsPriority = append(dc.outsPriority, out)
+			dc.sndBacklog = append(dc.sndBacklog, out)
 		} else if err := tp.Send(out, true); err != nil {
 			logger.Errorf("send frame failed: %s\n", err.Error())
-			dc.outsPriority = append(dc.outsPriority, out)
+			dc.sndBacklog = append(dc.sndBacklog, out)
 		}
-	case out, ok = <-dc.outs:
+	case out, ok = <-dc.sndQueue:
 		if !ok {
 			return
 		}
 		if tp := dc.currentTransport(); tp == nil {
-			dc.outsPriority = append(dc.outsPriority, out)
+			dc.sndBacklog = append(dc.sndBacklog, out)
 		} else if err := tp.Send(out, true); err != nil {
 			logger.Errorf("send frame failed: %s\n", err.Error())
-			dc.outsPriority = append(dc.outsPriority, out)
+			dc.sndBacklog = append(dc.sndBacklog, out)
 		}
 	}
 	return
 }
 
 func (dc *DuplexConnection) drainWithKeepalive() (ok bool) {
-	if len(dc.outs) > 0 {
+	if len(dc.sndQueue) > 0 {
 		dc.drain(nil)
 	}
 	var out core.WriteableFrame
@@ -1028,16 +1069,16 @@ func (dc *DuplexConnection) drainWithKeepalive() (ok bool) {
 		if err != nil {
 			logger.Errorf("send keepalive frame failed: %s\n", err.Error())
 		}
-	case out, ok = <-dc.outs:
+	case out, ok = <-dc.sndQueue:
 		if !ok {
 			return
 		}
 
 		if tp := dc.currentTransport(); tp == nil {
-			dc.outsPriority = append(dc.outsPriority, out)
+			dc.sndBacklog = append(dc.sndBacklog, out)
 		} else if err := tp.Send(out, true); err != nil {
 			logger.Errorf("send frame failed: %s\n", err.Error())
-			dc.outsPriority = append(dc.outsPriority, out)
+			dc.sndBacklog = append(dc.sndBacklog, out)
 		}
 	}
 	return
@@ -1045,7 +1086,7 @@ func (dc *DuplexConnection) drainWithKeepalive() (ok bool) {
 
 func (dc *DuplexConnection) drain(leaseChan <-chan lease.Lease) bool {
 	var flush bool
-	cycle := len(dc.outs)
+	cycle := len(dc.sndQueue)
 	if cycle < 1 {
 		cycle = 1
 	}
@@ -1058,7 +1099,7 @@ func (dc *DuplexConnection) drain(leaseChan <-chan lease.Lease) bool {
 			if dc.drainOne(framing.NewWriteableLeaseFrame(next.TimeToLive, next.NumberOfRequests, next.Metadata)) {
 				flush = true
 			}
-		case out, ok := <-dc.outs:
+		case out, ok := <-dc.sndQueue:
 			if !ok {
 				return false
 			}
@@ -1078,12 +1119,12 @@ func (dc *DuplexConnection) drain(leaseChan <-chan lease.Lease) bool {
 func (dc *DuplexConnection) drainOne(out core.WriteableFrame) (ok bool) {
 	tp := dc.currentTransport()
 	if tp == nil {
-		dc.outsPriority = append(dc.outsPriority, out)
+		dc.sndBacklog = append(dc.sndBacklog, out)
 		return
 	}
 	err := tp.Send(out, false)
 	if err != nil {
-		dc.outsPriority = append(dc.outsPriority, out)
+		dc.sndBacklog = append(dc.sndBacklog, out)
 		logger.Errorf("send frame failed: %s\n", err.Error())
 		return
 	}
@@ -1091,12 +1132,12 @@ func (dc *DuplexConnection) drainOne(out core.WriteableFrame) (ok bool) {
 	return
 }
 
-func (dc *DuplexConnection) drainOutBack() {
-	if len(dc.outsPriority) < 1 {
+func (dc *DuplexConnection) drainBacklog() {
+	if len(dc.sndBacklog) < 1 {
 		return
 	}
 	defer func() {
-		dc.outsPriority = dc.outsPriority[:0]
+		dc.sndBacklog = dc.sndBacklog[:0]
 	}()
 
 	dc.locker.RLock()
@@ -1106,8 +1147,8 @@ func (dc *DuplexConnection) drainOutBack() {
 		return
 	}
 	var out core.WriteableFrame
-	for i := range dc.outsPriority {
-		out = dc.outsPriority[i]
+	for i := range dc.sndBacklog {
+		out = dc.sndBacklog[i]
 		if err := tp.Send(out, false); err != nil {
 			out.Done()
 			logger.Errorf("send frame failed: %v\n", err)
@@ -1130,7 +1171,6 @@ func (dc *DuplexConnection) loopWriteWithKeepaliver(ctx context.Context, leaseCh
 		}
 		select {
 		case <-ctx.Done():
-			dc.cleanOuts()
 			return ctx.Err()
 		default:
 			// ignore
@@ -1148,7 +1188,7 @@ func (dc *DuplexConnection) loopWriteWithKeepaliver(ctx context.Context, leaseCh
 		default:
 		}
 
-		dc.drainOutBack()
+		dc.drainBacklog()
 		if leaseChan == nil && !dc.drainWithKeepalive() {
 			break
 		}
@@ -1160,7 +1200,7 @@ func (dc *DuplexConnection) loopWriteWithKeepaliver(ctx context.Context, leaseCh
 }
 
 func (dc *DuplexConnection) cleanOuts() {
-	dc.outsPriority = nil
+	dc.sndBacklog = nil
 }
 
 // LoopWrite start write loop
@@ -1170,9 +1210,7 @@ func (dc *DuplexConnection) LoopWrite(ctx context.Context) error {
 	var leaseChan chan lease.Lease
 	if dc.leases != nil {
 		leaseCtx, cancel := context.WithCancel(ctx)
-		defer func() {
-			cancel()
-		}()
+		defer cancel()
 		if c, ok := dc.leases.Next(leaseCtx); ok {
 			leaseChan = c
 		}
@@ -1193,12 +1231,11 @@ func (dc *DuplexConnection) LoopWrite(ctx context.Context) error {
 		}
 		select {
 		case <-ctx.Done():
-			dc.cleanOuts()
 			return ctx.Err()
 		default:
 		}
 
-		dc.drainOutBack()
+		dc.drainBacklog()
 		if !dc.drain(leaseChan) {
 			break
 		}
@@ -1245,7 +1282,7 @@ func NewClientDuplexConnection(mtu int, keepaliveInterval time.Duration) *Duplex
 func newDuplexConnection(mtu int, ka *Keepaliver, sids StreamID, leases lease.Factory) *DuplexConnection {
 	c := &DuplexConnection{
 		leases:     leases,
-		outs:       make(chan core.WriteableFrame, _outChanSize),
+		sndQueue:   make(chan core.WriteableFrame, _outChanSize),
 		mtu:        mtu,
 		messages:   newMap32(),
 		sids:       sids,
@@ -1253,7 +1290,6 @@ func newDuplexConnection(mtu int, ka *Keepaliver, sids StreamID, leases lease.Fa
 		writeDone:  make(chan struct{}),
 		counter:    core.NewTrafficCounter(),
 		keepaliver: ka,
-		sc:         scheduler.NewSingle(_schedulerSize),
 		closed:     atomic.NewBool(false),
 		ready:      atomic.NewBool(false),
 	}

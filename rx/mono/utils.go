@@ -71,6 +71,11 @@ func CreateProcessor() Processor {
 	return newProxy(mono.CreateProcessor())
 }
 
+func CreateProcessorOneshot() (Mono, Sink) {
+	m, s := mono.CreateProcessorOneshot()
+	return borrowOneshotProxy(m), sinkProxy{native: s}
+}
+
 type sinkProxy struct {
 	native mono.Sink
 }

@@ -2,9 +2,16 @@ package framing
 
 import (
 	"io"
+	"sync"
 
 	"github.com/rsocket/rsocket-go/core"
 )
+
+var _writeablePayloadFramePool = sync.Pool{
+	New: func() interface{} {
+		return new(WriteablePayloadFrame)
+	},
+}
 
 // WriteablePayloadFrame is writeable Payload frame.
 type WriteablePayloadFrame struct {
@@ -18,13 +25,12 @@ func NewWriteablePayloadFrame(id uint32, data, metadata []byte, flag core.FrameF
 	if len(metadata) > 0 {
 		flag |= core.FlagMetadata
 	}
-	h := core.NewFrameHeader(id, core.FrameTypePayload, flag)
-	t := newWriteableFrame(h)
-	return &WriteablePayloadFrame{
-		writeableFrame: t,
-		metadata:       metadata,
-		data:           data,
-	}
+	result := _writeablePayloadFramePool.Get().(*WriteablePayloadFrame)
+	core.ResetFrameHeader(result.header[:], id, core.FrameTypePayload, flag)
+	result.data = data
+	result.metadata = metadata
+	result.doneHandler = nil
+	return result
 }
 
 // Data returns data bytes.
@@ -76,4 +82,11 @@ func (p WriteablePayloadFrame) WriteTo(w io.Writer) (n int64, err error) {
 // Len returns length of frame.
 func (p WriteablePayloadFrame) Len() int {
 	return CalcPayloadFrameSize(p.data, p.metadata)
+}
+
+func (p *WriteablePayloadFrame) Done() {
+	p.writeableFrame.Done()
+	p.data = nil
+	p.metadata = nil
+	_writeablePayloadFramePool.Put(p)
 }

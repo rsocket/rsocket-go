@@ -6,6 +6,7 @@ import (
 
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/u24"
 	"github.com/rsocket/rsocket-go/payload"
 )
 
@@ -13,7 +14,7 @@ const (
 	// MinFragment is minimum fragment size in bytes.
 	MinFragment = core.FrameHeaderLen + 4
 	// MaxFragment is minimum fragment size in bytes.
-	MaxFragment = common.MaxUint24 - 3
+	MaxFragment = u24.MaxUint24 - 3
 )
 
 var errInvalidFragmentLen = fmt.Errorf("invalid fragment: [%d,%d]", MinFragment, MaxFragment)

@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/rsocket/rsocket-go/core"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/u24"
 )
 
 const (
@@ -45,7 +45,7 @@ func doSplit(data []byte, eof bool) (advance int, token []byte, err error) {
 	if len(data) < lengthFieldSize {
 		return
 	}
-	frameLength := common.NewUint24Bytes(data).AsInt()
+	frameLength := u24.NewUint24Bytes(data).AsInt()
 	if frameLength < 1 {
 		err = core.ErrInvalidFrameLength
 		return

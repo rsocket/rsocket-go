@@ -30,7 +30,7 @@ func (b blockSubscriber) OnComplete() {
 	select {
 	case <-b.done:
 	default:
-		close(b.done)
+		_ = common.SafeCloseDoneChan(b.done)
 	}
 }
 
@@ -38,8 +38,9 @@ func (b blockSubscriber) OnError(err error) {
 	select {
 	case <-b.done:
 	default:
-		close(b.done)
-		b.echan <- err
+		if common.SafeCloseDoneChan(b.done) {
+			b.echan <- err
+		}
 	}
 }
 

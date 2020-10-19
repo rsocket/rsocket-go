@@ -6,6 +6,7 @@ import (
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/u24"
 )
 
 const (
@@ -35,7 +36,7 @@ func NewRequestStreamFrame(id uint32, n uint32, data, metadata []byte, flag core
 		panic(err)
 	}
 	if len(metadata) > 0 {
-		if err := bb.WriteUint24(len(metadata)); err != nil {
+		if err := u24.WriteUint24(bb, len(metadata)); err != nil {
 			common.ReturnByteBuff(bb)
 			panic(err)
 		}

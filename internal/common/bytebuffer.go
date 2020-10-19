@@ -59,16 +59,6 @@ func (b *ByteBuff) Write(bs []byte) (int, error) {
 	return b.bb().Write(bs)
 }
 
-// WriteUint24 encode and write Uint24 to current ByteBuff.
-func (b *ByteBuff) WriteUint24(n int) (err error) {
-	if n > MaxUint24 {
-		return errExceedMaxUint24
-	}
-	v := MustNewUint24(n)
-	_, err = b.Write(v[:])
-	return
-}
-
 // WriteByte writes a byte to current ByteBuff.
 func (b *ByteBuff) WriteByte(c byte) error {
 	return b.bb().WriteByte(c)

@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/u24"
 	"github.com/rsocket/rsocket-go/logger"
 )
 
@@ -76,7 +76,7 @@ func (p *TCPConn) Write(frame core.WriteableFrame) (err error) {
 	if p.counter != nil && frame.Header().Resumable() {
 		p.counter.IncWriteBytes(size)
 	}
-	_, err = common.MustNewUint24(size).WriteTo(p.writer)
+	_, err = u24.MustNewUint24(size).WriteTo(p.writer)
 	if err != nil {
 		err = errors.Wrap(err, "write frame failed")
 		return
@@ -105,7 +105,7 @@ func (p *TCPConn) Close() error {
 func NewTCPConn(conn net.Conn) *TCPConn {
 	return &TCPConn{
 		conn:    conn,
-		writer:  bufio.NewWriter(conn),
+		writer:  bufio.NewWriterSize(conn, 8192),
 		decoder: NewLengthBasedFrameDecoder(conn),
 	}
 }

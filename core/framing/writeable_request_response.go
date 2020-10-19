@@ -2,9 +2,16 @@ package framing
 
 import (
 	"io"
+	"sync"
 
 	"github.com/rsocket/rsocket-go/core"
 )
+
+var _writeableRequestResponseFramePool = sync.Pool{
+	New: func() interface{} {
+		return new(WriteableRequestResponseFrame)
+	},
+}
 
 // WriteableRequestResponseFrame is writeable RequestResponse frame.
 type WriteableRequestResponseFrame struct {
@@ -18,11 +25,12 @@ func NewWriteableRequestResponseFrame(id uint32, data, metadata []byte, fg core.
 	if len(metadata) > 0 {
 		fg |= core.FlagMetadata
 	}
-	return &WriteableRequestResponseFrame{
-		writeableFrame: newWriteableFrame(core.NewFrameHeader(id, core.FrameTypeRequestResponse, fg)),
-		metadata:       metadata,
-		data:           data,
-	}
+	result := _writeableRequestResponseFramePool.Get().(*WriteableRequestResponseFrame)
+	core.ResetFrameHeader(result.header[:], id, core.FrameTypeRequestResponse, fg)
+	result.data = data
+	result.metadata = metadata
+	result.doneHandler = nil
+	return result
 }
 
 // WriteTo writes frame to writer.
@@ -43,4 +51,11 @@ func (r WriteableRequestResponseFrame) WriteTo(w io.Writer) (n int64, err error)
 // Len returns length of frame.
 func (r WriteableRequestResponseFrame) Len() int {
 	return CalcPayloadFrameSize(r.data, r.metadata)
+}
+
+func (r *WriteableRequestResponseFrame) Done() {
+	r.writeableFrame.Done()
+	r.data = nil
+	r.metadata = nil
+	_writeableRequestResponseFramePool.Put(r)
 }

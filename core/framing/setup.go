@@ -7,6 +7,7 @@ import (
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/u24"
 )
 
 const (
@@ -93,7 +94,7 @@ func NewSetupFrame(
 		panic(err)
 	}
 	if len(metadata) > 0 {
-		if err := b.WriteUint24(len(metadata)); err != nil {
+		if err := u24.WriteUint24(b, len(metadata)); err != nil {
 			common.ReturnByteBuff(b)
 			panic(err)
 		}
