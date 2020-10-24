@@ -2,7 +2,6 @@ package mono_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	rsMono "github.com/jjeffcaii/reactor-go/mono"
@@ -161,9 +160,12 @@ func TestCreateProcessorOneshot(t *testing.T) {
 		s.Success(_fakePayload)
 	}()
 
-	m.DoOnSuccess(func(input payload.Payload) error {
-		fmt.Println("next:", input.DataUTF8())
-		return nil
-	}).Block(context.Background())
-
+	value, err := m.
+		DoOnSuccess(func(input payload.Payload) error {
+			assert.True(t, payload.Equal(input, _fakePayload))
+			return nil
+		}).
+		Block(context.Background())
+	assert.NoError(t, err)
+	assert.True(t, payload.Equal(value, _fakePayload))
 }

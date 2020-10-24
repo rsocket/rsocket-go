@@ -1199,10 +1199,6 @@ func (dc *DuplexConnection) loopWriteWithKeepaliver(ctx context.Context, leaseCh
 	return nil
 }
 
-func (dc *DuplexConnection) cleanOuts() {
-	dc.sndBacklog = nil
-}
-
 // LoopWrite start write loop
 func (dc *DuplexConnection) LoopWrite(ctx context.Context) error {
 	defer close(dc.writeDone)
