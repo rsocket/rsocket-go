@@ -11,7 +11,7 @@ import (
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/core/transport"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/u24"
 	"github.com/rsocket/rsocket-go/logger"
 	"github.com/stretchr/testify/assert"
 )
@@ -52,7 +52,7 @@ func TestTcpConn_Read(t *testing.T) {
 		if frame.Header().Resumable() {
 			writtenBytes += n
 		}
-		_, _ = common.MustNewUint24(n).WriteTo(bf)
+		_, _ = u24.MustNewUint24(n).WriteTo(bf)
 		_, _ = frame.WriteTo(bf)
 	}
 

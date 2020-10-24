@@ -85,6 +85,12 @@ func WriteFrameHeader(w io.Writer, streamID uint32, frameType FrameType, fg Fram
 	return binary.Write(w, binary.BigEndian, uint16(frameType)<<10|uint16(fg))
 }
 
+// ResetFrameHeader resets the original frame header bytes.
+func ResetFrameHeader(b []byte, streamID uint32, frameType FrameType, fg FrameFlag) {
+	binary.BigEndian.PutUint32(b, streamID)
+	binary.BigEndian.PutUint16(b[4:], uint16(frameType)<<10|uint16(fg))
+}
+
 // ParseFrameHeader parse a header from bytes.
 func ParseFrameHeader(bs []byte) FrameHeader {
 	_ = bs[FrameHeaderLen-1]

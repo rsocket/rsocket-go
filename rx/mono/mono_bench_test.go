@@ -8,7 +8,7 @@ import (
 	"github.com/rsocket/rsocket-go/rx/mono"
 )
 
-var _fakePayload = payload.NewString("", "")
+var _fakePayload = payload.NewString("fakeData", "fakeMetadata")
 
 func BenchmarkDefaultProxy(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {

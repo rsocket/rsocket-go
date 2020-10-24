@@ -9,6 +9,7 @@ import (
 
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/u24"
 )
 
 type frozenError struct {
@@ -138,7 +139,7 @@ func PrintFrame(f core.Frame) string {
 func writePayload(w io.Writer, data []byte, metadata []byte) (n int64, err error) {
 	if l := len(metadata); l > 0 {
 		var wrote int64
-		u := common.MustNewUint24(l)
+		u := u24.MustNewUint24(l)
 		wrote, err = u.WriteTo(w)
 		if err != nil {
 			return

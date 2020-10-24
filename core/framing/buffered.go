@@ -7,6 +7,7 @@ import (
 
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/u24"
 )
 
 // bufferedFrame is basic frame implementation.
@@ -96,7 +97,7 @@ func (f *bufferedFrame) trySeekMetadataLen(offset int) (n int, hasMetadata bool)
 	if len(raw) < 3 {
 		n = -1
 	} else {
-		n = common.NewUint24Bytes(raw).AsInt()
+		n = u24.NewUint24Bytes(raw).AsInt()
 	}
 	return
 }

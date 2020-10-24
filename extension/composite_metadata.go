@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/u24"
 )
 
 // CompositeMetadata provides multi Metadata payloads with different MIME types.
@@ -67,7 +67,7 @@ func (c *CompositeMetadataScanner) decodeCompositeMetadataOnce(raw []byte) (leng
 		size += mimeTypeLen
 		mimeType = string(raw[1 : 1+mimeTypeLen])
 	}
-	metadataLen := common.NewUint24Bytes(raw[size : size+3]).AsInt()
+	metadataLen := u24.NewUint24Bytes(raw[size : size+3]).AsInt()
 	length = size + 3 + metadataLen
 	metadata = raw[size+3 : length]
 	return
@@ -120,7 +120,7 @@ func (c *CompositeMetadataBuilder) Build() (CompositeMetadata, error) {
 		}
 		metadata := c.v[i]
 		metadataLen := len(metadata)
-		bf.Write(common.MustNewUint24(metadataLen).Bytes())
+		bf.Write(u24.MustNewUint24(metadataLen).Bytes())
 		if metadataLen > 0 {
 			bf.Write(metadata)
 		}

@@ -1,4 +1,4 @@
-package common
+package u24
 
 import (
 	"errors"
@@ -71,4 +71,14 @@ func NewUint24(v int) (n Uint24, err error) {
 func NewUint24Bytes(bs []byte) Uint24 {
 	_ = bs[2]
 	return [3]byte{bs[0], bs[1], bs[2]}
+}
+
+// WriteUint24 encode and write Uint24 to an io.Writer.
+func WriteUint24(w io.Writer, n int) error {
+	v, err := NewUint24(n)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(v[:])
+	return err
 }

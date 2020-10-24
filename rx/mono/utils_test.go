@@ -6,7 +6,6 @@ import (
 
 	rsMono "github.com/jjeffcaii/reactor-go/mono"
 	"github.com/jjeffcaii/reactor-go/scheduler"
-
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx/mono"
@@ -153,4 +152,20 @@ func TestSubscribeWithChan(t *testing.T) {
 	case err := <-errChan:
 		assert.NoError(t, err, "should not return error")
 	}
+}
+
+func TestCreateProcessorOneshot(t *testing.T) {
+	m, s := mono.CreateProcessorOneshot()
+	go func() {
+		s.Success(_fakePayload)
+	}()
+
+	value, err := m.
+		DoOnSuccess(func(input payload.Payload) error {
+			assert.True(t, payload.Equal(input, _fakePayload))
+			return nil
+		}).
+		Block(context.Background())
+	assert.NoError(t, err)
+	assert.True(t, payload.Equal(value, _fakePayload))
 }
