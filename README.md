@@ -53,7 +53,7 @@ func main() {
 				}),
 			), nil
 		}).
-		Transport(rsocket.TcpServer().SetAddr(":7878").Build()).
+		Transport(rsocket.TCPServer().SetAddr(":7878").Build()).
 		Serve(context.Background())
 	log.Fatalln(err)
 }
@@ -77,7 +77,7 @@ func main() {
 	// Connect to server
 	cli, err := rsocket.Connect().
 		SetupPayload(payload.NewString("Hello", "World")).
-		Transport(rsocket.TcpClient().SetHostAndPort("127.0.0.1", 7878).Build()).
+		Transport(rsocket.TCPClient().SetHostAndPort("127.0.0.1", 7878).Build()).
 		Start(context.Background())
 	if err != nil {
 		panic(err)
