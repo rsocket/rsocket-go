@@ -62,17 +62,21 @@ func main() {
 		rx.OnNext(func(input payload.Payload) error {
 			//m2, _ := elem.MetadataUTF8()
 			//assert.Equal(t, m1, m2, "metadata doesn't match")
-			wg.Done()
 			return nil
 		}),
 		rx.OnError(func(e error) {
-			wg.Done()
 			errCount.Inc()
+			wg.Done()
+		}),
+		rx.OnComplete(func() {
+			wg.Done()
 		}),
 	)
 	request := payload.New(data, nil)
 	for i := 0; i < n; i++ {
-		client.RequestResponse(request).SubscribeOn(scheduler.Elastic()).SubscribeWith(context.Background(), sub)
+		client.RequestResponse(request).
+			SubscribeOn(scheduler.Elastic()).
+			SubscribeWith(context.Background(), sub)
 	}
 	wg.Wait()
 	cost := time.Since(now)
