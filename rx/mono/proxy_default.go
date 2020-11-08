@@ -123,6 +123,16 @@ func (p proxy) SwitchIfEmpty(alternative Mono) Mono {
 	return newProxy(p.Mono.SwitchIfEmpty(alternative.Raw()))
 }
 
+func (p proxy) SwitchIfError(alternative func(error) Mono) Mono {
+	return newProxy(p.Mono.SwitchIfError(func(err error) mono.Mono {
+		return alternative(err).Raw()
+	}))
+}
+
+func (p proxy) SwitchValueIfError(alternative payload.Payload) Mono {
+	return newProxy(p.Mono.SwitchValueIfError(alternative))
+}
+
 func (p proxy) Timeout(timeout time.Duration) Mono {
 	return newProxy(p.Mono.Timeout(timeout))
 }

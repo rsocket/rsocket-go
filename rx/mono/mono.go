@@ -43,8 +43,12 @@ type Mono interface {
 	// Block blocks Mono and returns a cloned payload.
 	// It's different from BlockUnsafe, you don't need release it manually.
 	Block(context.Context) (payload.Payload, error)
-	//SwitchIfEmpty switch to an alternative Publisher if this Mono is completed without any data.
+	// SwitchIfEmpty switch to an alternative Publisher if this Mono is completed without any data.
 	SwitchIfEmpty(alternative Mono) Mono
+	// SwitchIfError switch to an alternative Publisher if this Mono is end with an error.
+	SwitchIfError(alternative func(error) Mono) Mono
+	// SwitchValueIfError switch to an alternative Payload if this Mono is end with an error.
+	SwitchValueIfError(alternative payload.Payload) Mono
 	// Raw returns low-level reactor.Mono which defined in reactor-go library.
 	Raw() mono.Mono
 	// ToChan subscribe Mono and puts items into a chan.

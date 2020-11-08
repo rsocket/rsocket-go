@@ -147,6 +147,18 @@ func (o *oneshotProxy) SwitchIfEmpty(alternative Mono) Mono {
 	return o
 }
 
+func (o *oneshotProxy) SwitchIfError(alternative func(error) Mono) Mono {
+	o.Mono = o.Mono.SwitchIfError(func(err error) mono.Mono {
+		return alternative(err).Raw()
+	})
+	return o
+}
+
+func (o *oneshotProxy) SwitchValueIfError(alternative payload.Payload) Mono {
+	o.Mono = o.Mono.SwitchValueIfError(alternative)
+	return o
+}
+
 func (o *oneshotProxy) Raw() mono.Mono {
 	return o.Mono
 }

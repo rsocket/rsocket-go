@@ -208,6 +208,35 @@ func TestBlockClone(t *testing.T) {
 	assert.NotEqual(t, input, v)
 }
 
+func TestSwitchIfError(t *testing.T) {
+	fakeErr := errors.New("fake error")
+
+	validator := func(input Mono) {
+		next, err := input.
+			SwitchIfError(func(err error) Mono {
+				assert.Equal(t, fakeErr, err)
+				return Just(_fakePayload)
+			}).
+			Block(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, _fakePayload, next)
+	}
+
+	validator(Error(fakeErr))
+	validator(ErrorOneshot(fakeErr))
+}
+
+func TestSwitchValueIfError(t *testing.T) {
+	validator := func(input Mono) {
+		next, err := input.SwitchValueIfError(_fakePayload).Block(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, _fakePayload, next)
+	}
+	fakeErr := errors.New("fake error")
+	validator(Error(fakeErr))
+	validator(ErrorOneshot(fakeErr))
+}
+
 type mockPayload atomic.Int32
 
 func (m *mockPayload) IncRef() int32 {
