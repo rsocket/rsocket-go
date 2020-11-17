@@ -28,7 +28,7 @@ func TestZipBuilder_ToMono(t *testing.T) {
 
 func TestZip_Empty(t *testing.T) {
 	assert.Panics(t, func() {
-		mono.ZipAll().ToMono(func(tuple rx.Tuple) (payload.Payload, error) {
+		_, _ = mono.ZipAll().ToMono(func(tuple rx.Tuple) (payload.Payload, error) {
 			return _fakePayload, nil
 		}).Block(context.Background())
 	})
