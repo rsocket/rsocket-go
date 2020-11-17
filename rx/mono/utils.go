@@ -11,6 +11,16 @@ import (
 
 var empty = newProxy(mono.Empty())
 
+func FromFunc(gen func(context.Context) (payload.Payload, error)) Mono {
+	return Create(func(ctx context.Context, s Sink) {
+		if v, err := gen(ctx); err != nil {
+			s.Error(err)
+		} else {
+			s.Success(v)
+		}
+	})
+}
+
 // IsSubscribeAsync returns true if target Mono will be subscribed async.
 func IsSubscribeAsync(m Mono) bool {
 	return mono.IsSubscribeAsync(m.Raw())
@@ -178,3 +188,4 @@ func toBlock(ctx context.Context, m mono.Mono) (payload.Payload, error) {
 		return nil, nil
 	}
 }
+
