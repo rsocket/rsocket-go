@@ -30,6 +30,9 @@ func (b *balancerRoundRobin) OnLeave(fn func(label string)) {
 		b.onLeave = append(b.onLeave, fn)
 	}
 }
+func (b *balancerRoundRobin) Len() int {
+	return len(b.sockets)
+}
 
 func (b *balancerRoundRobin) Put(client rsocket.Client) error {
 	return b.PutLabel(uuid.New().String(), client)

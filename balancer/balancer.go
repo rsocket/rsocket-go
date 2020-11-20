@@ -19,4 +19,6 @@ type Balancer interface {
 	Next(context.Context) (rsocket.Client, bool)
 	// OnLeave handle events when a client exit.
 	OnLeave(fn func(label string))
+	//Returns the balancer length
+	Len() int
 }
