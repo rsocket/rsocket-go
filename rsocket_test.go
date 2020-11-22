@@ -226,8 +226,7 @@ func TestBiDirection(t *testing.T) {
 			Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 				sendingSocket.MetadataPush(fakeRequest)
 				sendingSocket.FireAndForget(fakeRequest)
-				sendingSocket.
-					RequestResponse(fakeRequest).
+				sendingSocket.RequestResponse(fakeRequest).
 					DoOnSuccess(func(input payload.Payload) error {
 						res <- payload.Clone(input)
 						return nil

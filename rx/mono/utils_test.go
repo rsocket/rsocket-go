@@ -153,20 +153,3 @@ func TestSubscribeWithChan(t *testing.T) {
 		assert.NoError(t, err, "should not return error")
 	}
 }
-
-func TestCreateProcessorOneshot(t *testing.T) {
-	m, s := mono.CreateProcessorOneshot()
-	go func() {
-		s.Success(_fakePayload)
-	}()
-
-	value, err := m.
-		DoOnSuccess(func(input payload.Payload) error {
-			assert.True(t, payload.Equal(input, _fakePayload))
-			return nil
-		}).
-		Block(context.Background())
-	assert.NoError(t, err)
-	assert.True(t, payload.Equal(value, _fakePayload))
-}
-

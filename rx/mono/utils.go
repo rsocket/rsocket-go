@@ -5,6 +5,7 @@ import (
 
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/mono"
+	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/payload"
 )
@@ -76,14 +77,9 @@ func CreateOneshot(gen func(context.Context, Sink)) Mono {
 	}))
 }
 
-// CreateProcessor creates a Processor.
-func CreateProcessor() Processor {
-	return newProxy(mono.CreateProcessor())
-}
-
-func CreateProcessorOneshot() (Mono, Sink) {
-	m, s := mono.CreateProcessorOneshot()
-	return borrowOneshotProxy(m), sinkProxy{native: s}
+func NewProcessor(sc scheduler.Scheduler, onFinally mono.ProcessorFinallyHook) (Mono, Sink, reactor.Disposable) {
+	m, s, d := mono.NewProcessor(sc, onFinally)
+	return borrowOneshotProxy(m), sinkProxy{native: s}, d
 }
 
 type sinkProxy struct {
@@ -188,4 +184,3 @@ func toBlock(ctx context.Context, m mono.Mono) (payload.Payload, error) {
 		return nil, nil
 	}
 }
-

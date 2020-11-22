@@ -1,3 +1,6 @@
+alias e := echo
+alias b := echo-bench
+
 build:
 	go build .
 lint:

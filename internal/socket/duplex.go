@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/core"
@@ -210,23 +211,23 @@ func (dc *DuplexConnection) RequestResponse(req payload.Payload) (res mono.Mono)
 
 	sid := dc.nextStreamID()
 
-	m, s := mono.CreateProcessorOneshot()
+	handler := &requestResponseCallback{}
 
-	handler := &requestResponseCallback{
-		sink: s,
-	}
-
-	dc.register(sid, handler)
-
-	res = m.DoFinally(func(s rx.SignalType) {
-		if handler.cache != nil {
-			common.TryRelease(handler.cache)
-		}
-		if s == rx.SignalCancel {
+	onFinally := func(s reactor.SignalType, d reactor.Disposable) {
+		common.TryRelease(handler.cache)
+		d.Dispose()
+		if s == reactor.SignalTypeCancel {
 			dc.sendFrame(framing.NewWriteableCancelFrame(sid))
 		}
 		dc.unregister(sid)
-	})
+	}
+
+	m, s, _ := mono.NewProcessor(scheduler.ElasticBounded(), onFinally)
+	handler.sink = s
+
+	dc.register(sid, handler)
+
+	res = m
 
 	data := req.Data()
 	metadata, _ := req.Metadata()
@@ -867,8 +868,7 @@ func (dc *DuplexConnection) onFramePayload(frame core.BufferedFrame) error {
 	switch handler := v.(type) {
 	case *requestResponseCallback:
 		handler.cache = next
-		// TODO: workaround for processor sink bug
-		go handler.sink.Success(next)
+		handler.sink.Success(next)
 	case requestStreamCallback:
 		fg := h.Flag()
 		isNext := fg.Check(core.FlagNext)

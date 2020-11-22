@@ -87,9 +87,10 @@ func TestProxy_Block(t *testing.T) {
 }
 
 func TestProcessor(t *testing.T) {
-	p := CreateProcessor()
+	p, s, d := NewProcessor()
+	defer d.Dispose()
 	time.AfterFunc(3*time.Second, func() {
-		p.Success(payload.NewString("hello", "world"))
+		s.Success(payload.NewString("hello", "world"))
 	})
 	v, err := p.Block(context.Background())
 	assert.NoError(t, err)

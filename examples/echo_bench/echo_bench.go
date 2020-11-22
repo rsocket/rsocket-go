@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/internal/common"
@@ -72,11 +71,10 @@ func main() {
 			wg.Done()
 		}),
 	)
+
 	request := payload.New(data, nil)
 	for i := 0; i < n; i++ {
-		client.RequestResponse(request).
-			SubscribeOn(scheduler.Elastic()).
-			SubscribeWith(context.Background(), sub)
+		client.RequestResponse(request).SubscribeWith(context.Background(), sub)
 	}
 	wg.Wait()
 	cost := time.Since(now)
@@ -84,6 +82,7 @@ func main() {
 	log.Println("COST:", cost)
 	log.Printf("QPS: %.02f\n", float64(n)/cost.Seconds())
 	log.Println("FAILED:", errCount.Load())
+	time.Sleep(1 * time.Hour)
 }
 
 func createClient(mtu int) (rsocket.Client, error) {
