@@ -1,5 +1,6 @@
 alias e := echo
 alias b := echo-bench
+alias t := test-no-cover
 
 build:
 	go build .
