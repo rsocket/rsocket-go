@@ -131,7 +131,6 @@ func TestRoundRobin(t *testing.T) {
 	for i := 0; i < extra; i++ {
 		c, ok = b.Next(context.Background())
 
-
 		assert.True(t, ok, "get next client failed")
 		_, err = c.RequestResponse(req).Block(context.Background())
 		assert.NoError(t, err)
@@ -152,5 +151,5 @@ func TestRoundRobin(t *testing.T) {
 	defer cancel()
 	_, ok = b.Next(ctx)
 	assert.False(t, ok)
-	assert.Equal(t,0,b.Len())
+	assert.Equal(t, 0, b.Len())
 }
