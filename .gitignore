@@ -25,3 +25,5 @@ suppressions/
 cmd/rsocket-cli/rsocket-cli
 
 coverage.txt
+
+tmp/

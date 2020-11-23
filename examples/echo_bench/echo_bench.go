@@ -82,6 +82,8 @@ func main() {
 	log.Println("COST:", cost)
 	log.Printf("QPS: %.02f\n", float64(n)/cost.Seconds())
 	log.Println("FAILED:", errCount.Load())
+
+	time.Sleep(time.Hour)
 }
 
 func createClient(mtu int) (rsocket.Client, error) {

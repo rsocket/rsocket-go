@@ -11,7 +11,7 @@ import (
 
 const (
 	lengthFieldSize = 3
-	minBuffSize     = 4 * 1024
+	minBuffSize     = 8 * 1024
 	maxBuffSize     = 16*1024*1024 + lengthFieldSize
 )
 

@@ -135,4 +135,6 @@ type BufferedFrame interface {
 	Validate() error
 	// HasFlag returns true if target frame flag is enabled.
 	HasFlag(FrameFlag) bool
+	// StreamID returns the stream id of current frame.
+	StreamID() uint32
 }

@@ -19,7 +19,7 @@ import (
 )
 
 func TestNewClientWithBrokenTransporter(t *testing.T) {
-	ds := socket.NewClientDuplexConnection(fragmentation.MaxFragment, 90*time.Second)
+	ds := socket.NewClientDuplexConnection(nil, nil, fragmentation.MaxFragment, 90*time.Second)
 	// Must failed transporter
 	transporter := func(ctx context.Context) (*transport.Transport, error) {
 		return nil, fakeErr
@@ -49,7 +49,7 @@ func TestNewClient(t *testing.T) {
 	}).AnyTimes()
 	conn.EXPECT().SetDeadline(gomock.Any()).AnyTimes()
 
-	ds := socket.NewClientDuplexConnection(fragmentation.MaxFragment, 90*time.Second)
+	ds := socket.NewClientDuplexConnection(nil, nil, fragmentation.MaxFragment, 90*time.Second)
 	cli := socket.NewClient(func(ctx context.Context) (*transport.Transport, error) {
 		return tp, nil
 	}, ds)
@@ -120,7 +120,7 @@ func TestLease(t *testing.T) {
 	}).AnyTimes()
 	conn.EXPECT().SetDeadline(gomock.Any()).AnyTimes()
 
-	ds := socket.NewClientDuplexConnection(fragmentation.MaxFragment, 90*time.Second)
+	ds := socket.NewClientDuplexConnection(nil, nil, fragmentation.MaxFragment, 90*time.Second)
 	cli := socket.NewClient(func(ctx context.Context) (*transport.Transport, error) {
 		return tp, nil
 	}, ds)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/core/transport"
@@ -33,6 +34,8 @@ type (
 	OpServerResume func(o *serverResumeOptions)
 	// ServerBuilder can be used to build a RSocket server.
 	ServerBuilder interface {
+		// Scheduler set schedulers for the requests or responses.
+		Scheduler(requestScheduler, responseScheduler scheduler.Scheduler) ServerBuilder
 		// Fragment set fragmentation size which default is 16_777_215(16MB).
 		Fragment(mtu int) ServerBuilder
 		// Lease enable feature of Lease.
@@ -60,80 +63,80 @@ type (
 	}
 )
 
-// Receive receives server connections from client RSockets.
-func Receive() ServerBuilder {
-	return &server{
-		fragment: fragmentation.MaxFragment,
-		sm:       session.NewManager(),
-		done:     make(chan struct{}),
-		resumeOpts: &serverResumeOptions{
-			sessionDuration: serverSessionDuration,
-		},
-	}
-}
-
 type serverResumeOptions struct {
 	enable          bool
 	sessionDuration time.Duration
 }
 
+var (
+	_ ServerBuilder   = (*server)(nil)
+	_ ToServerStarter = (*server)(nil)
+)
+
 type server struct {
-	tp         transport.ServerTransporter
-	resumeOpts *serverResumeOptions
-	fragment   int
-	acc        ServerAcceptor
-	sm         *session.Manager
-	done       chan struct{}
-	onServe    []func()
-	leases     lease.Factory
+	reqSc, resSc scheduler.Scheduler
+	tp           transport.ServerTransporter
+	resumeOpts   *serverResumeOptions
+	fragment     int
+	acc          ServerAcceptor
+	sm           *session.Manager
+	done         chan struct{}
+	onServe      []func()
+	leases       lease.Factory
 }
 
-func (p *server) Lease(leases lease.Factory) ServerBuilder {
-	p.leases = leases
-	return p
+func (srv *server) Scheduler(req, res scheduler.Scheduler) ServerBuilder {
+	srv.reqSc = req
+	srv.resSc = res
+	return srv
 }
 
-func (p *server) OnStart(onStart func()) ServerBuilder {
+func (srv *server) Lease(leases lease.Factory) ServerBuilder {
+	srv.leases = leases
+	return srv
+}
+
+func (srv *server) OnStart(onStart func()) ServerBuilder {
 	if onStart != nil {
-		p.onServe = append(p.onServe, onStart)
+		srv.onServe = append(srv.onServe, onStart)
 	}
-	return p
+	return srv
 }
 
-func (p *server) Resume(opts ...OpServerResume) ServerBuilder {
-	p.resumeOpts.enable = true
+func (srv *server) Resume(opts ...OpServerResume) ServerBuilder {
+	srv.resumeOpts.enable = true
 	for _, it := range opts {
-		it(p.resumeOpts)
+		it(srv.resumeOpts)
 	}
-	return p
+	return srv
 }
 
-func (p *server) Fragment(mtu int) ServerBuilder {
+func (srv *server) Fragment(mtu int) ServerBuilder {
 	if mtu == 0 {
-		p.fragment = fragmentation.MaxFragment
+		srv.fragment = fragmentation.MaxFragment
 	} else {
-		p.fragment = mtu
+		srv.fragment = mtu
 	}
-	return p
+	return srv
 }
 
-func (p *server) Acceptor(acceptor ServerAcceptor) ToServerStarter {
-	p.acc = acceptor
-	return p
+func (srv *server) Acceptor(acceptor ServerAcceptor) ToServerStarter {
+	srv.acc = acceptor
+	return srv
 }
 
-func (p *server) Transport(t transport.ServerTransporter) Start {
-	p.tp = t
-	return p
+func (srv *server) Transport(t transport.ServerTransporter) Start {
+	srv.tp = t
+	return srv
 }
 
-func (p *server) Serve(ctx context.Context) error {
-	err := fragmentation.IsValidFragment(p.fragment)
+func (srv *server) Serve(ctx context.Context) error {
+	err := fragmentation.IsValidFragment(srv.fragment)
 	if err != nil {
 		return err
 	}
 
-	t, err := p.tp(ctx)
+	t, err := srv.tp(ctx)
 	if err != nil {
 		return err
 	}
@@ -143,7 +146,7 @@ func (p *server) Serve(ctx context.Context) error {
 	}()
 
 	go func(ctx context.Context) {
-		_ = p.loopCleanSession(ctx)
+		_ = srv.loopCleanSession(ctx)
 	}(ctx)
 	t.Accept(func(ctx context.Context, tp *transport.Transport, onClose func(*transport.Transport)) {
 		defer onClose(tp)
@@ -160,9 +163,9 @@ func (p *server) Serve(ctx context.Context) error {
 					break
 				}
 				ssk.Pause()
-				deadline := time.Now().Add(p.resumeOpts.sessionDuration)
+				deadline := time.Now().Add(srv.resumeOpts.sessionDuration)
 				s := session.NewSession(deadline, ssk)
-				p.sm.Push(s)
+				srv.sm.Push(s)
 				if logger.IsDebugEnabled() {
 					logger.Debugf("store session: %s\n", s)
 				}
@@ -182,9 +185,9 @@ func (p *server) Serve(ctx context.Context) error {
 
 		switch frame := first.(type) {
 		case *framing.ResumeFrame:
-			p.doResume(frame, tp, socketChan)
+			srv.doResume(frame, tp, socketChan)
 		case *framing.SetupFrame:
-			sendingSocket, err := p.doSetup(frame, tp, socketChan)
+			sendingSocket, err := srv.doSetup(frame, tp, socketChan)
 			if err != nil {
 				_ = tp.Send(err, true)
 				_ = tp.Close()
@@ -212,12 +215,12 @@ func (p *server) Serve(ctx context.Context) error {
 		for i := range fn {
 			fn[i]()
 		}
-	}(notifier, p.onServe)
+	}(notifier, srv.onServe)
 	return t.Listen(ctx, notifier)
 }
 
-func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.WriteableErrorFrame) {
-	if frame.HasFlag(core.FlagLease) && p.leases == nil {
+func (srv *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.WriteableErrorFrame) {
+	if frame.HasFlag(core.FlagLease) && srv.leases == nil {
 		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeUnsupportedSetup, bytesconv.StringToBytes(_errUnavailableLease))
 		return
 	}
@@ -225,17 +228,17 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 	isResume := frame.HasFlag(core.FlagResume)
 
 	// 1. receive a token but server doesn't support resume.
-	if isResume && !p.resumeOpts.enable {
+	if isResume && !srv.resumeOpts.enable {
 		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeUnsupportedSetup, bytesconv.StringToBytes(_errUnavailableResume))
 		return
 	}
 
-	rawSocket := socket.NewServerDuplexConnection(p.fragment, p.leases)
+	rawSocket := socket.NewServerDuplexConnection(srv.reqSc, srv.resSc, srv.fragment, srv.leases)
 
 	// 2. no resume
 	if !isResume {
 		sendingSocket = socket.NewSimpleServerSocket(rawSocket)
-		if responder, e := p.acc(frame, sendingSocket); e != nil {
+		if responder, e := srv.acc(frame, sendingSocket); e != nil {
 			err = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedSetup, []byte(e.Error()))
 		} else {
 			sendingSocket.SetResponder(responder)
@@ -248,7 +251,7 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 	token := frame.Token()
 
 	// 3. resume reject because of duplicated token.
-	if _, ok := p.sm.Load(token); ok {
+	if _, ok := srv.sm.Load(token); ok {
 		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedSetup, bytesconv.StringToBytes(_errDuplicatedSetupToken))
 		return
 	}
@@ -258,7 +261,7 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 
 	// 4. resume success
 	sendingSocket = socket.NewResumableServerSocket(rawSocket, token)
-	if responder, e := p.acc(frame, sendingSocket); e != nil {
+	if responder, e := srv.acc(frame, sendingSocket); e != nil {
 		switch vv := e.(type) {
 		case *framing.ErrorFrame:
 			err = framing.NewWriteableErrorFrame(0, vv.ErrorCode(), vv.ErrorData())
@@ -273,11 +276,11 @@ func (p *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, soc
 	return
 }
 
-func (p *server) doResume(frame *framing.ResumeFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) {
+func (srv *server) doResume(frame *framing.ResumeFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) {
 	var sending core.WriteableFrame
-	if !p.resumeOpts.enable {
+	if !srv.resumeOpts.enable {
 		sending = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedResume, bytesconv.StringToBytes(_errUnavailableResume))
-	} else if s, ok := p.sm.Load(frame.Token()); ok {
+	} else if s, ok := srv.sm.Load(frame.Token()); ok {
 		sending = framing.NewWriteableResumeOKFrame(0)
 		s.Socket().SetTransport(tp)
 		socketChan <- s.Socket()
@@ -297,11 +300,11 @@ func (p *server) doResume(frame *framing.ResumeFrame, tp *transport.Transport, s
 	}
 }
 
-func (p *server) loopCleanSession(ctx context.Context) (err error) {
+func (srv *server) loopCleanSession(ctx context.Context) (err error) {
 	tk := time.NewTicker(serverSessionCleanInterval)
 	defer func() {
 		tk.Stop()
-		p.destroySessions()
+		srv.destroySessions()
 	}()
 L:
 	for {
@@ -309,18 +312,18 @@ L:
 		case <-ctx.Done():
 			err = ctx.Err()
 			break L
-		case <-p.done:
+		case <-srv.done:
 			break L
 		case <-tk.C:
-			p.doCleanSession()
+			srv.doCleanSession()
 		}
 	}
 	return
 }
 
-func (p *server) destroySessions() {
-	for p.sm.Len() > 0 {
-		nextSession := p.sm.Pop()
+func (srv *server) destroySessions() {
+	for srv.sm.Len() > 0 {
+		nextSession := srv.sm.Pop()
 		if err := nextSession.Close(); err != nil {
 			logger.Warnf("kill session failed: %s\n", err)
 		} else if logger.IsDebugEnabled() {
@@ -329,7 +332,7 @@ func (p *server) destroySessions() {
 	}
 }
 
-func (p *server) doCleanSession() {
+func (srv *server) doCleanSession() {
 	deadSessions := make(chan *session.Session)
 	go func(deadSessions chan *session.Session) {
 		for it := range deadSessions {
@@ -341,11 +344,11 @@ func (p *server) doCleanSession() {
 		}
 	}(deadSessions)
 	var cur *session.Session
-	for p.sm.Len() > 0 {
-		cur = p.sm.Pop()
+	for srv.sm.Len() > 0 {
+		cur = srv.sm.Pop()
 		// Push back if session is still alive.
 		if !cur.IsDead() {
-			p.sm.Push(cur)
+			srv.sm.Push(cur)
 			break
 		}
 		deadSessions <- cur
@@ -357,5 +360,17 @@ func (p *server) doCleanSession() {
 func WithServerResumeSessionDuration(duration time.Duration) OpServerResume {
 	return func(o *serverResumeOptions) {
 		o.sessionDuration = duration
+	}
+}
+
+// Receive receives server connections from client RSockets.
+func Receive() ServerBuilder {
+	return &server{
+		fragment: fragmentation.MaxFragment,
+		sm:       session.NewManager(),
+		done:     make(chan struct{}),
+		resumeOpts: &serverResumeOptions{
+			sessionDuration: serverSessionDuration,
+		},
 	}
 }

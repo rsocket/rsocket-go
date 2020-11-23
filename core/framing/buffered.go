@@ -50,6 +50,13 @@ func (f *bufferedFrame) HasFlag(flag core.FrameFlag) bool {
 	return core.FrameFlag(n&0x03FF)&flag == flag
 }
 
+func (f *bufferedFrame) StreamID() uint32 {
+	if f.inner == nil {
+		panic("frame has been released!")
+	}
+	return binary.BigEndian.Uint32(f.inner.Bytes()[:4])
+}
+
 // Release releases resource.
 func (f *bufferedFrame) Release() {
 	if f != nil && f.inner != nil && atomic.AddInt32(&f.refs, -1) == 0 {
