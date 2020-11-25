@@ -15,6 +15,7 @@ import (
 	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
+	"github.com/rsocket/rsocket-go/internal/misc"
 	"github.com/rsocket/rsocket-go/internal/queue"
 	"github.com/rsocket/rsocket-go/lease"
 	"github.com/rsocket/rsocket-go/logger"
@@ -26,6 +27,7 @@ import (
 )
 
 const _outChanSize = 64
+const _minRequestSchedulerSize = 1000
 
 var errSocketClosed = errors.New("rsocket: socket closed already")
 var errRequestFailed = errors.New("rsocket: send request failed")
@@ -1288,7 +1290,7 @@ func NewClientDuplexConnection(reqSche, resSche scheduler.Scheduler, mtu int, ke
 func newDuplexConnection(reqSche, resSche scheduler.Scheduler, mtu int, ka *Keepaliver, sids StreamID, leases lease.Factory) *DuplexConnection {
 	destroyReqSche := reqSche == nil
 	if destroyReqSche {
-		reqSche = scheduler.NewElastic(256 * runtime.NumCPU())
+		reqSche = scheduler.NewElastic(misc.MaxInt(runtime.NumCPU()<<8, _minRequestSchedulerSize))
 	}
 	if resSche == nil {
 		resSche = scheduler.Elastic()

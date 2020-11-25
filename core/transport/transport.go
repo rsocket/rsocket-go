@@ -11,8 +11,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
+	"github.com/rsocket/rsocket-go/internal/buffer"
 	"github.com/rsocket/rsocket-go/internal/common"
-	"github.com/rsocket/rsocket-go/internal/unbounded"
 	"github.com/rsocket/rsocket-go/logger"
 )
 
@@ -162,41 +162,55 @@ func (p *Transport) ReadFirst(ctx context.Context) (frame core.BufferedFrame, er
 	return
 }
 
+func (p *Transport) loopReadBuffer(ctx context.Context, bf *buffer.Unbounded, errCh chan<- error, done chan<- struct{}) {
+	defer func() {
+		done <- struct{}{}
+	}()
+	c := bf.Get()
+	for next := range c {
+		err := p.DispatchFrame(ctx, next.(core.BufferedFrame))
+		if err != nil {
+			select {
+			case errCh <- err:
+			default:
+			}
+		}
+		if bf.Load() == 0 {
+			runtime.Gosched()
+		}
+	}
+}
+
 // Start start transport.
 func (p *Transport) Start(ctx context.Context) error {
-	defer p.Close()
+	defer func() {
+		_ = p.Close()
+	}()
 
-	errColl := make(chan error)
+	done := make(chan struct{}, 1)
+	errChan := make(chan error)
 
-	oddFrames := unbounded.NewUnbounded()
-	evenFrames := unbounded.NewUnbounded()
+	var (
+		oddFrames  = buffer.NewUnbounded()
+		evenFrames = buffer.NewUnbounded()
+	)
 
 	defer func() {
 		oddFrames.Dispose()
 		evenFrames.Dispose()
+
+		<-done
+		<-done
 	}()
 
-	handler := func(ctx context.Context, ch *unbounded.Unbounded, errCh chan<- error) {
-		for next := range ch.Get() {
-			err := p.DispatchFrame(ctx, next.(core.BufferedFrame))
-			if err != nil {
-				select {
-				case errCh <- err:
-				default:
-				}
-			}
-			ch.Load()
-		}
-	}
-
-	go handler(ctx, oddFrames, errColl)
-	go handler(ctx, evenFrames, errColl)
+	go p.loopReadBuffer(ctx, oddFrames, errChan, done)
+	go p.loopReadBuffer(ctx, evenFrames, errChan, done)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case err := <-errColl:
+		case err := <-errChan:
 			return errors.Wrap(err, "dispatch incoming frame failed:")
 		default:
 			f, err := p.conn.Read()
@@ -207,16 +221,22 @@ func (p *Transport) Start(ctx context.Context) error {
 				return err
 			}
 
-			if sid := f.StreamID(); sid == 0 {
-				if err := p.DispatchFrame(ctx, f); err != nil {
-					return errors.Wrap(err, "dispatch incoming frame failed:")
-				}
-			} else if sid&1 == 1 {
+			sid := f.StreamID()
+
+			// put frame into buffer
+			if sid&1 == 1 {
 				oddFrames.Put(f)
-			} else {
-				evenFrames.Put(f)
+				continue
 			}
-			runtime.Gosched()
+			if sid != 0 {
+				evenFrames.Put(f)
+				continue
+			}
+
+			// dispatch frame with zero stream id
+			if err := p.DispatchFrame(ctx, f); err != nil {
+				return errors.Wrap(err, "dispatch incoming frame failed:")
+			}
 		}
 	}
 }

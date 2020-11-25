@@ -35,6 +35,7 @@ type (
 	// ServerBuilder can be used to build a RSocket server.
 	ServerBuilder interface {
 		// Scheduler set schedulers for the requests or responses.
+		// Nil scheduler means keep the default scheduler settings.
 		Scheduler(requestScheduler, responseScheduler scheduler.Scheduler) ServerBuilder
 		// Fragment set fragmentation size which default is 16_777_215(16MB).
 		Fragment(mtu int) ServerBuilder

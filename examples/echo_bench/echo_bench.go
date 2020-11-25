@@ -78,12 +78,14 @@ func main() {
 	}
 	wg.Wait()
 	cost := time.Since(now)
-	log.Println("TOTAL:", n)
-	log.Println("COST:", cost)
-	log.Printf("QPS: %.02f\n", float64(n)/cost.Seconds())
-	log.Println("FAILED:", errCount.Load())
-
-	time.Sleep(time.Hour)
+	log.Printf("total:\t\t%d\n", n)
+	log.Printf("cost:\t\t%s\n", cost)
+	log.Printf("qps:\t\t%.02f\n", float64(n)/cost.Seconds())
+	if errCount.Load() > 0 {
+		log.Printf("error:\t\t%d\n", errCount.Load())
+	}
+	throughputInMB := float64(n*(1024+9)) / float64(1024*1024) / cost.Seconds()
+	log.Printf("throughput(r/w):\t%.02fMB/s, %.02fMB/s\n", throughputInMB, throughputInMB)
 }
 
 func createClient(mtu int) (rsocket.Client, error) {

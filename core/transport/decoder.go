@@ -45,7 +45,7 @@ func doSplit(data []byte, eof bool) (advance int, token []byte, err error) {
 	if len(data) < lengthFieldSize {
 		return
 	}
-	frameLength := u24.NewUint24Bytes(data).AsInt()
+	frameLength := u24.ReadUint24ToInt(data)
 	if frameLength < 1 {
 		err = core.ErrInvalidFrameLength
 		return

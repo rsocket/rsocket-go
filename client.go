@@ -41,6 +41,8 @@ type ClientStarter interface {
 // ClientBuilder can be used to build a RSocket client.
 type ClientBuilder interface {
 	ToClientStarter
+	// Scheduler set schedulers for the requests or responses.
+	// Nil scheduler means keep the default scheduler settings.
 	Scheduler(requestScheduler scheduler.Scheduler, responseScheduler scheduler.Scheduler) ClientBuilder
 	// Fragment set fragmentation size which default is 16_777_215(16MB).
 	// Also zero mtu means using default fragmentation size.
