@@ -217,7 +217,7 @@ func TestTransport_HandlerReturnsError(t *testing.T) {
 
 	conn.EXPECT().SetDeadline(gomock.Any()).AnyTimes()
 	conn.EXPECT().Close().Times(1)
-	conn.EXPECT().Read().Return(framing.NewCancelFrame(1), nil).Times(1)
+	conn.EXPECT().Read().Return(framing.NewCancelFrame(1), nil).MinTimes(1)
 
 	tp.Handle(transport.OnCancel, func(_ core.BufferedFrame) error {
 		return fakeErr

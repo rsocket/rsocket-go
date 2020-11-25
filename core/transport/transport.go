@@ -188,7 +188,7 @@ func (p *Transport) Start(ctx context.Context) error {
 	}()
 
 	done := make(chan struct{}, 1)
-	errChan := make(chan error)
+	errChan := make(chan error, 1)
 
 	var (
 		oddFrames  = buffer.NewUnbounded()

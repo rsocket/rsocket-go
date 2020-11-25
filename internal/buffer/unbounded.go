@@ -50,9 +50,9 @@ func NewUnbounded() *Unbounded {
 // Put adds t to the unbounded buffer.
 func (b *Unbounded) Put(t interface{}) (ok bool) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 
 	if b.disposed {
+		b.mu.Unlock()
 		return
 	}
 
@@ -61,11 +61,13 @@ func (b *Unbounded) Put(t interface{}) (ok bool) {
 	if len(b.backlog) == 0 {
 		select {
 		case b.c <- t:
+			b.mu.Unlock()
 			return
 		default:
 		}
 	}
 	b.backlog = append(b.backlog, t)
+	b.mu.Unlock()
 	return
 }
 
@@ -83,7 +85,7 @@ func (b *Unbounded) Load() (n int) {
 		default:
 		}
 	} else if b.disposed {
-		close(b.c)
+		b.close()
 		n = -1
 	}
 	b.mu.Unlock()
@@ -104,7 +106,15 @@ func (b *Unbounded) Dispose() {
 	b.mu.Lock()
 	b.disposed = true
 	if len(b.backlog) == 0 {
-		close(b.c)
+		b.close()
 	}
 	b.mu.Unlock()
+}
+
+func (b *Unbounded) close() (ok bool) {
+	defer func() {
+		ok = recover() == nil
+	}()
+	close(b.c)
+	return
 }
