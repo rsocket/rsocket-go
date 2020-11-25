@@ -11,7 +11,7 @@ import (
 
 const (
 	lengthFieldSize = 3
-	minBuffSize     = 4 * 1024
+	minBuffSize     = 8 * 1024
 	maxBuffSize     = 16*1024*1024 + lengthFieldSize
 )
 
@@ -45,7 +45,7 @@ func doSplit(data []byte, eof bool) (advance int, token []byte, err error) {
 	if len(data) < lengthFieldSize {
 		return
 	}
-	frameLength := u24.NewUint24Bytes(data).AsInt()
+	frameLength := u24.ReadUint24ToInt(data)
 	if frameLength < 1 {
 		err = core.ErrInvalidFrameLength
 		return

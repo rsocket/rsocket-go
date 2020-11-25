@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/internal/common"
@@ -40,6 +41,9 @@ type ClientStarter interface {
 // ClientBuilder can be used to build a RSocket client.
 type ClientBuilder interface {
 	ToClientStarter
+	// Scheduler set schedulers for the requests or responses.
+	// Nil scheduler means keep the default scheduler settings.
+	Scheduler(requestScheduler scheduler.Scheduler, responseScheduler scheduler.Scheduler) ClientBuilder
 	// Fragment set fragmentation size which default is 16_777_215(16MB).
 	// Also zero mtu means using default fragmentation size.
 	Fragment(mtu int) ClientBuilder
@@ -84,15 +88,27 @@ type setupClientSocket interface {
 	Setup(ctx context.Context, connectTimeout time.Duration, setup *socket.SetupInfo) error
 }
 
+var (
+	_ ClientBuilder   = (*clientBuilder)(nil)
+	_ ToClientStarter = (*clientBuilder)(nil)
+)
+
 type clientBuilder struct {
-	resume         *resumeOpts
-	fragment       int
-	tpGen          transport.ClientTransporter
-	setup          *socket.SetupInfo
-	acceptor       ClientSocketAcceptor
-	onCloses       []func(error)
-	onConnects     []func(Client, error)
-	connectTimeout time.Duration
+	reqSche, resSche scheduler.Scheduler
+	resume           *resumeOpts
+	fragment         int
+	tpGen            transport.ClientTransporter
+	setup            *socket.SetupInfo
+	acceptor         ClientSocketAcceptor
+	onCloses         []func(error)
+	onConnects       []func(Client, error)
+	connectTimeout   time.Duration
+}
+
+func (cb *clientBuilder) Scheduler(req, res scheduler.Scheduler) ClientBuilder {
+	cb.reqSche = req
+	cb.resSche = res
+	return cb
 }
 
 func (cb *clientBuilder) Lease() ClientBuilder {
@@ -183,6 +199,8 @@ func (cb *clientBuilder) Start(ctx context.Context) (client Client, err error) {
 	}
 
 	conn := socket.NewClientDuplexConnection(
+		cb.reqSche,
+		cb.resSche,
 		cb.fragment,
 		cb.setup.KeepaliveInterval,
 	)

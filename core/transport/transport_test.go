@@ -3,6 +3,7 @@ package transport_test
 import (
 	"context"
 	"io"
+	"sync"
 	"testing"
 	"time"
 
@@ -90,10 +91,13 @@ func TestTransport_RegisterHandler(t *testing.T) {
 		}).
 		AnyTimes()
 
+	var mu sync.Mutex
 	calls := make(map[core.FrameType]int)
 	fakeHandler := func(frame core.BufferedFrame) (err error) {
 		typ := frame.Header().Type()
+		mu.Lock()
 		calls[typ] = calls[typ] + 1
+		mu.Unlock()
 		return nil
 	}
 
@@ -217,7 +221,7 @@ func TestTransport_HandlerReturnsError(t *testing.T) {
 
 	conn.EXPECT().SetDeadline(gomock.Any()).AnyTimes()
 	conn.EXPECT().Close().Times(1)
-	conn.EXPECT().Read().Return(framing.NewCancelFrame(1), nil).Times(1)
+	conn.EXPECT().Read().Return(framing.NewCancelFrame(1), nil).MinTimes(1)
 
 	tp.Handle(transport.OnCancel, func(_ core.BufferedFrame) error {
 		return fakeErr
@@ -232,7 +236,7 @@ func TestTransport_EmptyHandler(t *testing.T) {
 
 	conn.EXPECT().SetDeadline(gomock.Any()).AnyTimes()
 	conn.EXPECT().Close().Times(1)
-	conn.EXPECT().Read().Return(framing.NewCancelFrame(1), nil).Times(1)
+	conn.EXPECT().Read().Return(framing.NewCancelFrame(1), nil).MinTimes(1)
 
 	err := tp.Start(context.Background())
 	assert.True(t, transport.IsNoHandlerError(errors.Cause(err)), "should be no handler error")

@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"runtime"
 	"sync"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
+	"github.com/rsocket/rsocket-go/internal/buffer"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/logger"
 )
@@ -61,7 +63,7 @@ const (
 
 // Transport is RSocket transport which is used to carry RSocket frames.
 type Transport struct {
-	sync.RWMutex
+	mu          sync.RWMutex
 	conn        Conn
 	maxLifetime time.Duration
 	lastRcvPos  uint64
@@ -84,9 +86,9 @@ func IsNoHandlerError(err error) bool {
 
 // Handle register event handlers
 func (p *Transport) Handle(event EventType, handler FrameHandler) {
-	p.Lock()
-	defer p.Unlock()
+	p.mu.Lock()
 	p.handlers[int(event)] = handler
+	p.mu.Unlock()
 }
 
 // Connection returns current connection.
@@ -160,25 +162,81 @@ func (p *Transport) ReadFirst(ctx context.Context) (frame core.BufferedFrame, er
 	return
 }
 
+func (p *Transport) loopReadBuffer(ctx context.Context, bf *buffer.Unbounded, errCh chan<- error, done chan<- struct{}) {
+	defer func() {
+		done <- struct{}{}
+	}()
+	c := bf.Get()
+	for next := range c {
+		err := p.DispatchFrame(ctx, next.(core.BufferedFrame))
+		if err != nil {
+			select {
+			case errCh <- err:
+			default:
+			}
+		}
+		if bf.Load() == 0 {
+			runtime.Gosched()
+		}
+	}
+}
+
 // Start start transport.
 func (p *Transport) Start(ctx context.Context) error {
-	defer p.Close()
+	defer func() {
+		_ = p.Close()
+	}()
+
+	done := make(chan struct{}, 1)
+	errChan := make(chan error, 1)
+
+	var (
+		oddFrames  = buffer.NewUnbounded()
+		evenFrames = buffer.NewUnbounded()
+	)
+
+	defer func() {
+		oddFrames.Dispose()
+		evenFrames.Dispose()
+
+		<-done
+		<-done
+	}()
+
+	go p.loopReadBuffer(ctx, oddFrames, errChan, done)
+	go p.loopReadBuffer(ctx, evenFrames, errChan, done)
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case err := <-errChan:
+			return errors.Wrap(err, "dispatch incoming frame failed:")
 		default:
 			f, err := p.conn.Read()
-			if err == nil {
-				err = p.DispatchFrame(ctx, f)
-			}
-			if err == nil {
-				continue
-			}
 			if err == io.EOF {
 				return nil
 			}
-			return errors.Wrap(err, "dispatch incoming frame failed:")
+			if err != nil {
+				return err
+			}
+
+			sid := f.StreamID()
+
+			// put frame into buffer
+			if sid&1 == 1 {
+				oddFrames.Put(f)
+				continue
+			}
+			if sid != 0 {
+				evenFrames.Put(f)
+				continue
+			}
+
+			// dispatch frame with zero stream id
+			if err := p.DispatchFrame(ctx, f); err != nil {
+				return errors.Wrap(err, "dispatch incoming frame failed:")
+			}
 		}
 	}
 }
@@ -260,7 +318,8 @@ func (p *Transport) DispatchFrame(_ context.Context, frame core.BufferedFrame) (
 }
 
 func (p *Transport) getHandler(t EventType) FrameHandler {
-	p.RLock()
-	defer p.RUnlock()
-	return p.handlers[t]
+	p.mu.RLock()
+	h := p.handlers[t]
+	p.mu.RUnlock()
+	return h
 }

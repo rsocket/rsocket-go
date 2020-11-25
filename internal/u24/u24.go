@@ -82,3 +82,9 @@ func WriteUint24(w io.Writer, n int) error {
 	_, err = w.Write(v[:])
 	return err
 }
+
+// ReadUint24ToInt reads bytes then decode to int.
+func ReadUint24ToInt(p []byte) int {
+	_ = p[2]
+	return int(p[0])<<16 + int(p[1])<<8 + int(p[2])
+}
