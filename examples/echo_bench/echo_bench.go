@@ -6,11 +6,10 @@ import (
 	"flag"
 	"log"
 	"math/rand"
-	"net/http"
-	_ "net/http/pprof"
 	"sync"
 	"time"
 
+	"github.com/pkg/profile"
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/internal/common"
@@ -26,10 +25,6 @@ func init() {
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
 	tp = rsocket.TCPClient().SetHostAndPort("127.0.0.1", 7878).Build()
-
-	go func() {
-		log.Println(http.ListenAndServe(":5555", nil))
-	}()
 }
 
 func main() {
@@ -37,10 +32,16 @@ func main() {
 		n           int
 		payloadSize int
 		mtu         int
+		pprof       bool
 	)
 	flag.IntVar(&n, "n", 100*10000, "request amount.")
 	flag.IntVar(&payloadSize, "size", 1024, "payload data size.")
 	flag.IntVar(&mtu, "mtu", 0, "mut size, zero means disabled.")
+	flag.BoolVar(&pprof, "pprof", false, "enable pprof")
+
+	if pprof {
+		defer profile.Start(profile.MemProfileHeap(), profile.CPUProfile, profile.ProfilePath(".")).Stop()
+	}
 
 	client, err := createClient(mtu)
 	if err != nil {

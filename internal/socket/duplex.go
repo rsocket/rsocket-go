@@ -1151,6 +1151,7 @@ func (dc *DuplexConnection) drain(leaseChan <-chan lease.Lease) bool {
 	var flush bool
 	cycle := len(dc.sndQueue)
 	if cycle < 1 {
+		runtime.Gosched()
 		cycle = 1
 	}
 	for i := 0; i < cycle; i++ {
