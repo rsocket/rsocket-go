@@ -6,7 +6,7 @@ import (
 	"math"
 
 	"github.com/rsocket/rsocket-go/core"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 )
 
 var errResumeTokenTooLarge = errors.New("max length of resume token is 65535")
@@ -31,33 +31,33 @@ func NewResumeFrame(version core.Version, token []byte, firstAvailableClientPosi
 		panic(errResumeTokenTooLarge)
 	}
 
-	bb := common.BorrowByteBuff()
+	bb := bytebuffer.BorrowByteBuff(0)
 
 	if err := core.WriteFrameHeader(bb, 0, core.FrameTypeResume, 0); err != nil {
-		common.ReturnByteBuff(bb)
+		bytebuffer.ReturnByteBuff(bb)
 		panic(err)
 	}
 
 	if _, err := bb.Write(version.Bytes()); err != nil {
-		common.ReturnByteBuff(bb)
+		bytebuffer.ReturnByteBuff(bb)
 		panic(err)
 	}
 	if err := binary.Write(bb, binary.BigEndian, uint16(n)); err != nil {
-		common.ReturnByteBuff(bb)
+		bytebuffer.ReturnByteBuff(bb)
 		panic(err)
 	}
 	if n > 0 {
 		if _, err := bb.Write(token); err != nil {
-			common.ReturnByteBuff(bb)
+			bytebuffer.ReturnByteBuff(bb)
 			panic(err)
 		}
 	}
 	if err := binary.Write(bb, binary.BigEndian, lastReceivedServerPosition); err != nil {
-		common.ReturnByteBuff(bb)
+		bytebuffer.ReturnByteBuff(bb)
 		panic(err)
 	}
 	if err := binary.Write(bb, binary.BigEndian, firstAvailableClientPosition); err != nil {
-		common.ReturnByteBuff(bb)
+		bytebuffer.ReturnByteBuff(bb)
 		panic(err)
 	}
 

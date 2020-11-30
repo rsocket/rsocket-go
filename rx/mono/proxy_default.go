@@ -60,18 +60,7 @@ func (p proxy) BlockUnsafe(ctx context.Context) (payload.Payload, ReleaseFunc, e
 }
 
 func (p proxy) Block(ctx context.Context) (payload.Payload, error) {
-	v, r, err := p.BlockUnsafe(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer r()
-	if v == nil {
-		return nil, nil
-	}
-	if _, ok := v.(common.Releasable); ok {
-		return payload.Clone(v), nil
-	}
-	return v, nil
+	return toBlock(ctx, p.Mono)
 }
 
 func (p proxy) Filter(fn rx.FnPredicate) Mono {

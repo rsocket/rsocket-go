@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/stretchr/testify/assert"
 )
@@ -294,8 +295,8 @@ func checkBytes(t *testing.T, a core.BufferedFrame, b core.WriteableFrame) {
 	assert.NoError(t, err, "write failed")
 	b1, b2 := bf1.Bytes(), bf2.Bytes()
 	assert.Equal(t, b1, b2, "bytes doesn't match")
-	bf := common.BorrowByteBuff()
-	defer common.ReturnByteBuff(bf)
+	bf := bytebuffer.BorrowByteBuff(0)
+	defer bytebuffer.ReturnByteBuff(bf)
 	_, _ = bf.Write(b1)
 	raw := newBufferedFrame(bf)
 	_, err = convert(raw)

@@ -1,17 +1,18 @@
-package common_test
+package bytebuffer_test
 
 import (
 	"io/ioutil"
 	"testing"
 
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestByteBuff_Bytes(t *testing.T) {
 	data := []byte("foobar")
-	b := common.BorrowByteBuff()
-	defer common.ReturnByteBuff(b)
+	b := bytebuffer.BorrowByteBuff(0)
+	defer bytebuffer.ReturnByteBuff(b)
 	wrote, err := b.Write(data)
 	assert.NoError(t, err, "write failed")
 	assert.Equal(t, len(data), wrote, "wrong wrote size")
@@ -41,8 +42,8 @@ func TestByteBuff_Bytes(t *testing.T) {
 //}
 
 func TestByteBuff_WriteTo(t *testing.T) {
-	b := common.BorrowByteBuff()
-	defer common.ReturnByteBuff(b)
+	b := bytebuffer.BorrowByteBuff(0)
+	defer bytebuffer.ReturnByteBuff(b)
 	// 1MB
 	s := common.RandAlphanumeric(1 * 1024 * 1024)
 	err := b.WriteString(s)

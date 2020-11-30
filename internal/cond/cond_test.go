@@ -1,4 +1,4 @@
-package common_test
+package cond_test
 
 import (
 	"context"
@@ -7,12 +7,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/cond"
 )
 
 func TestNewCond(t *testing.T) {
 	x := 0
-	c := common.NewCond(&sync.Mutex{})
+	c := cond.NewCond(&sync.Mutex{})
 	done := make(chan bool)
 	go func() {
 		c.L.Lock()

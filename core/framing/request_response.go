@@ -2,8 +2,8 @@ package framing
 
 import (
 	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 	"github.com/rsocket/rsocket-go/internal/bytesconv"
-	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/u24"
 )
 
@@ -14,30 +14,32 @@ type RequestResponseFrame struct {
 
 // NewRequestResponseFrame returns a new RequestResponseFrame.
 func NewRequestResponseFrame(id uint32, data, metadata []byte, fg core.FrameFlag) *RequestResponseFrame {
-	if len(metadata) > 0 {
+	size := core.FrameHeaderLen + len(data)
+	if l := len(metadata); l > 0 {
 		fg |= core.FlagMetadata
+		size += 3 + l
 	}
 
-	b := common.BorrowByteBuff()
+	b := bytebuffer.BorrowByteBuff(size)
 
 	if err := core.WriteFrameHeader(b, id, core.FrameTypeRequestResponse, fg); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 
 	if len(metadata) > 0 {
 		if err := u24.WriteUint24(b, len(metadata)); err != nil {
-			common.ReturnByteBuff(b)
+			bytebuffer.ReturnByteBuff(b)
 			panic(err)
 		}
 		if _, err := b.Write(metadata); err != nil {
-			common.ReturnByteBuff(b)
+			bytebuffer.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
 	if len(data) > 0 {
 		if _, err := b.Write(data); err != nil {
-			common.ReturnByteBuff(b)
+			bytebuffer.ReturnByteBuff(b)
 			panic(err)
 		}
 	}

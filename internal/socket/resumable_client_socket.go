@@ -123,12 +123,13 @@ func (r *resumeClientSocket) connect(ctx context.Context, timeout time.Duration)
 		return nil
 	})
 
-	err = tp.Send(framing.NewWriteableResumeFrame(
+	resumeFrame := framing.NewWriteableResumeFrame(
 		core.DefaultVersion,
 		r.setup.Token,
 		r.socket.counter.WriteBytes(),
 		r.socket.counter.ReadBytes(),
-	), true)
+	)
+	err = tp.Send(resumeFrame, true)
 
 	if err != nil {
 		return err

@@ -33,7 +33,7 @@ func (p *TCPConn) SetDeadline(deadline time.Time) error {
 }
 
 // Read reads next frame from Conn.
-func (p *TCPConn) Read() (f core.BufferedFrame, err error) {
+func (p *TCPConn) Read() (next core.BufferedFrame, err error) {
 	raw, err := p.decoder.Read()
 	if err == io.EOF {
 		return
@@ -42,21 +42,21 @@ func (p *TCPConn) Read() (f core.BufferedFrame, err error) {
 		err = errors.Wrap(err, "read frame failed:")
 		return
 	}
-	f, err = framing.FromBytes(raw)
+	next, err = framing.FromBytes(raw)
 	if err != nil {
 		err = errors.Wrap(err, "decode frame failed:")
 		return
 	}
-	if p.counter != nil && f.Header().Resumable() {
-		p.counter.IncReadBytes(f.Len())
+	if p.counter != nil && next.Header().Resumable() {
+		p.counter.IncReadBytes(next.Len())
 	}
-	err = f.Validate()
+	err = next.Validate()
 	if err != nil {
 		err = errors.Wrap(err, "validate frame failed:")
 		return
 	}
 	if logger.IsDebugEnabled() {
-		logger.Debugf("%s\n", framing.PrintFrame(f))
+		logger.Debugf("%s\n", framing.PrintFrame(next))
 	}
 	return
 }
@@ -71,9 +71,9 @@ func (p *TCPConn) Flush() (err error) {
 }
 
 // Write writes a frame.
-func (p *TCPConn) Write(frame core.WriteableFrame) (err error) {
-	size := frame.Len()
-	if p.counter != nil && frame.Header().Resumable() {
+func (p *TCPConn) Write(next core.WriteableFrame) (err error) {
+	size := next.Len()
+	if p.counter != nil && next.Header().Resumable() {
 		p.counter.IncWriteBytes(size)
 	}
 	_, err = u24.MustNewUint24(size).WriteTo(p.writer)
@@ -81,17 +81,13 @@ func (p *TCPConn) Write(frame core.WriteableFrame) (err error) {
 		err = errors.Wrap(err, "write frame failed")
 		return
 	}
-	var debugStr string
-	if logger.IsDebugEnabled() {
-		debugStr = framing.PrintFrame(frame)
-	}
-	_, err = frame.WriteTo(p.writer)
+	_, err = next.WriteTo(p.writer)
 	if err != nil {
 		err = errors.Wrap(err, "write frame failed")
 		return
 	}
 	if logger.IsDebugEnabled() {
-		logger.Debugf("%s\n", debugStr)
+		logger.Debugf("%s\n", framing.PrintFrame(next))
 	}
 	return
 }

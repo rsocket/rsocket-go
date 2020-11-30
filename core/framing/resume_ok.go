@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 
 	"github.com/rsocket/rsocket-go/core"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 )
 
 // ResumeOKFrame is ResumeOK frame.
@@ -14,15 +14,15 @@ type ResumeOKFrame struct {
 
 // NewResumeOKFrame creates a new ResumeOKFrame.
 func NewResumeOKFrame(position uint64) *ResumeOKFrame {
-	b := common.BorrowByteBuff()
+	b := bytebuffer.BorrowByteBuff(core.FrameHeaderLen + 8)
 
 	if err := core.WriteFrameHeader(b, 0, core.FrameTypeResumeOK, 0); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 
 	if err := binary.Write(b, binary.BigEndian, position); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 

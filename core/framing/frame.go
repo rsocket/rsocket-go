@@ -4,7 +4,7 @@ import (
 	"errors"
 
 	"github.com/rsocket/rsocket-go/core"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 )
 
 var errIncompleteFrame = errors.New("incomplete frame")
@@ -15,15 +15,15 @@ func FromBytes(b []byte) (f core.BufferedFrame, err error) {
 		err = errIncompleteFrame
 		return
 	}
-	bb := common.BorrowByteBuff()
+	bb := bytebuffer.BorrowByteBuff(len(b))
 	_, err = bb.Write(b)
 	if err != nil {
-		common.ReturnByteBuff(bb)
+		bytebuffer.ReturnByteBuff(bb)
 		return
 	}
 	f, err = convert(newBufferedFrame(bb))
 	if err != nil {
-		common.ReturnByteBuff(bb)
+		bytebuffer.ReturnByteBuff(bb)
 	}
 	return
 }

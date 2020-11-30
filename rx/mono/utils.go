@@ -165,22 +165,17 @@ func mustProcessor(origin mono.Mono) mono.Processor {
 }
 
 func toBlock(ctx context.Context, m mono.Mono) (payload.Payload, error) {
-	done := make(chan struct{})
-	vchan := make(chan payload.Payload, 1)
-	echan := make(chan error, 1)
-	b := newBlockSubscriber(done, vchan, echan)
-	m.SubscribeWith(ctx, b)
-	<-done
+	s := globalBlockSubscriberPool.get()
+	defer globalBlockSubscriberPool.put(s)
+	m.SubscribeWith(ctx, s)
 
-	defer close(vchan)
-	defer close(echan)
+	<-s.Done()
 
-	select {
-	case value := <-vchan:
-		return value, nil
-	case err := <-echan:
-		return nil, err
-	default:
+	if s.E != nil {
+		return nil, s.E
+	}
+	if s.V == nil {
 		return nil, nil
 	}
+	return s.V.(payload.Payload), nil
 }

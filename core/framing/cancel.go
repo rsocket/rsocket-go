@@ -2,7 +2,7 @@ package framing
 
 import (
 	"github.com/rsocket/rsocket-go/core"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 )
 
 // CancelFrame is frame of Cancel.
@@ -21,9 +21,9 @@ func (f *CancelFrame) Validate() (err error) {
 
 // NewCancelFrame creates cancel frame.
 func NewCancelFrame(sid uint32) *CancelFrame {
-	bb := common.BorrowByteBuff()
+	bb := bytebuffer.BorrowByteBuff(core.FrameHeaderLen)
 	if err := core.WriteFrameHeader(bb, sid, core.FrameTypeCancel, 0); err != nil {
-		common.ReturnByteBuff(bb)
+		bytebuffer.ReturnByteBuff(bb)
 		panic(err)
 	}
 	return &CancelFrame{

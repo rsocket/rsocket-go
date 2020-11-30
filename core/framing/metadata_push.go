@@ -1,8 +1,9 @@
 package framing
 
 import (
+	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 	"github.com/rsocket/rsocket-go/internal/bytesconv"
-	"github.com/rsocket/rsocket-go/internal/common"
 )
 
 // MetadataPushFrame is MetadataPush frame.
@@ -12,15 +13,15 @@ type MetadataPushFrame struct {
 
 // NewMetadataPushFrame returns a new MetadataPushFrame.
 func NewMetadataPushFrame(metadata []byte) *MetadataPushFrame {
-	b := common.BorrowByteBuff()
+	b := bytebuffer.BorrowByteBuff(core.FrameHeaderLen + len(metadata))
 
 	if _, err := b.Write(_metadataPushHeader[:]); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 
 	if _, err := b.Write(metadata); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 

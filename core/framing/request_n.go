@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 
 	"github.com/rsocket/rsocket-go/core"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 )
 
 // RequestNFrame is RequestN frame.
@@ -14,15 +14,15 @@ type RequestNFrame struct {
 
 // NewRequestNFrame creates a new RequestNFrame.
 func NewRequestNFrame(sid, n uint32, fg core.FrameFlag) *RequestNFrame {
-	b := common.BorrowByteBuff()
+	b := bytebuffer.BorrowByteBuff(core.FrameHeaderLen + 4)
 
 	if err := core.WriteFrameHeader(b, sid, core.FrameTypeRequestN, fg); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 
 	if err := binary.Write(b, binary.BigEndian, n); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 

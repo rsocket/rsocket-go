@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 
 	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
@@ -20,20 +21,20 @@ type ErrorFrame struct {
 
 // NewErrorFrame returns a new error frame.
 func NewErrorFrame(sid uint32, code core.ErrorCode, data []byte) *ErrorFrame {
-	b := common.BorrowByteBuff()
+	b := bytebuffer.BorrowByteBuff(core.FrameHeaderLen + 4 + len(data))
 
 	if err := core.WriteFrameHeader(b, sid, core.FrameTypeError, 0); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 
 	if err := binary.Write(b, binary.BigEndian, uint32(code)); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 
 	if _, err := b.Write(data); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 

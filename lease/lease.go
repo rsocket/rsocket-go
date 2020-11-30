@@ -27,6 +27,10 @@ type Lease struct {
 	Metadata         []byte
 }
 
+func (l Lease) IsZero() bool {
+	return l.TimeToLive == 0 && l.NumberOfRequests == 0 && l.Metadata == nil
+}
+
 // NewSimpleFactory creates a simple lease factory.
 func NewSimpleFactory(interval, ttl, delay time.Duration, numberOfRequest uint32) (Factory, error) {
 	if interval <= 0 {

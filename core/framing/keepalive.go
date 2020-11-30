@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 
 	"github.com/rsocket/rsocket-go/core"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 )
 
 const (
@@ -23,18 +23,18 @@ func NewKeepaliveFrame(position uint64, data []byte, respond bool) *KeepaliveFra
 	if respond {
 		fg |= core.FlagRespond
 	}
-	b := common.BorrowByteBuff()
+	b := bytebuffer.BorrowByteBuff(core.FrameHeaderLen + 8 + len(data))
 	if err := core.WriteFrameHeader(b, 0, core.FrameTypeKeepalive, fg); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 	if err := binary.Write(b, binary.BigEndian, position); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 	if len(data) > 0 {
 		if _, err := b.Write(data); err != nil {
-			common.ReturnByteBuff(b)
+			bytebuffer.ReturnByteBuff(b)
 			panic(err)
 		}
 	}

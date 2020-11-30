@@ -132,14 +132,13 @@ func (srv *server) Transport(t transport.ServerTransporter) Start {
 }
 
 func (srv *server) Serve(ctx context.Context) error {
-	err := fragmentation.IsValidFragment(srv.fragment)
-	if err != nil {
+	if err := fragmentation.IsValidFragment(srv.fragment); err != nil {
 		return err
 	}
 
-	t, err := srv.tp(ctx)
-	if err != nil {
-		return err
+	t, e := srv.tp(ctx)
+	if e != nil {
+		return e
 	}
 
 	defer func() {
@@ -149,6 +148,7 @@ func (srv *server) Serve(ctx context.Context) error {
 	go func(ctx context.Context) {
 		_ = srv.loopCleanSession(ctx)
 	}(ctx)
+
 	t.Accept(func(ctx context.Context, tp *transport.Transport, onClose func(*transport.Transport)) {
 		defer onClose(tp)
 		socketChan := make(chan socket.ServerSocket, 1)
@@ -175,10 +175,18 @@ func (srv *server) Serve(ctx context.Context) error {
 			close(socketChan)
 		}()
 
-		first, err := tp.ReadFirst(ctx)
+		var first core.BufferedFrame
+		var err error
+
+		defer func() {
+			if err != nil {
+				_ = tp.Close()
+			}
+		}()
+
+		first, err = tp.ReadFirst(ctx)
 		if err != nil {
 			logger.Errorf("read first frame failed: %s\n", err)
-			_ = tp.Close()
 			return
 		}
 
@@ -186,12 +194,11 @@ func (srv *server) Serve(ctx context.Context) error {
 
 		switch frame := first.(type) {
 		case *framing.ResumeFrame:
-			srv.doResume(frame, tp, socketChan)
+			err = srv.doResume(frame, tp, socketChan)
 		case *framing.SetupFrame:
-			sendingSocket, err := srv.doSetup(frame, tp, socketChan)
+			var sendingSocket socket.ServerSocket
+			sendingSocket, err = srv.doSetup(frame, tp, socketChan)
 			if err != nil {
-				_ = tp.Send(err, true)
-				_ = tp.Close()
 				return
 			}
 			go func(ctx context.Context, sendingSocket socket.ServerSocket) {
@@ -200,9 +207,9 @@ func (srv *server) Serve(ctx context.Context) error {
 				}
 			}(ctx, sendingSocket)
 		default:
-			err := framing.NewWriteableErrorFrame(0, core.ErrorCodeConnectionError, bytesconv.StringToBytes(_errInvalidFirstFrame))
-			_ = tp.Send(err, true)
-			_ = tp.Close()
+			errorFrame := framing.NewWriteableErrorFrame(0, core.ErrorCodeConnectionError, bytesconv.StringToBytes(_errInvalidFirstFrame))
+			_ = tp.Send(errorFrame, true)
+			err = errorFrame
 			return
 		}
 		if err := tp.Start(ctx); err != nil {
@@ -220,7 +227,16 @@ func (srv *server) Serve(ctx context.Context) error {
 	return t.Listen(ctx, notifier)
 }
 
-func (srv *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.WriteableErrorFrame) {
+func (srv *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+		if sending, ok := err.(core.WriteableFrame); ok {
+			_ = tp.Send(sending, true)
+		}
+	}()
+
 	if frame.HasFlag(core.FlagLease) && srv.leases == nil {
 		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeUnsupportedSetup, bytesconv.StringToBytes(_errUnavailableLease))
 		return
@@ -277,7 +293,7 @@ func (srv *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, s
 	return
 }
 
-func (srv *server) doResume(frame *framing.ResumeFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) {
+func (srv *server) doResume(frame *framing.ResumeFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) error {
 	var sending core.WriteableFrame
 	if !srv.resumeOpts.enable {
 		sending = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedResume, bytesconv.StringToBytes(_errUnavailableResume))
@@ -295,10 +311,12 @@ func (srv *server) doResume(frame *framing.ResumeFrame, tp *transport.Transport,
 			[]byte("no such session"),
 		)
 	}
+
 	if err := tp.Send(sending, true); err != nil {
 		logger.Errorf("send resume response failed: %s\n", err)
-		_ = tp.Close()
+		return err
 	}
+	return nil
 }
 
 func (srv *server) loopCleanSession(ctx context.Context) (err error) {

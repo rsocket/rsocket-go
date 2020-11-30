@@ -6,17 +6,17 @@ import (
 	"sync/atomic"
 
 	"github.com/rsocket/rsocket-go/core"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 	"github.com/rsocket/rsocket-go/internal/u24"
 )
 
 // bufferedFrame is basic frame implementation.
 type bufferedFrame struct {
-	inner *common.ByteBuff
+	inner *bytebuffer.ByteBuff
 	refs  int32
 }
 
-func newBufferedFrame(inner *common.ByteBuff) *bufferedFrame {
+func newBufferedFrame(inner *bytebuffer.ByteBuff) *bufferedFrame {
 	return &bufferedFrame{
 		inner: inner,
 		refs:  1,
@@ -60,7 +60,7 @@ func (f *bufferedFrame) StreamID() uint32 {
 // Release releases resource.
 func (f *bufferedFrame) Release() {
 	if f != nil && f.inner != nil && atomic.AddInt32(&f.refs, -1) == 0 {
-		common.ReturnByteBuff(f.inner)
+		bytebuffer.ReturnByteBuff(f.inner)
 		f.inner = nil
 	}
 }

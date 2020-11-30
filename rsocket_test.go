@@ -17,6 +17,7 @@ import (
 	. "github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/extension"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/lease"
 	"github.com/rsocket/rsocket-go/payload"
@@ -48,7 +49,7 @@ func TestResume(t *testing.T) {
 	defer func() {
 		cancel()
 		time.Sleep(1 * time.Second)
-		assert.Zero(t, common.CountBorrowed())
+		assert.Zero(t, bytebuffer.CountBorrowed())
 	}()
 
 	started := make(chan struct{})

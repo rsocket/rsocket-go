@@ -1,41 +1,64 @@
-package common
+package bytebuffer
 
 import (
 	"bytes"
 	"io"
 	"sync"
-
-	"go.uber.org/atomic"
+	"sync/atomic"
 )
 
-var _byteBuffPool = sync.Pool{
-	New: func() interface{} {
-		return new(ByteBuff)
-	},
+const maxCap = 1 << 12
+
+type pool struct {
+	cnt   int64
+	inner sync.Pool
 }
 
-var _borrowed = atomic.NewInt64(0)
+func (bp *pool) get(size int) *ByteBuff {
+	atomic.AddInt64(&bp.cnt, 1)
+	if exist, _ := bp.inner.Get().(*ByteBuff); exist != nil {
+		if size > 0 {
+			((*bytes.Buffer)(exist)).Grow(size)
+		}
+		return exist
+	}
+	bb := new(bytes.Buffer)
+	if size > 0 {
+		bb.Grow(size)
+	}
+	return (*ByteBuff)(bb)
+}
+
+func (bp *pool) put(bb *ByteBuff) {
+	if bb != nil && ((*bytes.Buffer)(bb)).Cap() <= maxCap {
+		bb.Reset()
+		bp.inner.Put(bb)
+	}
+	atomic.AddInt64(&bp.cnt, -1)
+}
+
+func (bp *pool) size() int64 {
+	return atomic.LoadInt64(&bp.cnt)
+}
+
+var global pool
 
 // ByteBuff provides byte buffer, which can be used for minimizing.
 type ByteBuff bytes.Buffer
 
 // CountBorrowed returns borrowed ByteBuff amount.
 func CountBorrowed() int64 {
-	return _borrowed.Load()
+	return global.size()
 }
 
 // BorrowByteBuff borrows a ByteBuff from pool.
-func BorrowByteBuff() *ByteBuff {
-	_borrowed.Inc()
-	b := _byteBuffPool.Get().(*ByteBuff)
-	return b
+func BorrowByteBuff(n int) *ByteBuff {
+	return global.get(n)
 }
 
 // ReturnByteBuff returns a ByteBuff to pool.
 func ReturnByteBuff(b *ByteBuff) {
-	_borrowed.Dec()
-	b.Reset()
-	_byteBuffPool.Put(b)
+	global.put(b)
 }
 
 // Reset resets ByteBuff.

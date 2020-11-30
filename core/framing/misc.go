@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/rsocket/rsocket-go/core"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/bytedump"
 	"github.com/rsocket/rsocket-go/internal/u24"
 )
 
@@ -126,12 +126,12 @@ func PrintFrame(f core.Frame) string {
 
 	if metadata != nil {
 		b.WriteString("\nMetadata:\n")
-		common.AppendPrettyHexDump(b, metadata)
+		bytedump.AppendPrettyHexDump(b, metadata)
 	}
 
 	if data != nil {
 		b.WriteString("\nData:\n")
-		common.AppendPrettyHexDump(b, data)
+		bytedump.AppendPrettyHexDump(b, data)
 	}
 	return b.String()
 }

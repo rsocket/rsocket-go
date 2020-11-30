@@ -2,8 +2,8 @@ package framing
 
 import (
 	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 	"github.com/rsocket/rsocket-go/internal/bytesconv"
-	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/u24"
 )
 
@@ -14,29 +14,32 @@ type FireAndForgetFrame struct {
 
 // NewFireAndForgetFrame returns a new FireAndForgetFrame.
 func NewFireAndForgetFrame(sid uint32, data, metadata []byte, flag core.FrameFlag) *FireAndForgetFrame {
-	if len(metadata) > 0 {
+	size := core.FrameHeaderLen + len(data)
+
+	if l := len(metadata); l > 0 {
 		flag |= core.FlagMetadata
+		size += 3 + l
 	}
 
-	bb := common.BorrowByteBuff()
+	bb := bytebuffer.BorrowByteBuff(size)
 
 	if err := core.WriteFrameHeader(bb, sid, core.FrameTypeRequestFNF, flag); err != nil {
-		common.ReturnByteBuff(bb)
+		bytebuffer.ReturnByteBuff(bb)
 		panic(err)
 	}
 
 	if len(metadata) > 0 {
 		if err := u24.WriteUint24(bb, len(metadata)); err != nil {
-			common.ReturnByteBuff(bb)
+			bytebuffer.ReturnByteBuff(bb)
 			panic(err)
 		}
 		if _, err := bb.Write(metadata); err != nil {
-			common.ReturnByteBuff(bb)
+			bytebuffer.ReturnByteBuff(bb)
 			panic(err)
 		}
 	}
 	if _, err := bb.Write(data); err != nil {
-		common.ReturnByteBuff(bb)
+		bytebuffer.ReturnByteBuff(bb)
 		panic(err)
 	}
 

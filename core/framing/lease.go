@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
@@ -27,26 +28,26 @@ func NewLeaseFrame(ttl time.Duration, n uint32, metadata []byte) *LeaseFrame {
 		fg |= core.FlagMetadata
 	}
 
-	b := common.BorrowByteBuff()
+	b := bytebuffer.BorrowByteBuff(core.FrameHeaderLen + 8 + len(metadata))
 
 	if err := core.WriteFrameHeader(b, 0, core.FrameTypeLease, fg); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 
 	ttlInMills := uint32(common.ToMilliseconds(ttl))
 	if err := binary.Write(b, binary.BigEndian, ttlInMills); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 	if err := binary.Write(b, binary.BigEndian, n); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 
 	if len(metadata) > 0 {
 		if _, err := b.Write(metadata); err != nil {
-			common.ReturnByteBuff(b)
+			bytebuffer.ReturnByteBuff(b)
 			panic(err)
 		}
 	}

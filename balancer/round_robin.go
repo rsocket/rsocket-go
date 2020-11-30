@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/cond"
 	"github.com/rsocket/rsocket-go/logger"
 )
 
@@ -23,7 +23,7 @@ type balancerRoundRobin struct {
 	done    chan struct{}
 	once    sync.Once
 	onLeave []func(string)
-	c       *common.Cond
+	c       *cond.Cond
 }
 
 func (b *balancerRoundRobin) OnLeave(fn func(label string)) {
@@ -136,6 +136,6 @@ func NewRoundRobinBalancer() Balancer {
 	b := &balancerRoundRobin{
 		done: make(chan struct{}),
 	}
-	b.c = common.NewCond(b.mu.RLocker())
+	b.c = cond.NewCond(b.mu.RLocker())
 	return b
 }

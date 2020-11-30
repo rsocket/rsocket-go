@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rsocket/rsocket-go/core"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/u24"
@@ -46,66 +47,66 @@ func NewSetupFrame(
 		fg |= core.FlagMetadata
 	}
 
-	b := common.BorrowByteBuff()
+	b := bytebuffer.BorrowByteBuff(0)
 
 	if err := core.WriteFrameHeader(b, 0, core.FrameTypeSetup, fg); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 
 	if _, err := b.Write(version.Bytes()); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 	if err := binary.Write(b, binary.BigEndian, uint32(common.ToMilliseconds(timeBetweenKeepalive))); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 
 	if err := binary.Write(b, binary.BigEndian, uint32(common.ToMilliseconds(maxLifetime))); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 
 	if len(token) > 0 {
 		if err := binary.Write(b, binary.BigEndian, uint16(len(token))); err != nil {
-			common.ReturnByteBuff(b)
+			bytebuffer.ReturnByteBuff(b)
 			panic(err)
 		}
 		if _, err := b.Write(token); err != nil {
-			common.ReturnByteBuff(b)
+			bytebuffer.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
 	if err := b.WriteByte(byte(len(mimeMetadata))); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 	if _, err := b.Write(mimeMetadata); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 	if err := b.WriteByte(byte(len(mimeData))); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 	if _, err := b.Write(mimeData); err != nil {
-		common.ReturnByteBuff(b)
+		bytebuffer.ReturnByteBuff(b)
 		panic(err)
 	}
 	if len(metadata) > 0 {
 		if err := u24.WriteUint24(b, len(metadata)); err != nil {
-			common.ReturnByteBuff(b)
+			bytebuffer.ReturnByteBuff(b)
 			panic(err)
 		}
 		if _, err := b.Write(metadata); err != nil {
-			common.ReturnByteBuff(b)
+			bytebuffer.ReturnByteBuff(b)
 			panic(err)
 		}
 	}
 	if len(data) > 0 {
 		if _, err := b.Write(data); err != nil {
-			common.ReturnByteBuff(b)
+			bytebuffer.ReturnByteBuff(b)
 			panic(err)
 		}
 	}

@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/profile"
 	"github.com/rsocket/rsocket-go"
 	"github.com/rsocket/rsocket-go/core/transport"
-	"github.com/rsocket/rsocket-go/internal/common"
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/mono"
@@ -57,7 +57,6 @@ func main() {
 	now := time.Now()
 
 	errCount := atomic.NewInt32(0)
-
 	sub := rx.NewSubscriber(
 		rx.OnNext(func(input payload.Payload) error {
 			//m2, _ := elem.MetadataUTF8()
@@ -93,7 +92,7 @@ func createClient(mtu int) (rsocket.Client, error) {
 	return rsocket.Connect().
 		Fragment(mtu).
 		OnClose(func(err error) {
-			log.Println("*** disconnected ***", common.CountBorrowed())
+			log.Println("*** disconnected ***", bytebuffer.CountBorrowed())
 		}).
 		SetupPayload(payload.NewString("你好", "世界")).
 		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {

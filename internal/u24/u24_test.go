@@ -3,6 +3,7 @@ package u24_test
 import (
 	"testing"
 
+	"github.com/rsocket/rsocket-go/internal/bytebuffer"
 	. "github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/u24"
 	"github.com/stretchr/testify/assert"
@@ -55,8 +56,8 @@ func TestUint24(t *testing.T) {
 }
 
 func TestUint24_WriteTo(t *testing.T) {
-	b := BorrowByteBuff()
-	defer ReturnByteBuff(b)
+	b := bytebuffer.BorrowByteBuff(0)
+	defer bytebuffer.ReturnByteBuff(b)
 	for _, n := range []int{0, 1, RandIntn(u24.MaxUint24), u24.MaxUint24} {
 		b.Reset()
 		v := u24.MustNewUint24(n)
