@@ -3,9 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"flag"
 	"log"
-	"math/rand"
 	"sync"
 	"time"
 
@@ -21,27 +21,22 @@ import (
 
 var tp transport.ClientTransporter
 
+var (
+	n           int
+	payloadSize int
+	mtu         int
+)
+
 func init() {
+	flag.IntVar(&n, "n", 100*10000, "request amount.")
+	flag.IntVar(&payloadSize, "size", 1024, "payload data size.")
+	flag.IntVar(&mtu, "mtu", 0, "mut size, zero means disabled.")
 	flag.Parse()
-	rand.Seed(time.Now().UnixNano())
 	tp = rsocket.TCPClient().SetHostAndPort("127.0.0.1", 7878).Build()
 }
 
 func main() {
-	var (
-		n           int
-		payloadSize int
-		mtu         int
-		pprof       bool
-	)
-	flag.IntVar(&n, "n", 100*10000, "request amount.")
-	flag.IntVar(&payloadSize, "size", 1024, "payload data size.")
-	flag.IntVar(&mtu, "mtu", 0, "mut size, zero means disabled.")
-	flag.BoolVar(&pprof, "pprof", false, "enable pprof")
-
-	if pprof {
-		defer profile.Start(profile.MemProfileHeap(), profile.CPUProfile, profile.ProfilePath(".")).Stop()
-	}
+	defer profile.Start(profile.MemProfile, profile.ProfilePath(".")).Stop()
 
 	client, err := createClient(mtu)
 	if err != nil {
