@@ -3,6 +3,7 @@ package socket
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/rsocket/rsocket-go/core"
@@ -12,20 +13,35 @@ import (
 	"github.com/rsocket/rsocket-go/rx"
 )
 
-var _requestResponseSubscriberPool = sync.Pool{
-	New: func() interface{} {
-		return new(requestResponseSubscriber)
-	},
+var globalRequestResponseSubscriberPool requestResponseSubscriberPool
+
+type requestResponseSubscriberPool struct {
+	inner sync.Pool
+}
+
+func (p *requestResponseSubscriberPool) get() *requestResponseSubscriber {
+	if exist, _ := p.inner.Get().(*requestResponseSubscriber); exist != nil {
+		return exist
+	}
+	return &requestResponseSubscriber{}
+}
+
+func (p *requestResponseSubscriberPool) put(s *requestResponseSubscriber) {
+	if s == nil {
+		return
+	}
+	p.inner.Put(s)
 }
 
 type requestResponseSubscriber struct {
 	dc        *DuplexConnection
 	sid       uint32
 	receiving fragmentation.HeaderAndPayload
+	sndCnt    int32
 }
 
 func borrowRequestResponseSubscriber(dc *DuplexConnection, sid uint32, receiving fragmentation.HeaderAndPayload) rx.Subscriber {
-	s := _requestResponseSubscriberPool.Get().(*requestResponseSubscriber)
+	s := globalRequestResponseSubscriberPool.get()
 	s.receiving = receiving
 	s.dc = dc
 	s.sid = sid
@@ -39,11 +55,13 @@ func returnRequestResponseSubscriber(s rx.Subscriber) {
 	}
 	actual.dc = nil
 	actual.receiving = nil
-	_requestResponseSubscriberPool.Put(actual)
+	actual.sndCnt = 0
+	globalRequestResponseSubscriberPool.put(actual)
 }
 
 func (r *requestResponseSubscriber) OnNext(next payload.Payload) {
 	r.dc.sendPayload(r.sid, next, core.FlagNext|core.FlagComplete)
+	atomic.AddInt32(&r.sndCnt, 1)
 }
 
 func (r *requestResponseSubscriber) OnError(err error) {
@@ -55,6 +73,9 @@ func (r *requestResponseSubscriber) OnError(err error) {
 }
 
 func (r *requestResponseSubscriber) OnComplete() {
+	if atomic.AddInt32(&r.sndCnt, 1) == 1 {
+		r.dc.sendPayload(r.sid, payload.Empty(), core.FlagComplete)
+	}
 	r.dc.unregister(r.sid)
 	r.finish()
 }

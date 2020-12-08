@@ -9,6 +9,8 @@ import (
 	"github.com/rsocket/rsocket-go/internal/common"
 )
 
+var _empty = New(nil, nil)
+
 type (
 	// Payload is a stream message (upstream or downstream).
 	// It contains data associated with a stream created by a previous request.
@@ -121,4 +123,9 @@ func Equal(a Payload, b Payload) bool {
 	}
 
 	return bytes.Equal(m1, m2)
+}
+
+// Empty returns an empty Payload.
+func Empty() Payload {
+	return _empty
 }
