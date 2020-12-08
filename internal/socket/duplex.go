@@ -1033,7 +1033,6 @@ func (dc *DuplexConnection) sendPayload(
 	sending payload.Payload,
 	frameFlag core.FrameFlag,
 ) {
-
 	d := sending.Data()
 	m, _ := sending.Metadata()
 	size := framing.CalcPayloadFrameSize(d, m)

@@ -92,3 +92,8 @@ func TestNewFile(t *testing.T) {
 		payload.MustNewFile("/not/existing", nil)
 	}()
 }
+
+func TestEmpty(t *testing.T) {
+	p := payload.Empty()
+	assert.Nil(t, p.Data())
+}
