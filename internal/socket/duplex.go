@@ -523,7 +523,7 @@ func (dc *DuplexConnection) respondRequestResponse(receiving fragmentation.Heade
 			if e, ok := rec.(error); ok {
 				err = errors.WithStack(e)
 			} else {
-				err = errors.Errorf("%v", e)
+				err = errors.Errorf("%v", rec)
 			}
 			logger.Errorf("handle request-response failed: %+v\n", err)
 		}()
@@ -618,7 +618,7 @@ func (dc *DuplexConnection) respondRequestChannel(req fragmentation.HeaderAndPay
 			if e, ok := rec.(error); ok {
 				err = errors.WithStack(e)
 			} else {
-				err = errors.Errorf("%v", e)
+				err = errors.Errorf("%v", rec)
 			}
 			logger.Errorf("handle request-channel failed: %+v\n", err)
 		}()
@@ -672,7 +672,7 @@ func (dc *DuplexConnection) respondMetadataPush(input core.BufferedFrame) error 
 			if e, ok := rec.(error); ok {
 				err = errors.WithStack(e)
 			} else {
-				err = errors.Errorf("%v", e)
+				err = errors.Errorf("%v", rec)
 			}
 			logger.Errorf("handle metadata-push failed: %+v\n", err)
 		}()
@@ -701,7 +701,7 @@ func (dc *DuplexConnection) respondFireAndForget(receiving fragmentation.HeaderA
 			if e, ok := rec.(error); ok {
 				err = errors.WithStack(e)
 			} else {
-				err = errors.Errorf("%v", e)
+				err = errors.Errorf("%v", rec)
 			}
 			logger.Errorf("handle fire-and-forget failed: %+v\n", err)
 		}()
@@ -733,7 +733,7 @@ func (dc *DuplexConnection) respondRequestStream(receiving fragmentation.HeaderA
 			if e, ok := rec.(error); ok {
 				err = errors.WithStack(e)
 			} else {
-				err = errors.Errorf("%v", err)
+				err = errors.Errorf("%v", rec)
 			}
 			logger.Errorf("handle request-stream failed: %+v\n", err)
 		}()
