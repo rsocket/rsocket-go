@@ -8,6 +8,7 @@ import (
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/payload"
+	"github.com/rsocket/rsocket-go/rx"
 )
 
 var empty = newProxy(mono.Empty())
@@ -30,6 +31,10 @@ func IsSubscribeAsync(m Mono) bool {
 // Raw wrap a low-level Mono.
 func Raw(input mono.Mono) Mono {
 	return newProxy(input)
+}
+
+func RawOneshot(origin mono.Mono) Mono {
+	return borrowOneshotProxy(origin)
 }
 
 // Just wrap an exist Payload to a Mono.
@@ -156,14 +161,6 @@ func toChan(ctx context.Context, publisher mono.Mono) (<-chan payload.Payload, <
 	return value, err
 }
 
-func mustProcessor(origin mono.Mono) mono.Processor {
-	m, ok := origin.(mono.Processor)
-	if !ok {
-		panic(errors.Errorf("require processor but %v", origin))
-	}
-	return m
-}
-
 func toBlock(ctx context.Context, m mono.Mono) (payload.Payload, error) {
 	done := make(chan struct{})
 	vchan := make(chan payload.Payload, 1)
@@ -183,4 +180,36 @@ func toBlock(ctx context.Context, m mono.Mono) (payload.Payload, error) {
 	default:
 		return nil, nil
 	}
+}
+
+func unpackRawPublisher(source Mono) mono.Mono {
+	if source == nil {
+		return nil
+	}
+	switch t := source.(type) {
+	case *oneshotProxy:
+		return returnOneshotProxy(t)
+	default:
+		return t.Raw()
+	}
+}
+
+func convertItem(item *reactor.Item) (result rx.Item, err error) {
+	if item == nil {
+		return
+	}
+	if item.E != nil {
+		result.E = item.E
+		return
+	}
+	if item.V == nil {
+		return
+	}
+	p, ok := item.V.(payload.Payload)
+	if !ok {
+		err = errors.Errorf("require Payload value type instead of %t", item.V)
+		return
+	}
+	result.V = p
+	return
 }

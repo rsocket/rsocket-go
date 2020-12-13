@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/jjeffcaii/reactor-go"
-	"github.com/jjeffcaii/reactor-go/tuple"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/stretchr/testify/assert"
@@ -17,8 +16,11 @@ var (
 )
 
 func TestTuple(t *testing.T) {
-	rawTuple := tuple.NewTuple(&reactor.Item{V: fakePayload}, &reactor.Item{E: fakeError}, &reactor.Item{})
-	tup := rx.NewTuple(rawTuple)
+	tup := rx.NewTuple(&reactor.Item{V: fakePayload}, &reactor.Item{E: fakeError}, &reactor.Item{})
+	assert.NotNil(t, tup.GetValue(0))
+	assert.Nil(t, tup.GetValue(-1))
+	assert.Nil(t, tup.GetValue(999))
+
 	v, err := tup.First()
 	assert.NoError(t, err, "should not return error")
 	assert.Equal(t, fakePayload, v, "should be fake payload")
@@ -63,7 +65,7 @@ func TestTuple(t *testing.T) {
 }
 
 func TestTupleWithWrongType(t *testing.T) {
-	tup := rx.NewTuple(tuple.NewTuple(&reactor.Item{V: 1}))
+	tup := rx.NewTuple(&reactor.Item{V: 1})
 	_, err := tup.First()
 	assert.Error(t, err)
 	assert.True(t, rx.IsWrongTupleTypeError(err))
@@ -78,6 +80,25 @@ func TestTupleWithWrongType(t *testing.T) {
 }
 
 func TestTuple_Empty(t *testing.T) {
-	tup := tuple.NewTuple()
+	tup := rx.NewTuple()
 	assert.Zero(t, tup.Len())
+	assert.False(t, tup.HasError())
+	assert.Nil(t, tup.GetValue(0))
+}
+
+func TestTuple_HasError(t *testing.T) {
+	tu := rx.NewTuple(&reactor.Item{V: fakePayload}, &reactor.Item{E: fakeError})
+	assert.True(t, tu.HasError())
+	tu = rx.NewTuple(&reactor.Item{V: fakeError})
+	assert.False(t, tu.HasError())
+}
+
+func TestTuple_CollectValues(t *testing.T) {
+	tu := rx.NewTuple()
+	res := tu.CollectValues()
+	assert.Empty(t, res)
+
+	tu = rx.NewTuple(nil, &reactor.Item{V: fakePayload}, nil, &reactor.Item{E: fakeError})
+	res = tu.CollectValues()
+	assert.Len(t, res, 1)
 }
