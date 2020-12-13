@@ -27,14 +27,6 @@ func (p proxy) Raw() mono.Mono {
 	return p.Mono
 }
 
-func (p proxy) Success(v payload.Payload) {
-	mustProcessor(p.Mono).Success(v)
-}
-
-func (p proxy) Error(e error) {
-	mustProcessor(p.Mono).Error(e)
-}
-
 func (p proxy) ToChan(ctx context.Context) (<-chan payload.Payload, <-chan error) {
 	return toChan(ctx, p.Mono)
 }
@@ -120,12 +112,12 @@ func (p proxy) DoOnCancel(fn rx.FnOnCancel) Mono {
 }
 
 func (p proxy) SwitchIfEmpty(alternative Mono) Mono {
-	return newProxy(p.Mono.SwitchIfEmpty(alternative.Raw()))
+	return newProxy(p.Mono.SwitchIfEmpty(unpackRawPublisher(alternative)))
 }
 
 func (p proxy) SwitchIfError(alternative func(error) Mono) Mono {
 	return newProxy(p.Mono.SwitchIfError(func(err error) mono.Mono {
-		return alternative(err).Raw()
+		return unpackRawPublisher(alternative(err))
 	}))
 }
 
@@ -135,6 +127,20 @@ func (p proxy) SwitchValueIfError(alternative payload.Payload) Mono {
 
 func (p proxy) Timeout(timeout time.Duration) Mono {
 	return newProxy(p.Mono.Timeout(timeout))
+}
+
+func (p proxy) ZipWith(alternative Mono, cmb Combinator2) Mono {
+	return Zip(p, alternative).ToMono(func(item rx.Tuple) (payload.Payload, error) {
+		first, err := convertItem(item[0])
+		if err != nil {
+			return nil, err
+		}
+		second, err := convertItem(item[1])
+		if err != nil {
+			return nil, err
+		}
+		return cmb(first, second)
+	})
 }
 
 func (p proxy) Subscribe(ctx context.Context, options ...rx.SubscriberOption) {

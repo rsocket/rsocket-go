@@ -35,14 +35,6 @@ func returnOneshotProxy(o *oneshotProxy) (raw mono.Mono) {
 	return
 }
 
-func (o *oneshotProxy) Success(p payload.Payload) {
-	mustProcessor(o.Mono).Success(p)
-}
-
-func (o *oneshotProxy) Error(err error) {
-	mustProcessor(o.Mono).Error(err)
-}
-
 func (o *oneshotProxy) SubscribeWith(ctx context.Context, s rx.Subscriber) {
 	var sub reactor.Subscriber
 	if s == rx.EmptySubscriber {
@@ -143,13 +135,13 @@ func (o *oneshotProxy) Block(ctx context.Context) (payload.Payload, error) {
 }
 
 func (o *oneshotProxy) SwitchIfEmpty(alternative Mono) Mono {
-	o.Mono = o.Mono.SwitchIfEmpty(alternative.Raw())
+	o.Mono = o.Mono.SwitchIfEmpty(unpackRawPublisher(alternative))
 	return o
 }
 
 func (o *oneshotProxy) SwitchIfError(alternative func(error) Mono) Mono {
 	o.Mono = o.Mono.SwitchIfError(func(err error) mono.Mono {
-		return alternative(err).Raw()
+		return unpackRawPublisher(alternative(err))
 	})
 	return o
 }
@@ -157,6 +149,19 @@ func (o *oneshotProxy) SwitchIfError(alternative func(error) Mono) Mono {
 func (o *oneshotProxy) SwitchValueIfError(alternative payload.Payload) Mono {
 	o.Mono = o.Mono.SwitchValueIfError(alternative)
 	return o
+}
+func (o *oneshotProxy) ZipWith(alternative Mono, cmb Combinator2) Mono {
+	return Zip(o, alternative).ToMonoOneshot(func(item rx.Tuple) (payload.Payload, error) {
+		first, err := convertItem(item[0])
+		if err != nil {
+			return nil, err
+		}
+		second, err := convertItem(item[1])
+		if err != nil {
+			return nil, err
+		}
+		return cmb(first, second)
+	})
 }
 
 func (o *oneshotProxy) Raw() mono.Mono {

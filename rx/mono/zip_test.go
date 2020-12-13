@@ -12,10 +12,10 @@ import (
 
 func TestZipBuilder_ToMono(t *testing.T) {
 	v, err := mono.Zip(mono.Just(_fakePayload), mono.Just(_fakePayload)).
-		ToMono(func(tuple rx.Tuple) (payload.Payload, error) {
-			assert.Equal(t, 2, tuple.Len())
-			for i := 0; i < tuple.Len(); i++ {
-				v, err := tuple.Get(i)
+		ToMono(func(items rx.Tuple) (payload.Payload, error) {
+			assert.Equal(t, 2, items.Len())
+			for i := 0; i < len(items); i++ {
+				v, err := items.Get(i)
 				assert.NoError(t, err)
 				assert.Equal(t, _fakePayload, v)
 			}
@@ -32,4 +32,17 @@ func TestZip_Empty(t *testing.T) {
 			return _fakePayload, nil
 		}).Block(context.Background())
 	})
+}
+
+func TestZipWith(t *testing.T) {
+	p1 := payload.NewString("hello", "")
+	p2 := payload.NewString("world", "")
+	res, err := mono.Just(p1).
+		ZipWith(mono.Just(p2), func(first, second mono.Item) (payload.Payload, error) {
+			data := first.V.DataUTF8() + " " + second.V.DataUTF8() + "!"
+			return payload.NewString(data, ""), nil
+		}).
+		Block(context.Background())
+	assert.NoError(t, err, "should not return error")
+	assert.Equal(t, "hello world!", res.DataUTF8(), "bad result")
 }

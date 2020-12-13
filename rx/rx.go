@@ -73,3 +73,9 @@ type SignalType reactor.SignalType
 func (s SignalType) String() string {
 	return reactor.SignalType(s).String()
 }
+
+// Item is a kind of container which contains value or error.
+type Item struct {
+	V payload.Payload
+	E error
+}

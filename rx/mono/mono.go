@@ -12,6 +12,8 @@ import (
 
 // ReleaseFunc can be used to release resources.
 type ReleaseFunc func()
+type Item = rx.Item
+type Combinator2 = func(first, second Item) (payload.Payload, error)
 
 // Mono is a Reactive Streams Publisher with basic rx operators that completes successfully by emitting an element, or with an error.
 type Mono interface {
@@ -49,6 +51,8 @@ type Mono interface {
 	SwitchIfError(alternative func(error) Mono) Mono
 	// SwitchValueIfError switch to an alternative Payload if this Mono is end with an error.
 	SwitchValueIfError(alternative payload.Payload) Mono
+	// ZipWith combines the result from this mono and another into a new Payload.
+	ZipWith(alternative Mono, cmb Combinator2) Mono
 	// Raw returns low-level reactor.Mono which defined in reactor-go library.
 	Raw() mono.Mono
 	// ToChan subscribe Mono and puts items into a chan.
@@ -64,10 +68,4 @@ type Sink interface {
 	Success(payload.Payload)
 	// Error emits an error then complete current Sink.
 	Error(error)
-}
-
-// Processor combine Sink and Mono.
-type Processor interface {
-	Sink
-	Mono
 }
