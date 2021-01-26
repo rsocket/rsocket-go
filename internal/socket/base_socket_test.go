@@ -24,7 +24,7 @@ func TestBaseSocket(t *testing.T) {
 	conn.EXPECT().Read().Return(nil, io.EOF).AnyTimes()
 	conn.EXPECT().SetDeadline(gomock.Any()).AnyTimes()
 
-	duplex := socket.NewClientDuplexConnection(nil, nil, fragmentation.MaxFragment, 90*time.Second)
+	duplex := socket.NewClientDuplexConnection(context.Background(), nil, nil, fragmentation.MaxFragment, 90*time.Second)
 	duplex.SetTransport(tp)
 
 	go func() {

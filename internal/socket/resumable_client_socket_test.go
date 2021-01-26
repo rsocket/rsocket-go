@@ -49,7 +49,7 @@ func TestNewResumableClientSocket(t *testing.T) {
 	}).AnyTimes()
 	conn.EXPECT().SetDeadline(gomock.Any()).AnyTimes()
 
-	ds := socket.NewClientDuplexConnection(nil, nil, fragmentation.MaxFragment, 90*time.Second)
+	ds := socket.NewClientDuplexConnection(context.Background(), nil, nil, fragmentation.MaxFragment, 90*time.Second)
 
 	rcs := socket.NewResumableClientSocket(func(ctx context.Context) (*transport.Transport, error) {
 		return tp, nil
@@ -109,7 +109,7 @@ func TestNewResumableClientSocket(t *testing.T) {
 }
 
 func TestResumeClientSocket_Setup_Broken(t *testing.T) {
-	c := socket.NewClientDuplexConnection(nil, nil, fragmentation.MaxFragment, 90*time.Second)
+	c := socket.NewClientDuplexConnection(context.Background(), nil, nil, fragmentation.MaxFragment, 90*time.Second)
 	s := socket.NewResumableClientSocket(func(ctx context.Context) (*transport.Transport, error) {
 		return nil, fakeErr
 	}, c)
@@ -122,7 +122,7 @@ func TestResumeClientSocket_Setup(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	ds := socket.NewClientDuplexConnection(nil, nil, fragmentation.MaxFragment, 90*time.Second)
+	ds := socket.NewClientDuplexConnection(context.Background(), nil, nil, fragmentation.MaxFragment, 90*time.Second)
 
 	readChanChan := make(chan chan core.BufferedFrame, 64)
 

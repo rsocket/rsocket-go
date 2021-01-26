@@ -55,7 +55,7 @@ func TestSimpleServerSocket_Start(t *testing.T) {
 
 	close(readChan)
 
-	c := socket.NewServerDuplexConnection(nil, nil, fragmentation.MaxFragment, nil)
+	c := socket.NewServerDuplexConnection(context.Background(), nil, nil, fragmentation.MaxFragment, nil)
 	ss := socket.NewSimpleServerSocket(c)
 	ss.SetResponder(fakeResponder)
 	ss.SetTransport(tp)

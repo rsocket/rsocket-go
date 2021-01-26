@@ -45,7 +45,7 @@ import (
 
 func main() {
 	err := rsocket.Receive().
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
+		Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			// bind responder
 			return rsocket.NewAbstractSocket(
 				rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {

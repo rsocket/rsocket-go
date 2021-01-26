@@ -71,7 +71,7 @@ func server(readyCh chan struct{}) {
 			// close the channel to singal that the server is ready
 			close(readyCh)
 		}).
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
+		Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			// register a new request stream handler
 			return rsocket.NewAbstractSocket(requestStreamHandler), nil
 		}).
