@@ -227,9 +227,13 @@ func (cb *clientBuilder) Start(ctx context.Context) (client Client, err error) {
 
 	// setup client.
 	err = cs.Setup(ctx, cb.connectTimeout, cb.setup)
-	if err == nil {
-		client = cs
+
+	// destroy connection when setup failed
+	if err != nil {
+		return
 	}
+
+	client = cs
 
 	// trigger OnConnect
 	if len(cb.onConnects) > 0 {

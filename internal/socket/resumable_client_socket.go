@@ -96,6 +96,10 @@ func (r *resumeClientSocket) connect(ctx context.Context, timeout time.Duration)
 		})
 		err = tp.Send(r.setup.toFrame(), true)
 		r.socket.SetTransport(tp)
+		// destroy if setup failed
+		if err != nil {
+			_ = r.close(false)
+		}
 		return
 	}
 
@@ -131,12 +135,16 @@ func (r *resumeClientSocket) connect(ctx context.Context, timeout time.Duration)
 	), true)
 
 	if err != nil {
+		// destroy if resume failed
+		_ = r.close(false)
 		return err
 	}
 
 	select {
 	case <-time.After(_resumeTimeout):
 		err = errors.New("resume timeout")
+		// destroy if resume failed
+		_ = r.close(false)
 	case reject, ok := <-resumeErr:
 		if ok {
 			logger.Errorf("resume failed: %s\n", reject.Error())
