@@ -21,7 +21,7 @@ func ExampleNewGroup() {
 	// Create a broker with resume.
 	err := rsocket.Receive().
 		Resume(rsocket.WithServerResumeSessionDuration(10 * time.Second)).
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
+		Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			// Register service using Setup Metadata as service ID.
 			if serviceID, ok := setup.MetadataUTF8(); ok {
 				_ = group.Get(serviceID).Put(sendingSocket)

@@ -1,6 +1,8 @@
 package rsocket
 
 import (
+	"context"
+
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/socket"
 	"github.com/rsocket/rsocket-go/payload"
@@ -41,7 +43,7 @@ type (
 
 type (
 	// ServerAcceptor is alias for server acceptor.
-	ServerAcceptor = func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error)
+	ServerAcceptor = func(ctx context.Context, setup payload.SetupPayload, socket CloseableRSocket) (RSocket, error)
 
 	// RSocket is a contract providing different interaction models for RSocket protocol.
 	RSocket interface {

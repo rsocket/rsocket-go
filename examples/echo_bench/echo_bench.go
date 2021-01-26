@@ -91,7 +91,7 @@ func createClient(mtu int) (rsocket.Client, error) {
 			log.Println("*** disconnected ***", common.CountBorrowed())
 		}).
 		SetupPayload(payload.NewString("你好", "世界")).
-		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
+		Acceptor(func(ctx context.Context, socket rsocket.RSocket) rsocket.RSocket {
 			return rsocket.NewAbstractSocket(
 				rsocket.RequestResponse(func(p payload.Payload) mono.Mono {
 					log.Println("receive request from server:", p)

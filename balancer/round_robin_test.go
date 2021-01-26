@@ -20,7 +20,7 @@ import (
 
 func startServer(ctx context.Context, port int, counter *sync.Map) {
 	_ = rsocket.Receive().
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
+		Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			return rsocket.NewAbstractSocket(
 				rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
 					cur, _ := counter.LoadOrStore(port, atomic.NewInt32(0))

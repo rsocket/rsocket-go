@@ -17,7 +17,7 @@ import (
 func Example() {
 	// Serve a server
 	err := rsocket.Receive().
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
+		Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			return rsocket.NewAbstractSocket(
 				rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
 					log.Println("incoming request:", msg)
@@ -52,7 +52,7 @@ func ExampleReceive() {
 	err := rsocket.Receive().
 		Resume(rsocket.WithServerResumeSessionDuration(30 * time.Second)).
 		Fragment(65535).
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
+		Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			// Handle close.
 			sendingSocket.OnClose(func(err error) {
 				log.Println("sending socket is closed")
@@ -101,7 +101,7 @@ func ExampleConnect() {
 		Lease().  // Enable LEASE.
 		Fragment(4096).
 		SetupPayload(payload.NewString("Hello", "World")).
-		Acceptor(func(socket rsocket.RSocket) rsocket.RSocket {
+		Acceptor(func(ctx context.Context, socket rsocket.RSocket) rsocket.RSocket {
 			return rsocket.NewAbstractSocket(
 				rsocket.RequestResponse(func(msg payload.Payload) mono.Mono {
 					return mono.Just(payload.NewString("Pong", time.Now().String()))

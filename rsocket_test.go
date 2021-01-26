@@ -65,7 +65,7 @@ func TestResume(t *testing.T) {
 				close(started)
 			}).
 			Resume(WithServerResumeSessionDuration(sessionTimeout)).
-			Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (responder RSocket, err error) {
+			Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket CloseableRSocket) (responder RSocket, err error) {
 				atomic.AddInt32(&connected, 1)
 				responder = NewAbstractSocket(
 					RequestResponse(func(msg payload.Payload) mono.Mono {
@@ -133,7 +133,7 @@ func TestResume(t *testing.T) {
 func TestReceiveWithBadArgs(t *testing.T) {
 	err := Receive().
 		Fragment(-999).
-		Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
+		Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 			return fakeResponser, nil
 		}).
 		Transport(TCPServer().SetHostAndPort("127.0.0.1", DefaultPort).Build()).
@@ -141,7 +141,7 @@ func TestReceiveWithBadArgs(t *testing.T) {
 	assert.Error(t, err, "should serve failed")
 
 	err = Receive().
-		Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
+		Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 			return fakeResponser, nil
 		}).
 		Transport(func(ctx context.Context) (transport.ServerTransport, error) {
@@ -171,7 +171,7 @@ func TestConnectBroken(t *testing.T) {
 			OnStart(func() {
 				close(started)
 			}).
-			Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
+			Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 				return fakeResponser, nil
 			}).
 			Transport(TCPServer().SetAddr(fmt.Sprintf(":%d", port)).Build()).
@@ -223,7 +223,7 @@ func TestBiDirection(t *testing.T) {
 			OnStart(func() {
 				close(started)
 			}).
-			Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
+			Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 				sendingSocket.MetadataPush(fakeRequest)
 				sendingSocket.FireAndForget(fakeRequest)
 				sendingSocket.RequestResponse(fakeRequest).
@@ -258,7 +258,7 @@ func TestBiDirection(t *testing.T) {
 		Resume(WithClientResumeToken(func() []byte {
 			return []byte("fake resume token")
 		})).
-		Acceptor(func(socket RSocket) RSocket {
+		Acceptor(func(ctx context.Context, socket RSocket) RSocket {
 			// echo anything
 			return NewAbstractSocket(
 				RequestResponse(func(msg payload.Payload) mono.Mono {
@@ -314,8 +314,10 @@ func TestSuite(t *testing.T) {
 
 }
 
+type ctxKey string
+
 func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, serverTp transport.ServerTransporter) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), ctxKey("foo"), "bar"))
 	defer cancel()
 
 	serving := make(chan struct{})
@@ -326,7 +328,8 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 			OnStart(func() {
 				close(serving)
 			}).
-			Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
+			Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
+				assert.Equal(t, "bar", ctx.Value(ctxKey("foo")), "context value doesn't match")
 				assert.Equal(t, setupData, setup.DataUTF8(), "bad setup data")
 				m, _ := setup.MetadataUTF8()
 				assert.Equal(t, setupMetadata, m, "bad setup metadata")
@@ -334,6 +337,7 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 					RequestResponse(func(msg payload.Payload) mono.Mono {
 						assert.Equal(t, "ping", msg.DataUTF8(), "bad ping data")
 						return mono.Create(func(ctx context.Context, sink mono.Sink) {
+							assert.Equal(t, "bar", ctx.Value(ctxKey("foo")), "context value doesn't match")
 							m, _ := msg.MetadataUTF8()
 							sink.Success(payload.NewString("pong", m))
 						})
@@ -341,6 +345,7 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 					RequestStream(func(msg payload.Payload) flux.Flux {
 						d := msg.DataUTF8()
 						return flux.Create(func(ctx context.Context, s flux.Sink) {
+							assert.Equal(t, "bar", ctx.Value(ctxKey("foo")), "context value doesn't match")
 							for i := 0; i < int(streamElements); i++ {
 								s.Next(payload.NewString(d, fmt.Sprintf("%d", i)))
 							}
@@ -360,6 +365,7 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 							Subscribe(context.Background())
 
 						return flux.Create(func(ctx context.Context, s flux.Sink) {
+							assert.Equal(t, "bar", ctx.Value(ctxKey("foo")), "context value doesn't match")
 							for i := 0; i < int(channelElements); i++ {
 								s.Next(payload.NewString(fakeData, fmt.Sprintf("%d_from_server", i)))
 							}
@@ -603,7 +609,7 @@ func TestContextTimeout(t *testing.T) {
 			OnStart(func() {
 				close(started)
 			}).
-			Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
+			Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 				return responder, nil
 			}).
 			Transport(TCPServer().SetAddr(":8088").Build()).
@@ -657,7 +663,7 @@ func TestEchoParallel(t *testing.T) {
 			OnStart(func() {
 				close(started)
 			}).
-			Acceptor(func(setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
+			Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket CloseableRSocket) (RSocket, error) {
 				return NewAbstractSocket(RequestResponse(func(request payload.Payload) (response mono.Mono) {
 					response = mono.Just(request)
 					return

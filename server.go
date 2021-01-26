@@ -132,6 +132,10 @@ func (srv *server) Transport(t transport.ServerTransporter) Start {
 }
 
 func (srv *server) Serve(ctx context.Context) error {
+	if ctx == nil {
+		panic("context cannot be nil!")
+	}
+
 	err := fragmentation.IsValidFragment(srv.fragment)
 	if err != nil {
 		return err
@@ -188,7 +192,7 @@ func (srv *server) Serve(ctx context.Context) error {
 		case *framing.ResumeFrame:
 			srv.doResume(frame, tp, socketChan)
 		case *framing.SetupFrame:
-			sendingSocket, err := srv.doSetup(frame, tp, socketChan)
+			sendingSocket, err := srv.doSetup(ctx, frame, tp, socketChan)
 			if err != nil {
 				_ = tp.Send(err, true)
 				_ = tp.Close()
@@ -220,7 +224,7 @@ func (srv *server) Serve(ctx context.Context) error {
 	return t.Listen(ctx, notifier)
 }
 
-func (srv *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.WriteableErrorFrame) {
+func (srv *server) doSetup(ctx context.Context, frame *framing.SetupFrame, tp *transport.Transport, socketChan chan<- socket.ServerSocket) (sendingSocket socket.ServerSocket, err *framing.WriteableErrorFrame) {
 	if frame.HasFlag(core.FlagLease) && srv.leases == nil {
 		err = framing.NewWriteableErrorFrame(0, core.ErrorCodeUnsupportedSetup, bytesconv.StringToBytes(_errUnavailableLease))
 		return
@@ -234,12 +238,12 @@ func (srv *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, s
 		return
 	}
 
-	rawSocket := socket.NewServerDuplexConnection(srv.reqSc, srv.resSc, srv.fragment, srv.leases)
+	rawSocket := socket.NewServerDuplexConnection(ctx, srv.reqSc, srv.resSc, srv.fragment, srv.leases)
 
 	// 2. no resume
 	if !isResume {
 		sendingSocket = socket.NewSimpleServerSocket(rawSocket)
-		if responder, e := srv.acc(frame, sendingSocket); e != nil {
+		if responder, e := srv.acc(ctx, frame, sendingSocket); e != nil {
 			err = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedSetup, []byte(e.Error()))
 		} else {
 			sendingSocket.SetResponder(responder)
@@ -262,7 +266,7 @@ func (srv *server) doSetup(frame *framing.SetupFrame, tp *transport.Transport, s
 
 	// 4. resume success
 	sendingSocket = socket.NewResumableServerSocket(rawSocket, token)
-	if responder, e := srv.acc(frame, sendingSocket); e != nil {
+	if responder, e := srv.acc(ctx, frame, sendingSocket); e != nil {
 		switch vv := e.(type) {
 		case *framing.ErrorFrame:
 			err = framing.NewWriteableErrorFrame(0, vv.ErrorCode(), vv.ErrorData())

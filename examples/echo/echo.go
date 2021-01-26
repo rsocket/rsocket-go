@@ -31,7 +31,7 @@ func main() {
 		OnStart(func() {
 			log.Println("server start success!")
 		}).
-		Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
+		Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 			//log.Println("SETUP BEGIN:----------------")
 			//log.Println("maxLifeTime:", setup.MaxLifetime())
 			//log.Println("keepaliveInterval:", setup.TimeBetweenKeepalive())

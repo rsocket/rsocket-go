@@ -54,7 +54,7 @@ func TestResumableServerSocket_Start(t *testing.T) {
 
 	close(readChan)
 
-	c := socket.NewServerDuplexConnection(nil, nil, fragmentation.MaxFragment, nil)
+	c := socket.NewServerDuplexConnection(context.Background(), nil, nil, fragmentation.MaxFragment, nil)
 	ss := socket.NewResumableServerSocket(c, fakeToken)
 
 	ss.SetResponder(fakeResponder)

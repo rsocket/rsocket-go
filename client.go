@@ -30,7 +30,7 @@ type Client interface {
 }
 
 // ClientSocketAcceptor is alias for RSocket handler function.
-type ClientSocketAcceptor = func(socket RSocket) RSocket
+type ClientSocketAcceptor = func(ctx context.Context, socket RSocket) RSocket
 
 // ClientStarter can be used to start a client.
 type ClientStarter interface {
@@ -192,6 +192,9 @@ func (cb *clientBuilder) Transport(t transport.ClientTransporter) ClientStarter 
 }
 
 func (cb *clientBuilder) Start(ctx context.Context) (client Client, err error) {
+	if ctx == nil {
+		panic("context cannot be nil!")
+	}
 	// create a blank socket.
 	err = fragmentation.IsValidFragment(cb.fragment)
 	if err != nil {
@@ -199,6 +202,7 @@ func (cb *clientBuilder) Start(ctx context.Context) (client Client, err error) {
 	}
 
 	conn := socket.NewClientDuplexConnection(
+		ctx,
 		cb.reqSche,
 		cb.resSche,
 		cb.fragment,
@@ -213,7 +217,7 @@ func (cb *clientBuilder) Start(ctx context.Context) (client Client, err error) {
 		cs = socket.NewClient(cb.tpGen, conn)
 	}
 	if cb.acceptor != nil {
-		conn.SetResponder(cb.acceptor(cs))
+		conn.SetResponder(cb.acceptor(ctx, cs))
 	} else {
 		conn.SetResponder(_noopSocket)
 	}
