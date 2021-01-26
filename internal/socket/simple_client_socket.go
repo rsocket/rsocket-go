@@ -51,6 +51,9 @@ func (p *simpleClientSocket) Setup(ctx context.Context, connectTimeout time.Dura
 	}()
 	setupFrame := setup.toFrame()
 	err = p.socket.tp.Send(setupFrame, true)
+	if err != nil {
+		_ = p.close(false)
+	}
 	return
 }
 

@@ -114,8 +114,16 @@ func (dc *DuplexConnection) Close() error {
 	dc.cond.Broadcast()
 	dc.cond.L.Unlock()
 
+	var writeDone chan struct{}
+
+	dc.locker.RLock()
+	writeDone = dc.writeDone
+	dc.locker.RUnlock()
+
 	// wait for write loop end
-	<-dc.writeDone
+	if writeDone != nil {
+		<-dc.writeDone
+	}
 
 	dc.destroyTransport()
 
@@ -1264,6 +1272,13 @@ func (dc *DuplexConnection) loopWriteWithKeepaliver(ctx context.Context, leaseCh
 
 // LoopWrite start write loop
 func (dc *DuplexConnection) LoopWrite(ctx context.Context) error {
+	// init write done chan
+	dc.locker.Lock()
+	if dc.writeDone == nil {
+		dc.writeDone = make(chan struct{})
+	}
+	dc.locker.Unlock()
+
 	defer close(dc.writeDone)
 
 	var leaseChan chan lease.Lease
@@ -1357,7 +1372,6 @@ func newDuplexConnection(reqSche, resSche scheduler.Scheduler, mtu int, ka *Keep
 		messages:       newMap32(),
 		sids:           sids,
 		fragments:      newMap32(),
-		writeDone:      make(chan struct{}),
 		counter:        core.NewTrafficCounter(),
 		keepaliver:     ka,
 		closed:         atomic.NewBool(false),

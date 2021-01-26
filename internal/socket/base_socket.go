@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -63,18 +64,33 @@ func (p *BaseSocket) OnClose(fn func(error)) {
 }
 
 // Close closes socket.
-func (p *BaseSocket) Close() (err error) {
+func (p *BaseSocket) Close() error {
+	return p.close(true)
+}
+
+func (p *BaseSocket) close(triggerCloser bool) (err error) {
 	p.once.Do(func() {
 		err = p.socket.Close()
-		for i, l := 0, len(p.closers); i < l; i++ {
+		if !triggerCloser {
+			return
+		}
+		for i := len(p.closers); i > 0; i-- {
 			func(fn func(error)) {
 				defer func() {
-					if e := tryRecover(recover()); e != nil {
-						logger.Errorf("handle socket closer failed: %s\n", e)
+					rec := recover()
+					if rec == nil {
+						return
 					}
+					var err error
+					if e, ok := rec.(error); ok {
+						err = errors.WithStack(e)
+					} else {
+						err = errors.Errorf("%v", rec)
+					}
+					logger.Errorf("handle socket closer failed: %+v\n", err)
 				}()
 				fn(err)
-			}(p.closers[l-i-1])
+			}(p.closers[i-1])
 		}
 	})
 	return
