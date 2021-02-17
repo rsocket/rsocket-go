@@ -201,12 +201,12 @@ func TestBlockRelease(t *testing.T) {
 	assert.Equal(t, int32(0), input.RefCnt())
 }
 
-func TestBlockClone(t *testing.T) {
+func TestBlock(t *testing.T) {
 	input := (*mockPayload)(atomic.NewInt32(0))
 	v, err := Just(input).Block(context.Background())
 	assert.NoError(t, err)
-	assert.Equal(t, int32(0), input.RefCnt())
-	assert.NotEqual(t, input, v)
+	assert.Equal(t, int32(1), input.RefCnt())
+	assert.Equal(t, input, v)
 }
 
 func TestSwitchIfError(t *testing.T) {
