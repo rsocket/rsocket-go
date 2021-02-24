@@ -15,7 +15,6 @@ import (
 
 type TransportFunc func() (*transport.Transport, error)
 type WriteFunc func(*transport.Transport, core.WriteableFrame) error
-type FlushFunc func(*transport.Transport) error
 type DisposeFunc func(core.WriteableFrame)
 
 type TransportSupport interface {
@@ -58,12 +57,11 @@ func (lw *LoopyWriter) Dispose(f DisposeFunc) {
 }
 
 func (lw *LoopyWriter) Run(ctx context.Context, keepalive time.Duration, ts TransportSupport) error {
-	//if tp, err := ts.Transport(); err != nil {
-	//	return err
-	//}
-	//if err := lw.processBacklogs(tp, writeFunc); err != nil {
-	//	return err
-	//}
+	if tp, err := ts.Transport(); err != nil {
+		return err
+	} else if err := lw.processBacklogs(tp); err != nil {
+		return err
+	}
 	var timeout bool
 	for {
 		next, le, err := lw.q.Dequeue(true, keepalive)
@@ -168,13 +166,13 @@ func (lw *LoopyWriter) writeLease(tp *transport.Transport, l lease.Lease) {
 	}
 }
 
-func (lw *LoopyWriter) processBacklogs(tp *transport.Transport, writeFunc WriteFunc) error {
+func (lw *LoopyWriter) processBacklogs(tp *transport.Transport) error {
 	if lw.backlogs == nil {
 		return nil
 	}
 	next := lw.backlogs.Dequeue()
 	for next != nil {
-		if err := writeFunc(tp, next.(core.WriteableFrame)); err != nil {
+		if err := tp.Send(next.(core.WriteableFrame), false); err != nil {
 			return err
 		}
 		next = lw.backlogs.Dequeue()

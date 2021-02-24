@@ -46,6 +46,16 @@ func TestCtrlQueue(t *testing.T) {
 	assert.Equal(t, 100, cnt)
 }
 
+func TestCtrlQueue_Dequeue(t *testing.T) {
+	done := make(chan struct{})
+	q := loopywriter.NewCtrlQueue(done)
+	begin := time.Now()
+	timeout := 500 * time.Millisecond
+	_, _, err := q.Dequeue(true, timeout)
+	assert.Equal(t, loopywriter.ErrDequeueTimeout, err, "should be timeout error")
+	assert.True(t, time.Since(begin) >= timeout, "should be at least %s", timeout)
+}
+
 func BenchmarkCtrlQueue_Enqueue(b *testing.B) {
 	done := make(chan struct{})
 	q := loopywriter.NewCtrlQueue(done)

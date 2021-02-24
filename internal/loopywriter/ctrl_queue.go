@@ -148,6 +148,7 @@ func (c *CtrlQueue) Dequeue(block bool, timeout time.Duration) (next core.Writea
 	var tc <-chan time.Time
 	if timeout != 0 {
 		timer := timerpool.Get(timeout)
+		tc = timer.C
 		defer timerpool.Put(timer)
 	}
 	for {
