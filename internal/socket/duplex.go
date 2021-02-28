@@ -2,7 +2,6 @@ package socket
 
 import (
 	"context"
-	"log"
 	"runtime"
 	"sync"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/rsocket/rsocket-go/internal/loopywriter"
 	"github.com/rsocket/rsocket-go/internal/misc"
 	"github.com/rsocket/rsocket-go/internal/queue"
+	"github.com/rsocket/rsocket-go/internal/tpfactory"
 	"github.com/rsocket/rsocket-go/lease"
 	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
@@ -48,12 +48,12 @@ func mustExecute(sc scheduler.Scheduler, handler func()) {
 
 // DuplexConnection represents a socket of RSocket which can be a requester or a responder.
 type DuplexConnection struct {
+	tf             *tpfactory.TransportFactory
 	reqSche        scheduler.Scheduler
 	resSche        scheduler.Scheduler
 	destroyReqSche bool
 	locker         sync.RWMutex
 	counter        *core.TrafficCounter
-	tp             *transport.Transport
 	cq             *loopywriter.CtrlQueue
 	lw             *loopywriter.LoopyWriter
 	responder      Responder
@@ -64,11 +64,9 @@ type DuplexConnection struct {
 	writeDone      chan struct{}
 	done           chan struct{}
 	keepalive      time.Duration
-	cond           sync.Cond
 	e              error
 	leases         lease.Factory
 	closed         *atomic.Bool
-	ready          *atomic.Bool
 }
 
 // SetError sets error for current socket.
@@ -110,20 +108,17 @@ func (dc *DuplexConnection) Close() error {
 		dc.lw.Dispose(func(frame core.WriteableFrame) {
 			frame.Done()
 		})
-		log.Println("*** SENDS:", __sends.Load())
-		__sends.Store(0)
 	}()
 
 	close(dc.done)
-
-	dc.cond.L.Lock()
-	dc.cond.Broadcast()
-	dc.cond.L.Unlock()
+	tp := dc.tf.Destroy()
 
 	// wait for write loop end
 	<-dc.writeDone
 
-	dc.destroyTransport()
+	if tp != nil {
+		dc.destroyTransport(tp)
+	}
 
 	err := dc.GetError()
 	if err == nil {
@@ -141,15 +136,13 @@ func (dc *DuplexConnection) Close() error {
 	return err
 }
 
-func (dc *DuplexConnection) destroyTransport() {
-	dc.locker.Lock()
-	defer dc.locker.Unlock()
-	if tp := dc.tp; tp != nil {
-		if dc.e == nil {
-			dc.e = tp.Close()
-		} else {
-			_ = tp.Close()
-		}
+func (dc *DuplexConnection) destroyTransport(tp *transport.Transport) {
+	if dc.e == nil {
+		dc.locker.Lock()
+		defer dc.locker.Unlock()
+		dc.e = tp.Close()
+	} else {
+		_ = tp.Close()
 	}
 }
 
@@ -961,21 +954,11 @@ func (dc *DuplexConnection) onFramePayload(frame core.BufferedFrame) error {
 }
 
 func (dc *DuplexConnection) clearTransport() {
-	dc.locker.Lock()
-	defer dc.locker.Unlock()
-	dc.tp = nil
-	dc.ready.Store(false)
-}
-
-func (dc *DuplexConnection) currentTransport() (tp *transport.Transport) {
-	dc.locker.RLock()
-	tp = dc.tp
-	dc.locker.RUnlock()
-	return
+	dc.tf.Reset()
 }
 
 // SetTransport sets a transport for current socket.
-func (dc *DuplexConnection) SetTransport(tp *transport.Transport) (ok bool) {
+func (dc *DuplexConnection) SetTransport(tp *transport.Transport) error {
 	tp.Handle(transport.OnCancel, dc.onFrameCancel)
 	tp.Handle(transport.OnError, dc.onFrameError)
 	tp.Handle(transport.OnRequestN, dc.onFrameRequestN)
@@ -988,17 +971,7 @@ func (dc *DuplexConnection) SetTransport(tp *transport.Transport) (ok bool) {
 		tp.Handle(transport.OnRequestStream, dc.onFrameRequestStream)
 		tp.Handle(transport.OnRequestChannel, dc.onFrameRequestChannel)
 	}
-
-	ok = dc.ready.CAS(false, true)
-	if !ok {
-		return
-	}
-
-	dc.locker.Lock()
-	dc.tp = tp
-	dc.cond.Signal()
-	dc.locker.Unlock()
-	return
+	return dc.tf.Set(tp)
 }
 
 func (dc *DuplexConnection) sendFrame(next core.WriteableFrame) (ok bool) {
@@ -1013,8 +986,6 @@ func (dc *DuplexConnection) sendFrame(next core.WriteableFrame) (ok bool) {
 	return
 }
 
-var __sends = atomic.NewInt32(0)
-
 func (dc *DuplexConnection) sendPayload(
 	sid uint32,
 	sending payload.Payload,
@@ -1027,7 +998,6 @@ func (dc *DuplexConnection) sendPayload(
 
 	releasable, isReleasable := sending.(common.Releasable)
 	if isReleasable {
-		__sends.Inc()
 		releasable.IncRef()
 	}
 
@@ -1036,7 +1006,6 @@ func (dc *DuplexConnection) sendPayload(
 		if isReleasable {
 			toBeSent.HandleDone(func() {
 				releasable.Release()
-				__sends.Dec()
 			})
 		}
 		dc.sendFrame(toBeSent)
@@ -1074,19 +1043,7 @@ func (dc *DuplexConnection) LoopWrite(ctx context.Context) error {
 			dc.cq.BindLease(c)
 		}
 	}
-	return dc.lw.Run(ctx, dc.keepalive, dc)
-}
-
-func (dc *DuplexConnection) Transport() (*transport.Transport, error) {
-	if dc.closed.Load() {
-		return nil, errSocketClosed
-	}
-	if !dc.ready.Load() {
-		dc.cond.L.Lock()
-		dc.cond.Wait()
-		dc.cond.L.Unlock()
-	}
-	return dc.currentTransport(), nil
+	return dc.lw.Run(ctx, dc.keepalive, dc.tf)
 }
 
 func (dc *DuplexConnection) doSplit(data, metadata []byte, handler fragmentation.HandleSplitResult) {
@@ -1147,10 +1104,9 @@ func newDuplexConnection(reqSche, resSche scheduler.Scheduler, mtu int, keepaliv
 		counter:        core.NewTrafficCounter(),
 		keepalive:      keepalive,
 		closed:         atomic.NewBool(false),
-		ready:          atomic.NewBool(false),
+		tf:             tpfactory.NewTransportFactory(),
 	}
 
-	c.cond.L = &c.locker
 	c.cq = loopywriter.NewCtrlQueue(c.done)
 	c.lw = loopywriter.NewLoopyWriter(c.cq, true, c.counter)
 	return c

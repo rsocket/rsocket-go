@@ -43,7 +43,7 @@ var (
 	fakeResponser = NewAbstractSocket()
 )
 
-func TestResume(t *testing.T) {
+func testResume(t *testing.T) {
 	sessionTimeout := 2 * time.Second
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() {

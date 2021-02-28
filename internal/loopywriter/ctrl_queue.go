@@ -2,6 +2,7 @@ package loopywriter
 
 import (
 	"errors"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,10 +14,7 @@ import (
 
 const _queueThreshold = 1000
 
-var (
-	ErrConnClosing    = errors.New("connection closing")
-	ErrDequeueTimeout = errors.New("dequeue timeout")
-)
+var ErrDequeueTimeout = errors.New("dequeue timeout")
 
 var _itemNodePool = sync.Pool{
 	New: func() interface{} {
@@ -181,7 +179,7 @@ func (c *CtrlQueue) Dequeue(block bool, timeout time.Duration) (next core.Writea
 		select {
 		case <-c.wake:
 		case <-c.done:
-			err = ErrConnClosing
+			err = io.EOF
 			return
 		case <-tc:
 			err = ErrDequeueTimeout
@@ -198,7 +196,7 @@ func (c *CtrlQueue) Dispose(f DisposeFunc) {
 		c.mu.Unlock()
 		return
 	}
-	c.err = ErrConnClosing
+	c.err = io.EOF
 	c.fullCond.Broadcast()
 
 	head := c.items.dequeueAll()

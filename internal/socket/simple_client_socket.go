@@ -23,7 +23,11 @@ func (p *simpleClientSocket) Setup(ctx context.Context, connectTimeout time.Dura
 	tp.Connection().SetCounter(p.socket.counter)
 	tp.SetLifetime(setup.KeepaliveLifetime)
 
-	p.socket.SetTransport(tp)
+	// Bind transport
+	err = p.socket.SetTransport(tp)
+	if err != nil {
+		return
+	}
 
 	if setup.Lease {
 		p.refreshLease(0, 0)
@@ -50,7 +54,7 @@ func (p *simpleClientSocket) Setup(ctx context.Context, connectTimeout time.Dura
 		_ = p.socket.LoopWrite(ctx)
 	}()
 	setupFrame := setup.toFrame()
-	err = p.socket.tp.Send(setupFrame, true)
+	err = tp.Send(setupFrame, true)
 	return
 }
 

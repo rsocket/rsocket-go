@@ -2,6 +2,7 @@ package loopywriter
 
 import (
 	"context"
+	"io"
 	"runtime"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/core/transport"
 	"github.com/rsocket/rsocket-go/internal/queue"
+	"github.com/rsocket/rsocket-go/internal/tpfactory"
 	"github.com/rsocket/rsocket-go/lease"
 	"github.com/rsocket/rsocket-go/logger"
 )
@@ -16,10 +18,6 @@ import (
 type TransportFunc func() (*transport.Transport, error)
 type WriteFunc func(*transport.Transport, core.WriteableFrame) error
 type DisposeFunc func(core.WriteableFrame)
-
-type TransportSupport interface {
-	Transport() (*transport.Transport, error)
-}
 
 type LoopyWriter struct {
 	q        *CtrlQueue
@@ -56,21 +54,33 @@ func (lw *LoopyWriter) Dispose(f DisposeFunc) {
 	}
 }
 
-func (lw *LoopyWriter) Run(ctx context.Context, keepalive time.Duration, ts TransportSupport) error {
-	if tp, err := ts.Transport(); err != nil {
-		return err
-	} else if err := lw.processBacklogs(tp); err != nil {
+func (lw *LoopyWriter) Run(ctx context.Context, keepalive time.Duration, factory *tpfactory.TransportFactory) error {
+	// Drain all of backlog frames
+	if err := lw.drainBacklogs(ctx, factory); err != nil {
 		return err
 	}
-	var timeout bool
+
+	var (
+		timeout   bool
+		tp        *transport.Transport
+		next      core.WriteableFrame
+		nextLease lease.Lease
+		err       error
+	)
+
 	for {
-		next, le, err := lw.q.Dequeue(true, keepalive)
+		// dequeue next data
+		next, nextLease, err = lw.q.Dequeue(true, keepalive)
 		timeout = err == ErrDequeueTimeout
 		if err != nil && !timeout {
+			if err == io.EOF {
+				return nil
+			}
 			return err
 		}
 
-		tp, err := ts.Transport()
+		// try get available transport
+		tp, err = factory.Get(ctx, false)
 		if err != nil {
 			if timeout {
 				return err
@@ -83,8 +93,10 @@ func (lw *LoopyWriter) Run(ctx context.Context, keepalive time.Duration, ts Tran
 			return err
 		}
 
+		// write the next frame
 		if next != nil {
-			if err := lw.writeNext(tp, next); err != nil {
+			err = lw.writeNext(tp, next)
+			if err != nil {
 				if lw.backlogs != nil {
 					lw.backlogs.Enqueue(next)
 				} else if next != nil {
@@ -96,20 +108,23 @@ func (lw *LoopyWriter) Run(ctx context.Context, keepalive time.Duration, ts Tran
 		if timeout {
 			lw.writeKeepalive(tp)
 		}
-		if !le.IsZero() {
-			lw.writeLease(tp, le)
+		if !nextLease.IsZero() {
+			lw.writeLease(tp, nextLease)
 		}
+
+		// init snooze with true
 		snooze := true
 	hasData:
 		for {
-			next, le, err = lw.q.Dequeue(false, keepalive)
+			next, nextLease, err = lw.q.Dequeue(false, keepalive)
 			timeout = err == ErrDequeueTimeout
 			if err != nil && !timeout {
 				return err
 			}
 
 			if next != nil {
-				if err := lw.writeNext(tp, next); err != nil {
+				err = lw.writeNext(tp, next)
+				if err != nil {
 					if lw.backlogs != nil {
 						lw.backlogs.Enqueue(next)
 					} else {
@@ -123,15 +138,16 @@ func (lw *LoopyWriter) Run(ctx context.Context, keepalive time.Duration, ts Tran
 			if timeout {
 				lw.writeKeepalive(tp)
 			}
-			if !le.IsZero() {
-				lw.writeLease(tp, le)
+			if !nextLease.IsZero() {
+				lw.writeLease(tp, nextLease)
 			}
 			if snooze {
 				snooze = false
 				runtime.Gosched()
 				continue hasData
 			}
-			if err := tp.Flush(); err != nil {
+			err = tp.Flush()
+			if err != nil {
 				return err
 			}
 			break hasData
@@ -166,14 +182,18 @@ func (lw *LoopyWriter) writeLease(tp *transport.Transport, l lease.Lease) {
 	}
 }
 
-func (lw *LoopyWriter) processBacklogs(tp *transport.Transport) error {
+func (lw *LoopyWriter) drainBacklogs(ctx context.Context, tf *tpfactory.TransportFactory) error {
+	tp, err := tf.Get(ctx, true)
+	if err != nil {
+		return err
+	}
 	if lw.backlogs == nil {
 		return nil
 	}
 	next := lw.backlogs.Dequeue()
 	for next != nil {
-		if err := tp.Send(next.(core.WriteableFrame), false); err != nil {
-			return err
+		if e := tp.Send(next.(core.WriteableFrame), false); e != nil {
+			return e
 		}
 		next = lw.backlogs.Dequeue()
 	}
