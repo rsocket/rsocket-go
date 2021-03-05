@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/gorilla/websocket"
@@ -35,6 +36,7 @@ type WebsocketClientBuilder struct {
 	url    string
 	tlsCfg *tls.Config
 	header http.Header
+	proxy  func(*http.Request) (*url.URL, error)
 }
 
 // WebsocketServerBuilder provides builder which can be used to create a server-side Websocket transport easily.
@@ -173,10 +175,16 @@ func (wc *WebsocketClientBuilder) SetHeader(header http.Header) *WebsocketClient
 	return wc
 }
 
+// SetProxy sets proxy.
+func (wc *WebsocketClientBuilder) SetProxy(proxy func(*http.Request) (*url.URL, error)) *WebsocketClientBuilder {
+	wc.proxy = proxy
+	return wc
+}
+
 // Build builds and returns a new websocket ClientTransporter
 func (wc *WebsocketClientBuilder) Build() transport.ClientTransporter {
 	return func(ctx context.Context) (*transport.Transport, error) {
-		return transport.NewWebsocketClientTransport(ctx, wc.url, wc.tlsCfg, wc.header)
+		return transport.NewWebsocketClientTransport(ctx, wc.url, wc.tlsCfg, wc.header, wc.proxy)
 	}
 }
 
@@ -276,7 +284,8 @@ func TCPServer() *TCPServerBuilder {
 // WebsocketClient creates a new WebsocketClientBuilder.
 func WebsocketClient() *WebsocketClientBuilder {
 	return &WebsocketClientBuilder{
-		url: fmt.Sprintf("ws://127.0.0.1:%d", DefaultPort),
+		url:   fmt.Sprintf("ws://127.0.0.1:%d", DefaultPort),
+		proxy: http.ProxyFromEnvironment,
 	}
 }
 
