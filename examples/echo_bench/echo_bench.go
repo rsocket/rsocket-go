@@ -25,18 +25,25 @@ var (
 	n           int
 	payloadSize int
 	mtu         int
+	pprof       string
 )
 
 func init() {
 	flag.IntVar(&n, "n", 100*10000, "request amount.")
 	flag.IntVar(&payloadSize, "size", 1024, "payload data size.")
 	flag.IntVar(&mtu, "mtu", 0, "mut size, zero means disabled.")
+	flag.StringVar(&pprof, "pprof", "", "enable pprof, cpu/mem.")
 	flag.Parse()
 	tp = rsocket.TCPClient().SetHostAndPort("127.0.0.1", 7878).Build()
 }
 
 func main() {
-	defer profile.Start(profile.MemProfile, profile.ProfilePath(".")).Stop()
+	switch pprof {
+	case "mem":
+		defer profile.Start(profile.MemProfile, profile.MemProfileAllocs(), profile.MemProfileHeap(), profile.ProfilePath(".")).Stop()
+	case "cpu":
+		defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
+	}
 
 	client, err := createClient(mtu)
 	if err != nil {
