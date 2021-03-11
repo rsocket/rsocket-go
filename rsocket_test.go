@@ -123,7 +123,9 @@ func TestResume(t *testing.T) {
 	// restart the proxy again
 	go startProxy(proxyAddr, ch, upstreamAddr)
 
-	defer (<-ch).Close()
+	defer func() {
+		_ = (<-ch).Close()
+	}()
 
 	// client should request failed
 	_, _, err = cli.RequestResponse(payload.NewString("vvv", "vvv")).BlockUnsafe(ctx)
