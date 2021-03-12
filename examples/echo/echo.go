@@ -21,7 +21,7 @@ var tp transport.ServerTransporter
 func init() {
 	tp = rsocket.TCPServer().SetHostAndPort("127.0.0.1", 7878).Build()
 	go func() {
-		log.Println(http.ListenAndServe(":4444", nil))
+		log.Println(http.ListenAndServe("127.0.0.1:4444", nil))
 	}()
 }
 
