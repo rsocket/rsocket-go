@@ -447,8 +447,6 @@ func (dc *DuplexConnection) RequestChannel(sending flux.Flux) (ret flux.Flux) {
 
 	toBeReleased := queue.NewLKQueue()
 
-	sendResult := make(chan error)
-
 	ret = receiving.
 		DoFinally(func(sig rx.SignalType) {
 			dc.unregister(sid)
@@ -459,20 +457,6 @@ func (dc *DuplexConnection) RequestChannel(sending flux.Flux) (ret flux.Flux) {
 					break
 				}
 				next.(common.Releasable).Release()
-			}
-			// process sending result
-			e, ok := <-sendResult
-			if ok {
-				dc.writeError(sid, e)
-			} else {
-				complete := framing.NewWriteablePayloadFrame(sid, nil, nil, core.FlagComplete)
-				done := make(chan struct{})
-				complete.HandleDone(func() {
-					close(done)
-				})
-				if dc.sendFrame(complete) {
-					<-done
-				}
 			}
 		}).
 		DoOnNext(func(next payload.Payload) error {
@@ -486,7 +470,9 @@ func (dc *DuplexConnection) RequestChannel(sending flux.Flux) (ret flux.Flux) {
 		}).
 		DoOnRequest(func(initN int) {
 			n := ToUint32RequestN(initN)
-			if !rcvRequested.CAS(false, true) {
+			isFirstRequest := rcvRequested.CAS(false, true)
+			if !isFirstRequest {
+				// block send RequestN frame
 				frameN := framing.NewWriteableRequestNFrame(sid, n, 0)
 				done := make(chan struct{})
 				frameN.HandleDone(func() {
@@ -498,13 +484,11 @@ func (dc *DuplexConnection) RequestChannel(sending flux.Flux) (ret flux.Flux) {
 				return
 			}
 
-			sub := requestChannelSubscriber{
-				sid:          sid,
-				n:            n,
-				dc:           dc,
-				sndRequested: atomic.NewBool(false),
-				rcv:          receiving,
-				result:       sendResult,
+			sub := &requestChannelSubscriber{
+				sid: sid,
+				n:   n,
+				dc:  dc,
+				rcv: receiving,
 			}
 			sending.SubscribeOn(dc.reqSche).SubscribeWith(dc.ctx, sub)
 		})
@@ -645,13 +629,11 @@ func (dc *DuplexConnection) respondRequestChannel(req fragmentation.HeaderAndPay
 		return nil
 	}
 
-	receivingProcessor.Next(req)
-
 	// Ensure registering message success before func end.
 	subscribed := make(chan struct{})
 
 	// Create subscriber
-	sub := respondChannelSubscriber{
+	sub := &respondChannelSubscriber{
 		sid:        sid,
 		n:          initRequestN,
 		dc:         dc,
@@ -663,6 +645,8 @@ func (dc *DuplexConnection) respondRequestChannel(req fragmentation.HeaderAndPay
 	mustExecute(dc.reqSche, func() {
 		sending.SubscribeWith(dc.ctx, sub)
 	})
+
+	receivingProcessor.Next(req)
 
 	<-subscribed
 
