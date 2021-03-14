@@ -357,12 +357,12 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 					RequestChannel(func(inputs flux.Flux) flux.Flux {
 						received := new(int32)
 						inputs.
-							DoFinally(func(s rx.SignalType) {
-								assert.Equal(t, channelElements, atomic.LoadInt32(received))
-							}).
 							DoOnNext(func(input payload.Payload) error {
 								atomic.AddInt32(received, 1)
 								return nil
+							}).
+							DoOnComplete(func() {
+								assert.Equal(t, channelElements, atomic.LoadInt32(received))
 							}).
 							Subscribe(context.Background())
 
