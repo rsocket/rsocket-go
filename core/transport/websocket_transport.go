@@ -184,9 +184,9 @@ func NewWebsocketClientTransport(ctx context.Context, url string, config *tls.Co
 		HandshakeTimeout: 45 * time.Second,
 		TLSClientConfig:  config,
 	}
-	conn, _, err := dial.DialContext(ctx, url, header)
+	conn, resp, err := dial.DialContext(ctx, url, header)
 	if err != nil {
-		return nil, errors.Wrap(err, "dial websocket failed")
+		return nil, errors.Wrapf(err, "dial websocket failed: %s", resp.Status)
 	}
 	return NewTransport(NewWebsocketConnection(conn)), nil
 }
