@@ -9,6 +9,8 @@ import (
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/jjeffcaii/reactor-go/scheduler"
 	"github.com/pkg/errors"
+	"go.uber.org/atomic"
+
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/core/transport"
@@ -24,7 +26,6 @@ import (
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
-	"go.uber.org/atomic"
 )
 
 const _outChanSize = 64
@@ -1057,7 +1058,7 @@ func (dc *DuplexConnection) sendPayload(
 		// lazy release at last frame
 		next := framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, flag)
 
-		if !result.Flag.Check(core.FlagFollow) {
+		if !result.Flag.Check(core.FlagFollow) && isReleasable {
 			next.HandleDone(func() {
 				releasable.Release()
 			})
