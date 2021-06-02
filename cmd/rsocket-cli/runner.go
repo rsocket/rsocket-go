@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -182,7 +183,7 @@ func (r *Runner) runServerMode(ctx context.Context) error {
 	go func() {
 		sendingPayloads := r.createPayload()
 		ch <- sb.
-			Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
+			Acceptor(func(setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 				var options []rsocket.OptAbstractSocket
 				options = append(options, rsocket.RequestStream(func(message payload.Payload) flux.Flux {
 					r.showPayload(message)
@@ -287,18 +288,18 @@ func (r *Runner) createPayload() flux.Flux {
 			return flux.Error(err)
 		}
 	} else {
-		md = []byte(r.Metadata)
+		md = bytesconv.StringToBytes(r.Metadata)
 	}
 
 	if r.Input == "-" {
 		fmt.Println("Type commands to send to the server......")
 		reader := bufio.NewReader(os.Stdin)
 		text, _ := reader.ReadString('\n')
-		return flux.Just(payload.New([]byte(strings.Trim(text, "\n")), md))
+		return flux.Just(payload.New(bytesconv.StringToBytes(strings.Trim(text, "\n")), md))
 	}
 
 	if !strings.HasPrefix(r.Input, "@") {
-		return flux.Just(payload.New([]byte(r.Input), md))
+		return flux.Just(payload.New(bytesconv.StringToBytes(r.Input), md))
 	}
 
 	return flux.Create(func(ctx context.Context, s flux.Sink) {
@@ -319,7 +320,7 @@ func (r *Runner) createPayload() flux.Flux {
 				s.Error(ctx.Err())
 				return
 			default:
-				s.Next(payload.New([]byte(scanner.Text()), md))
+				s.Next(payload.New(bytesconv.StringToBytes(scanner.Text()), md))
 			}
 		}
 		s.Complete()
@@ -331,7 +332,7 @@ func (r *Runner) readData(input string) (data []byte, err error) {
 	case strings.HasPrefix(input, "@"):
 		data, err = ioutil.ReadFile(input[1:])
 	case input != "":
-		data = []byte(input)
+		data = bytesconv.StringToBytes(input)
 	}
 	return
 }
