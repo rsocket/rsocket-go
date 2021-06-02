@@ -1,5 +1,9 @@
 package payload
 
+import (
+	"github.com/rsocket/rsocket-go/internal/bytesconv"
+)
+
 type strPayload struct {
 	data     string
 	metadata string
@@ -8,7 +12,7 @@ type strPayload struct {
 func (p *strPayload) Metadata() (metadata []byte, ok bool) {
 	ok = len(p.metadata) > 0
 	if ok {
-		metadata = []byte(p.metadata)
+		metadata = bytesconv.StringToBytes(p.metadata)
 	}
 	return
 }
@@ -18,7 +22,7 @@ func (p *strPayload) MetadataUTF8() (metadata string, ok bool) {
 }
 
 func (p *strPayload) Data() []byte {
-	return []byte(p.data)
+	return bytesconv.StringToBytes(p.data)
 }
 
 func (p *strPayload) DataUTF8() string {

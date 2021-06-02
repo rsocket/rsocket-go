@@ -3,6 +3,7 @@ package extension
 import (
 	"bytes"
 	"fmt"
+	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"math"
 
 	"github.com/rsocket/rsocket-go/internal/u24"
@@ -82,7 +83,7 @@ func (c *CompositeMetadataBuilder) PushWellKnown(mimeType MIME, metadata []byte)
 
 // PushWellKnownString push a WellKnownMimeType and metadata string.
 func (c *CompositeMetadataBuilder) PushWellKnownString(mimeType MIME, metadata string) *CompositeMetadataBuilder {
-	return c.PushWellKnown(mimeType, []byte(metadata))
+	return c.PushWellKnown(mimeType, bytesconv.StringToBytes(metadata))
 }
 
 // Push push a custom MimeType and metadata bytes.
@@ -98,7 +99,7 @@ func (c *CompositeMetadataBuilder) Push(mimeType string, metadata []byte) *Compo
 
 // PushString push a custom MimeType and metadata string.
 func (c *CompositeMetadataBuilder) PushString(mimeType string, metadata string) *CompositeMetadataBuilder {
-	return c.Push(mimeType, []byte(metadata))
+	return c.Push(mimeType, bytesconv.StringToBytes(metadata))
 }
 
 // Build build a new CompositeMetadata.
@@ -114,7 +115,7 @@ func (c *CompositeMetadataBuilder) Build() (CompositeMetadata, error) {
 				return nil, fmt.Errorf("length of MIME type is over %d", math.MaxInt8)
 			}
 			bf.WriteByte(byte(mimeTypeLen - 1))
-			bf.Write([]byte(mimeType))
+			bf.Write(bytesconv.StringToBytes(mimeType))
 		default:
 			panic("unreachable")
 		}
