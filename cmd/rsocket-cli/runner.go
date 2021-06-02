@@ -183,7 +183,7 @@ func (r *Runner) runServerMode(ctx context.Context) error {
 	go func() {
 		sendingPayloads := r.createPayload()
 		ch <- sb.
-			Acceptor(func(ctx context.Context,setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
+			Acceptor(func(ctx context.Context, setup payload.SetupPayload, sendingSocket rsocket.CloseableRSocket) (rsocket.RSocket, error) {
 				var options []rsocket.OptAbstractSocket
 				options = append(options, rsocket.RequestStream(func(message payload.Payload) flux.Flux {
 					r.showPayload(message)
