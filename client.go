@@ -2,6 +2,7 @@ package rsocket
 
 import (
 	"context"
+	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -152,12 +153,12 @@ func (cb *clientBuilder) KeepAlive(tickPeriod, ackTimeout time.Duration, missedA
 }
 
 func (cb *clientBuilder) DataMimeType(mime string) ClientBuilder {
-	cb.setup.DataMimeType = []byte(mime)
+	cb.setup.DataMimeType = bytesconv.StringToBytes(mime)
 	return cb
 }
 
 func (cb *clientBuilder) MetadataMimeType(mime string) ClientBuilder {
-	cb.setup.MetadataMimeType = []byte(mime)
+	cb.setup.MetadataMimeType = bytesconv.StringToBytes(mime)
 	return cb
 }
 
