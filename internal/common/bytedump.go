@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -33,9 +34,9 @@ func init() {
 	}
 	for i := 0; i < len(_hexDumpRowPrefixes); i++ {
 		b.WriteString(_newLine)
-		n := i<<4&0xFFFFFFFF | 0x100000000
+		n := int64(i)<<4&math.MaxUint32 | 1<<32
 		b.WriteByte('|')
-		b.WriteString(leftPad(strconv.FormatInt(int64(n), 16), "0", 8))
+		b.WriteString(leftPad(strconv.FormatInt(n, 16), "0", 8))
 		b.WriteByte('|')
 		_hexDumpRowPrefixes[i] = b.String()
 		b.Reset()
@@ -101,8 +102,8 @@ func appendHexDumpRowPrefix(dump *strings.Builder, row int, rowStartIndex int) {
 		return
 	}
 	dump.WriteString(_newLine)
-	n := rowStartIndex&0xFFFFFFFF | 0x100000000
-	dump.WriteString(strconv.FormatInt(int64(n), 16))
+	n := int64(rowStartIndex)&math.MaxUint32 | 1<<32
+	dump.WriteString(strconv.FormatInt(n, 16))
 	dump.WriteByte('|')
 }
 
