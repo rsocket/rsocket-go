@@ -9,7 +9,6 @@
 [![GitHub Release](https://img.shields.io/github/release-pre/rsocket/rsocket-go.svg)](https://github.com/rsocket/rsocket-go/releases)
 
 > rsocket-go is an implementation of the [RSocket](http://rsocket.io/) protocol in Go.
-<br>***IT IS UNDER ACTIVE DEVELOPMENT, APIs are unstable and maybe change at any time until release of v1.0.0.***
 
 ## Features
  - Design For Golang.
