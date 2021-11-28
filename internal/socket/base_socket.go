@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
 	"github.com/rsocket/rsocket-go/logger"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -17,6 +18,18 @@ type BaseSocket struct {
 	closers  []func(error)
 	once     sync.Once
 	reqLease *leaser
+	addr     string
+}
+
+func (p *BaseSocket) SetAddr(addr string) {
+	p.addr = addr
+}
+
+func (p *BaseSocket) Addr() (string, bool) {
+	if tp := p.socket.currentTransport(); tp != nil {
+		return tp.Addr()
+	}
+	return p.addr, len(p.addr) > 0
 }
 
 // FireAndForget sends FireAndForget request.

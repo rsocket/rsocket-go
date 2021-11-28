@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
+
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/logger"
@@ -33,6 +34,14 @@ type RawWebsocketConn interface {
 type WebsocketConn struct {
 	c       RawWebsocketConn
 	counter *core.TrafficCounter
+}
+
+// Addr returns the address info.
+func (p *WebsocketConn) Addr() string {
+	if c, ok := p.c.(*websocket.Conn); ok {
+		return c.RemoteAddr().String()
+	}
+	return ""
 }
 
 // SetCounter bind a counter which can count r/w bytes.

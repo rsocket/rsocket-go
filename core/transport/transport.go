@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/internal/buffer"
@@ -71,7 +72,7 @@ type Transport struct {
 	handlers    [handlerLen]FrameHandler
 }
 
-// NewTransport creates a new transport.
+// NewTransport creates new transport.
 func NewTransport(c Conn) *Transport {
 	return &Transport{
 		conn:        c,
@@ -84,10 +85,18 @@ func IsNoHandlerError(err error) bool {
 	return err == errNoHandler
 }
 
+func (p *Transport) Addr() (string, bool) {
+	ac, ok := p.conn.(AddrConn)
+	if ok {
+		return ac.Addr(), true
+	}
+	return "", false
+}
+
 // Handle register event handlers
 func (p *Transport) Handle(event EventType, handler FrameHandler) {
 	p.mu.Lock()
-	p.handlers[int(event)] = handler
+	p.handlers[event] = handler
 	p.mu.Unlock()
 }
 

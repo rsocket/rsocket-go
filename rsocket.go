@@ -65,6 +65,13 @@ type (
 		RSocket
 	}
 
+	// addressedRSocket is RSocket which contains address info.
+	addressedRSocket interface {
+		RSocket
+		// Addr returns the address info.
+		Addr() (string, bool)
+	}
+
 	// OptAbstractSocket is option for abstract socket.
 	OptAbstractSocket func(*socket.AbstractRSocket)
 )
@@ -112,4 +119,13 @@ func RequestChannel(fn func(requests flux.Flux) (responses flux.Flux)) OptAbstra
 	return func(opts *socket.AbstractRSocket) {
 		opts.RC = fn
 	}
+}
+
+// GetAddr returns the address info of given RSocket.
+// Normally, the format is "IP:PORT".
+func GetAddr(rs RSocket) (string, bool) {
+	if ars, ok := rs.(addressedRSocket); ok {
+		return ars.Addr()
+	}
+	return "", false
 }

@@ -1,3 +1,4 @@
+//go:build gofuzz
 // +build gofuzz
 
 //go:generate GO111MODULE=off go-fuzz-build github.com/rsocket/rsocket-go/

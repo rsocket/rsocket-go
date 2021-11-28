@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jjeffcaii/reactor-go/scheduler"
+
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/core/transport"
@@ -243,6 +244,12 @@ func (srv *server) doSetup(ctx context.Context, frame *framing.SetupFrame, tp *t
 	// 2. no resume
 	if !isResume {
 		sendingSocket = socket.NewSimpleServerSocket(rawSocket)
+
+		// workaround: set address info
+		if addr, ok := tp.Addr(); ok {
+			sendingSocket.SetAddr(addr)
+		}
+
 		if responder, e := srv.acc(ctx, frame, sendingSocket); e != nil {
 			err = framing.NewWriteableErrorFrame(0, core.ErrorCodeRejectedSetup, []byte(e.Error()))
 		} else {
@@ -266,6 +273,12 @@ func (srv *server) doSetup(ctx context.Context, frame *framing.SetupFrame, tp *t
 
 	// 4. resume success
 	sendingSocket = socket.NewResumableServerSocket(rawSocket, token)
+
+	// workaround: set address info
+	if addr, ok := tp.Addr(); ok {
+		sendingSocket.SetAddr(addr)
+	}
+
 	if responder, e := srv.acc(ctx, frame, sendingSocket); e != nil {
 		switch vv := e.(type) {
 		case *framing.ErrorFrame:

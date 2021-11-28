@@ -145,12 +145,12 @@ func NewTCPServerTransportWithAddr(network, addr string, tlsConfig *tls.Config) 
 	return NewTCPServerTransport(f)
 }
 
-// NewTCPClientTransport creates a new transport.
+// NewTCPClientTransport creates new transport.
 func NewTCPClientTransport(c net.Conn) *Transport {
 	return NewTransport(NewTCPConn(c))
 }
 
-// NewTCPClientTransportWithAddr creates a new transport.
+// NewTCPClientTransportWithAddr creates new transport.
 func NewTCPClientTransportWithAddr(ctx context.Context, network, addr string, tlsConfig *tls.Config) (tp *Transport, err error) {
 	var conn net.Conn
 	var dial net.Dialer
