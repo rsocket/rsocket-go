@@ -31,6 +31,11 @@ type Conn interface {
 	Read() (core.BufferedFrame, error)
 	// Write writes a frame to Conn.
 	Write(core.WriteableFrame) error
-	// Flush.
+	// Flush flushes the data.
 	Flush() error
+}
+
+type AddrConn interface {
+	Conn
+	Addr() string
 }

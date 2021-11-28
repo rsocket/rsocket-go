@@ -54,4 +54,6 @@ type ServerSocket interface {
 	Start(ctx context.Context) error
 	// Token returns token of socket.
 	Token() (token []byte, ok bool)
+	// SetAddr sets address info.
+	SetAddr(addr string)
 }

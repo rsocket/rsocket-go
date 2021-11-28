@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
 	"github.com/rsocket/rsocket-go/internal/u24"
@@ -19,6 +20,11 @@ type TCPConn struct {
 	writer  *bufio.Writer
 	decoder *LengthBasedFrameDecoder
 	counter *core.TrafficCounter
+}
+
+func (p TCPConn) Addr() string {
+	addr := p.conn.RemoteAddr()
+	return addr.String()
 }
 
 // SetCounter bind a counter which can count r/w bytes.
@@ -96,7 +102,7 @@ func (p *TCPConn) Write(frame core.WriteableFrame) (err error) {
 	return
 }
 
-// Close close current connection.
+// Close closes current connection.
 func (p *TCPConn) Close() error {
 	return p.conn.Close()
 }
