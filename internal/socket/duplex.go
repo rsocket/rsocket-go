@@ -2,6 +2,7 @@ package socket
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"sync"
 	"time"
@@ -816,8 +817,10 @@ func (dc *DuplexConnection) onFrameCancel(frame core.BufferedFrame) (err error) 
 		vv.su.Cancel()
 	case requestStreamCallbackReverse:
 		vv.su.Cancel()
+	case requestChannelCallback:
+		vv.snd.Cancel()
 	default:
-		panic("cannot cancel")
+		panic(fmt.Sprintf("cannot cancel for callback type %T!", vv))
 	}
 
 	return
