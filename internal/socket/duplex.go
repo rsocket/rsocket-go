@@ -817,10 +817,10 @@ func (dc *DuplexConnection) onFrameCancel(frame core.BufferedFrame) (err error) 
 		vv.su.Cancel()
 	case requestStreamCallbackReverse:
 		vv.su.Cancel()
-	case requestChannelCallback:
+	case respondChannelCallback:
 		vv.snd.Cancel()
 	default:
-		panic(fmt.Sprintf("cannot cancel for callback type %T!", vv))
+		panic(fmt.Sprintf("unreachable: should never occur %T!", vv))
 	}
 
 	return
