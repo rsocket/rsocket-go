@@ -18,7 +18,6 @@ import (
 	"github.com/rsocket/rsocket-go/internal/bytesconv"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
-	"github.com/rsocket/rsocket-go/internal/map32"
 	"github.com/rsocket/rsocket-go/internal/misc"
 	"github.com/rsocket/rsocket-go/internal/queue"
 	"github.com/rsocket/rsocket-go/lease"
@@ -60,10 +59,10 @@ type DuplexConnection struct {
 	sndQueue       chan core.WriteableFrame
 	sndBacklog     []core.WriteableFrame
 	responder      Responder
-	messages       map32.Map32 // key=streamID, value=callback
+	messages       sync.Map // key=streamID, value=callback
 	sids           StreamID
 	mtu            int
-	fragments      map32.Map32 // key=streamID, value=Joiner
+	fragments      sync.Map // key=streamID, value=Joiner
 	writeDone      chan struct{}
 	keepaliver     *Keepaliver
 	cond           sync.Cond
@@ -162,11 +161,10 @@ func (dc *DuplexConnection) destroyTransport() {
 }
 
 func (dc *DuplexConnection) destroyHandler(err error) {
-	defer dc.messages.Destroy()
 	// TODO: optimize callback map
 	var callbacks []callback
-	dc.messages.Range(func(sid uint32, v interface{}) bool {
-		callbacks = append(callbacks, v.(callback))
+	dc.messages.Range(func(_, value interface{}) bool {
+		callbacks = append(callbacks, value.(callback))
 		return true
 	})
 	for _, next := range callbacks {
@@ -175,11 +173,10 @@ func (dc *DuplexConnection) destroyHandler(err error) {
 }
 
 func (dc *DuplexConnection) destroyFragment() {
-	dc.fragments.Range(func(u uint32, i interface{}) bool {
+	dc.fragments.Range(func(_, i interface{}) bool {
 		common.TryRelease(i)
 		return true
 	})
-	dc.fragments.Destroy()
 }
 
 func (dc *DuplexConnection) destroySndQueue() {
@@ -1360,21 +1357,11 @@ func newDuplexConnection(ctx context.Context, reqSche, resSche scheduler.Schedul
 		leases:         leases,
 		sndQueue:       make(chan core.WriteableFrame, _outChanSize),
 		mtu:            mtu,
-		messages: map32.New(map32.WithCap(32), map32.WithHasher(func(key uint32, _ int) int {
-			var n int
-			if key&1 == 0 {
-				n = int(key) >> 1
-			} else {
-				n = (int(key)-1)>>1 + 1
-			}
-			return n & 31
-		})),
-		sids:       sids,
-		fragments:  map32.New(map32.WithCap(1)),
-		counter:    core.NewTrafficCounter(),
-		keepaliver: ka,
-		closed:     atomic.NewBool(false),
-		ready:      atomic.NewBool(false),
+		sids:           sids,
+		counter:        core.NewTrafficCounter(),
+		keepaliver:     ka,
+		closed:         atomic.NewBool(false),
+		ready:          atomic.NewBool(false),
 	}
 
 	c.cond.L = &c.locker
