@@ -59,7 +59,7 @@ type DuplexConnection struct {
 	sndQueue       chan core.WriteableFrame
 	sndBacklog     []core.WriteableFrame
 	responder      Responder
-	messages       sync.Map // key=streamID, value=callback
+	messages       callbackMap // key=streamID, value=callback
 	sids           StreamID
 	mtu            int
 	fragments      sync.Map // key=streamID, value=Joiner
@@ -163,8 +163,8 @@ func (dc *DuplexConnection) destroyTransport() {
 func (dc *DuplexConnection) destroyHandler(err error) {
 	// TODO: optimize callback map
 	var callbacks []callback
-	dc.messages.Range(func(_, value interface{}) bool {
-		callbacks = append(callbacks, value.(callback))
+	dc.messages.Range(func(_ uint32, value callback) bool {
+		callbacks = append(callbacks, value)
 		return true
 	})
 	for _, next := range callbacks {
@@ -1316,7 +1316,7 @@ func (dc *DuplexConnection) shouldSplit(size int) bool {
 	return size > dc.mtu
 }
 
-func (dc *DuplexConnection) register(sid uint32, msg interface{}) {
+func (dc *DuplexConnection) register(sid uint32, msg callback) {
 	dc.messages.Store(sid, msg)
 }
 
@@ -1366,4 +1366,41 @@ func newDuplexConnection(ctx context.Context, reqSche, resSche scheduler.Schedul
 
 	c.cond.L = &c.locker
 	return c
+}
+
+type callbackMap struct {
+	mu sync.RWMutex
+	ma map[uint32]callback
+}
+
+func (cm *callbackMap) Store(sid uint32, c callback) {
+	cm.mu.Lock()
+	if cm.ma == nil {
+		cm.ma = make(map[uint32]callback)
+	}
+	cm.ma[sid] = c
+	cm.mu.Unlock()
+}
+
+func (cm *callbackMap) Load(sid uint32) (callback, bool) {
+	cm.mu.RLock()
+	c, ok := cm.ma[sid]
+	cm.mu.RUnlock()
+	return c, ok
+}
+
+func (cm *callbackMap) Delete(sid uint32) {
+	cm.mu.Lock()
+	delete(cm.ma, sid)
+	cm.mu.Unlock()
+}
+
+func (cm *callbackMap) Range(f func(uint32, callback) bool) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	for k, v := range cm.ma {
+		if !f(k, v) {
+			return
+		}
+	}
 }
