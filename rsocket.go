@@ -116,3 +116,7 @@ func RequestChannel(fn func(requests flux.Flux) (responses flux.Flux)) OptAbstra
 func DebugCountByteBuffBorrowed() int64 {
 	return common.CountBorrowed()
 }
+
+func DebugCountBorrowedRequestResponseSubscriber() int64 {
+	return socket.CountBorrowedRequestResponseSubscriber()
+}

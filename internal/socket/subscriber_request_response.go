@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 
 	"github.com/jjeffcaii/reactor-go"
+
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
@@ -17,9 +18,17 @@ var globalRequestResponseSubscriberPool requestResponseSubscriberPool
 
 type requestResponseSubscriberPool struct {
 	inner sync.Pool
+	refs  int64
+}
+
+func CountBorrowedRequestResponseSubscriber() int64 {
+	return atomic.LoadInt64(&globalRequestResponseSubscriberPool.refs)
 }
 
 func (p *requestResponseSubscriberPool) get() *requestResponseSubscriber {
+	defer func() {
+		atomic.AddInt64(&p.refs, 1)
+	}()
 	if exist, _ := p.inner.Get().(*requestResponseSubscriber); exist != nil {
 		return exist
 	}
@@ -27,6 +36,9 @@ func (p *requestResponseSubscriberPool) get() *requestResponseSubscriber {
 }
 
 func (p *requestResponseSubscriberPool) put(s *requestResponseSubscriber) {
+	defer func() {
+		atomic.AddInt64(&p.refs, -1)
+	}()
 	if s == nil {
 		return
 	}
