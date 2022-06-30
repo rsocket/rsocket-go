@@ -12,23 +12,24 @@ import (
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
+
+	uatomic "go.uber.org/atomic"
 )
 
 var globalRequestResponseSubscriberPool requestResponseSubscriberPool
 
+var _borrows, _returns, _nexts uatomic.Int64
+
 type requestResponseSubscriberPool struct {
 	inner sync.Pool
-	refs  int64
 }
 
-func CountBorrowedRequestResponseSubscriber() int64 {
-	return atomic.LoadInt64(&globalRequestResponseSubscriberPool.refs)
+func Statistics() (borrows, releases, nexts int64) {
+	return _borrows.Load(), _returns.Load(), _nexts.Load()
 }
 
 func (p *requestResponseSubscriberPool) get() *requestResponseSubscriber {
-	defer func() {
-		atomic.AddInt64(&p.refs, 1)
-	}()
+	defer _borrows.Inc()
 	if exist, _ := p.inner.Get().(*requestResponseSubscriber); exist != nil {
 		return exist
 	}
@@ -36,9 +37,7 @@ func (p *requestResponseSubscriberPool) get() *requestResponseSubscriber {
 }
 
 func (p *requestResponseSubscriberPool) put(s *requestResponseSubscriber) {
-	defer func() {
-		atomic.AddInt64(&p.refs, -1)
-	}()
+	defer _returns.Inc()
 	if s == nil {
 		return
 	}
@@ -72,6 +71,7 @@ func returnRequestResponseSubscriber(s rx.Subscriber) {
 }
 
 func (r *requestResponseSubscriber) OnNext(next payload.Payload) {
+	defer _nexts.Inc()
 	r.dc.sendPayload(r.sid, next, core.FlagNext|core.FlagComplete)
 	atomic.AddInt32(&r.sndCnt, 1)
 }
