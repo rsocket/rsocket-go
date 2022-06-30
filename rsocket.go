@@ -117,6 +117,6 @@ func DebugCountByteBuffBorrowed() int64 {
 	return common.CountBorrowed()
 }
 
-func DebugCountBorrowedRequestResponseSubscriber() int64 {
-	return socket.CountBorrowedRequestResponseSubscriber()
+func DebugSubscriberLeak() (borrows, returns, nexts int64) {
+	return socket.Statistics()
 }
