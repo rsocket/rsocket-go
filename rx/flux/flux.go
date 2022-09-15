@@ -5,6 +5,7 @@ import (
 
 	"github.com/jjeffcaii/reactor-go/flux"
 	"github.com/jjeffcaii/reactor-go/scheduler"
+
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 )
@@ -22,10 +23,10 @@ type Sink interface {
 	Error(e error)
 }
 
-// Flux represents represents a reactive sequence of 0..N items.
+// Flux represents a reactive sequence of 0..N items.
 type Flux interface {
 	rx.Publisher
-	// Take take only the first N values from this Flux, if available.
+	// Take takes only the first N values from this Flux, if available.
 	Take(n int) Flux
 	// Filter evaluate each source value against the given Predicate.
 	// If the predicate test succeeds, the value is emitted.
