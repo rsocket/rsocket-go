@@ -15,7 +15,7 @@
  - Thin [reactive-streams](http://www.reactive-streams.org/) implementation.
  - Simulate Java SDK API.
  - Fast CLI (Compatible with [https://github.com/rsocket/rsocket-cli](https://github.com/rsocket/rsocket-cli/)).
-   - Installation: `go get github.com/rsocket/rsocket-go/cmd/rsocket-cli`
+   - Installation: `go install github.com/rsocket/rsocket-go/cmd/rsocket-cli@latest`
    - Example: `rsocket-cli --request -i hello_world --setup setup_me tcp://127.0.0.1:7878`
 
 ## Install
@@ -23,7 +23,7 @@
 > Minimal go version is ***1.11***.
 
 ```shell
-$ go get -u github.com/rsocket/rsocket-go
+$ go install github.com/rsocket/rsocket-go/cmd/rsocket-cli@latest
 ```
 
 ## Quick Start
