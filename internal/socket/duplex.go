@@ -256,11 +256,13 @@ func (dc *DuplexConnection) RequestResponse(req payload.Payload) (res mono.Mono)
 
 	onFinally := func(s reactor.SignalType, d reactor.Disposable) {
 		common.TryRelease(handler.cache)
-		d.Dispose()
 		if s == reactor.SignalTypeCancel {
 			dc.sendFrame(framing.NewWriteableCancelFrame(sid))
 		}
+		// Unregister handler w/sink (processor).
 		dc.unregister(sid)
+		// Dispose sink (processor).
+		d.Dispose()
 	}
 
 	m, s, _ := mono.NewProcessor(dc.reqSche, onFinally)
