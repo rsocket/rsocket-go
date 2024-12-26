@@ -3,22 +3,24 @@ package framing
 import (
 	"encoding/binary"
 	"io"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/u24"
-	"go.uber.org/atomic"
+	uberatomic "go.uber.org/atomic"
 )
 
 // bufferedFrame is basic frame implementation.
 type bufferedFrame struct {
-	innerPtr atomic.Pointer[common.ByteBuff]
-	refs     atomic.Int32
+	innerPtr unsafe.Pointer
+	refs     uberatomic.Int32
 }
 
 func newBufferedFrame(inner *common.ByteBuff) *bufferedFrame {
 	frame := &bufferedFrame{}
-	frame.innerPtr.Store(inner)
+	atomic.StorePointer(&frame.innerPtr, unsafe.Pointer(inner))
 	frame.refs.Store(1)
 	return frame
 }
@@ -32,7 +34,7 @@ func (f *bufferedFrame) RefCnt() int32 {
 }
 
 func (f *bufferedFrame) Header() core.FrameHeader {
-	inner := f.innerPtr.Load()
+	inner := (*common.ByteBuff)(atomic.LoadPointer(&f.innerPtr))
 	if inner == nil {
 		panic("frame has been released!")
 	}
@@ -44,7 +46,7 @@ func (f *bufferedFrame) Header() core.FrameHeader {
 }
 
 func (f *bufferedFrame) HasFlag(flag core.FrameFlag) bool {
-	inner := f.innerPtr.Load()
+	inner := (*common.ByteBuff)(atomic.LoadPointer(&f.innerPtr))
 	if inner == nil {
 		panic("frame has been released!")
 	}
@@ -53,7 +55,7 @@ func (f *bufferedFrame) HasFlag(flag core.FrameFlag) bool {
 }
 
 func (f *bufferedFrame) StreamID() uint32 {
-	inner := f.innerPtr.Load()
+	inner := (*common.ByteBuff)(atomic.LoadPointer(&f.innerPtr))
 	if inner == nil {
 		panic("frame has been released!")
 	}
@@ -69,9 +71,9 @@ func (f *bufferedFrame) Release() {
 	if refs > 0 {
 		return
 	}
-	inner := f.innerPtr.Load()
+	inner := (*common.ByteBuff)(atomic.LoadPointer(&f.innerPtr))
 	if inner != nil {
-		swapped := f.innerPtr.CompareAndSwap(inner, nil)
+		swapped := atomic.CompareAndSwapPointer(&f.innerPtr, unsafe.Pointer(inner), unsafe.Pointer(nil))
 		if swapped {
 			common.ReturnByteBuff(inner)
 		}
@@ -80,7 +82,7 @@ func (f *bufferedFrame) Release() {
 
 // Body returns frame body.
 func (f *bufferedFrame) Body() []byte {
-	inner := f.innerPtr.Load()
+	inner := (*common.ByteBuff)(atomic.LoadPointer(&f.innerPtr))
 	if inner == nil {
 		return nil
 	}
@@ -91,7 +93,7 @@ func (f *bufferedFrame) Body() []byte {
 
 // Len returns length of frame.
 func (f *bufferedFrame) Len() int {
-	inner := f.innerPtr.Load()
+	inner := (*common.ByteBuff)(atomic.LoadPointer(&f.innerPtr))
 	if inner == nil {
 		return 0
 	}
@@ -103,7 +105,7 @@ func (f *bufferedFrame) WriteTo(w io.Writer) (n int64, err error) {
 	if f == nil {
 		return
 	}
-	inner := f.innerPtr.Load()
+	inner := (*common.ByteBuff)(atomic.LoadPointer(&f.innerPtr))
 	if inner == nil {
 		return
 	}
