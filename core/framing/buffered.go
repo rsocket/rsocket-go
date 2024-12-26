@@ -3,11 +3,11 @@ package framing
 import (
 	"encoding/binary"
 	"io"
-	"sync/atomic"
 
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/u24"
+	"go.uber.org/atomic"
 )
 
 // bufferedFrame is basic frame implementation.
