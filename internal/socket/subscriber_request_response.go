@@ -3,7 +3,6 @@ package socket
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/rsocket/rsocket-go/core"
@@ -11,6 +10,7 @@ import (
 	"github.com/rsocket/rsocket-go/internal/fragmentation"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
+	"go.uber.org/atomic"
 )
 
 var globalRequestResponseSubscriberPool requestResponseSubscriberPool
