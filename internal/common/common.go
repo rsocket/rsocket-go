@@ -35,14 +35,6 @@ func CloneBytes(b []byte) []byte {
 	return clone
 }
 
-func SafeCloseDoneChan(c chan<- struct{}) (ok bool) {
-	defer func() {
-		ok = recover() == nil
-	}()
-	close(c)
-	return
-}
-
 func ToMilliseconds(duration time.Duration) int64 {
 	return int64(duration) / 1e6
 }

@@ -6,12 +6,15 @@ import (
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/payload"
+	"go.uber.org/atomic"
 )
 
 type blockSubscriber struct {
-	done  chan struct{}
-	vchan chan<- payload.Payload
-	echan chan<- error
+	// Atomic bool to ensure that 'done' is closed only once.
+	isDone *atomic.Bool
+	done   chan struct{}
+	vchan  chan<- payload.Payload
+	echan  chan<- error
 }
 
 func newBlockSubscriber(
@@ -20,34 +23,30 @@ func newBlockSubscriber(
 	echan chan<- error,
 ) reactor.Subscriber {
 	return blockSubscriber{
-		done:  done,
-		vchan: vchan,
-		echan: echan,
+		isDone: atomic.NewBool(false),
+		done:   done,
+		vchan:  vchan,
+		echan:  echan,
 	}
 }
 
 func (b blockSubscriber) OnComplete() {
-	select {
-	case <-b.done:
-	default:
-		_ = common.SafeCloseDoneChan(b.done)
+	swapped := b.isDone.CAS(false, true)
+	if swapped {
+		close(b.done)
 	}
 }
 
 func (b blockSubscriber) OnError(err error) {
-	select {
-	case <-b.done:
-	default:
-		if common.SafeCloseDoneChan(b.done) {
-			b.echan <- err
-		}
+	swapped := b.isDone.CAS(false, true)
+	if swapped {
+		b.echan <- err
+		close(b.done)
 	}
 }
 
 func (b blockSubscriber) OnNext(any reactor.Any) {
-	select {
-	case <-b.done:
-	default:
+	if !b.isDone.Load() {
 		if r, ok := any.(common.Releasable); ok {
 			r.IncRef()
 		}
