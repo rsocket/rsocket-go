@@ -165,12 +165,10 @@ func toBlock(ctx context.Context, m mono.Mono) (payload.Payload, error) {
 	done := make(chan struct{})
 	vchan := make(chan payload.Payload, 1)
 	echan := make(chan error, 1)
+	// 'blockSubscriber' takes ownership of the above channels (w.r.t. closing them)
 	b := newBlockSubscriber(done, vchan, echan)
 	m.SubscribeWith(ctx, b)
 	<-done
-
-	defer close(vchan)
-	defer close(echan)
 
 	select {
 	case value := <-vchan:
