@@ -161,15 +161,11 @@ func (dc *DuplexConnection) destroyTransport() {
 }
 
 func (dc *DuplexConnection) destroyHandler(err error) {
-	// TODO: optimize callback map
-	var callbacks []callback
 	dc.messages.Range(func(_, value interface{}) bool {
-		callbacks = append(callbacks, value.(callback))
+		cb := value.(callback)
+		cb.stopWithError(err)
 		return true
 	})
-	for _, next := range callbacks {
-		next.stopWithError(err)
-	}
 }
 
 func (dc *DuplexConnection) destroyFragment() {
