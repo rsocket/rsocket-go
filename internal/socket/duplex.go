@@ -139,7 +139,7 @@ func (dc *DuplexConnection) Close() error {
 
 	dc.destroySndQueue()
 	dc.destroySndBacklog()
-	dc.destroyFragment()
+	dc.destroyAllFragments()
 
 	if dc.destroyReqSche {
 		_ = dc.reqSche.Close()
@@ -168,7 +168,7 @@ func (dc *DuplexConnection) destroyHandler(err error) {
 	})
 }
 
-func (dc *DuplexConnection) destroyFragment() {
+func (dc *DuplexConnection) destroyAllFragments() {
 	dc.fragments.Range(func(_, i interface{}) bool {
 		common.TryRelease(i)
 		return true
@@ -251,11 +251,10 @@ func (dc *DuplexConnection) RequestResponse(req payload.Payload) (res mono.Mono)
 	handler := &requestResponseCallback{}
 
 	onFinally := func(s reactor.SignalType, d reactor.Disposable) {
-		common.TryRelease(handler.cache)
 		if s == reactor.SignalTypeCancel {
 			dc.sendFrame(framing.NewWriteableCancelFrame(sid))
 		}
-		// Unregister handler w/sink (processor).
+		// Unregisters handler w/sink (processor), releases fragment.
 		dc.unregister(sid)
 		// Dispose sink (processor).
 		d.Dispose()
@@ -921,7 +920,6 @@ func (dc *DuplexConnection) onFramePayload(frame core.BufferedFrame) error {
 
 	switch handler := v.(type) {
 	case *requestResponseCallback:
-		handler.cache = next
 		handler.sink.Success(next)
 	case requestStreamCallback:
 		fg := h.Flag()
