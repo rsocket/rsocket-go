@@ -86,12 +86,12 @@ func TestAbstractRSocket_RequestStream(t *testing.T) {
 
 func TestAbstractRSocket_RequestChannel(t *testing.T) {
 	s := &socket.AbstractRSocket{
-		RC: func(publisher flux.Flux) flux.Flux {
+		RC: func(initialRequest payload.Payload, publisher flux.Flux) flux.Flux {
 			return flux.Clone(publisher)
 		},
 	}
 	var res []payload.Payload
-	_, err := s.RequestChannel(flux.Just(fakeRequest)).
+	_, err := s.RequestChannel(fakeRequest, flux.Just(fakeRequest)).
 		DoOnNext(func(input payload.Payload) error {
 			res = append(res, input)
 			return nil
@@ -101,6 +101,6 @@ func TestAbstractRSocket_RequestChannel(t *testing.T) {
 	assert.Len(t, res, 1)
 	assert.Equal(t, fakeRequest, res[0])
 
-	_, err = emptyAbstractRSocket.RequestChannel(flux.Just(fakeRequest)).BlockFirst(context.Background())
+	_, err = emptyAbstractRSocket.RequestChannel(fakeRequest, flux.Just(fakeRequest)).BlockFirst(context.Background())
 	assert.Error(t, err, "should return an error")
 }

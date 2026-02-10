@@ -430,7 +430,7 @@ func (dc *DuplexConnection) killCallback(sid uint32) {
 }
 
 // RequestChannel start a request of RequestChannel.
-func (dc *DuplexConnection) RequestChannel(sending flux.Flux) (ret flux.Flux) {
+func (dc *DuplexConnection) RequestChannel(request payload.Payload, sending flux.Flux) (ret flux.Flux) {
 	if dc.closed.Load() {
 		ret = flux.Error(errSocketClosed)
 		return
@@ -481,9 +481,56 @@ func (dc *DuplexConnection) RequestChannel(sending flux.Flux) (ret flux.Flux) {
 				return
 			}
 
+			// First request - send the initial REQUEST_CHANNEL frame with the request payload,
+			// then subscribe to the sending flux for subsequent payloads.
+			releasable, isReleasable := request.(common.Releasable)
+
+			if isReleasable {
+				releasable.IncRef()
+			}
+
+			data := request.Data()
+			metadata, _ := request.Metadata()
+
+			size := framing.CalcPayloadFrameSize(data, metadata) + 4
+			if !dc.shouldSplit(size) {
+				toBeSent := framing.NewWriteableRequestChannelFrame(sid, n, data, metadata, core.FlagNext)
+
+				if isReleasable {
+					toBeSent.HandleDone(func() {
+						releasable.Release()
+					})
+				}
+
+				if ok := dc.sendFrame(toBeSent); !ok {
+					dc.killCallback(sid)
+					return
+				}
+			} else {
+				dc.doSplitSkip(4, data, metadata, func(index int, result fragmentation.SplitResult) {
+					var toBeSent core.WriteableFrame
+					if index == 0 {
+						toBeSent = framing.NewWriteableRequestChannelFrame(sid, n, result.Data, result.Metadata, result.Flag|core.FlagNext)
+					} else {
+						toBeSent = framing.NewWriteablePayloadFrame(sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
+					}
+
+					// Add release hook at last frame.
+					if !result.Flag.Check(core.FlagFollow) && isReleasable {
+						toBeSent.HandleDone(func() {
+							releasable.Release()
+						})
+					}
+
+					if ok := dc.sendFrame(toBeSent); !ok {
+						dc.killCallback(sid)
+					}
+				})
+			}
+
+			// Subscribe to sending flux for subsequent payloads
 			sub := &requestChannelSubscriber{
 				sid: sid,
-				n:   n,
 				dc:  dc,
 				rcv: receiving,
 			}
@@ -613,7 +660,7 @@ func (dc *DuplexConnection) respondRequestChannel(req fragmentation.HeaderAndPay
 			}
 			logger.Errorf("handle request-channel failed: %+v\n", err)
 		}()
-		resp = dc.responder.RequestChannel(receiving)
+		resp = dc.responder.RequestChannel(req, receiving)
 		if resp == nil {
 			err = framing.NewWriteableErrorFrame(sid, core.ErrorCodeApplicationError, unsupportedRequestChannel)
 		}
@@ -642,8 +689,6 @@ func (dc *DuplexConnection) respondRequestChannel(req fragmentation.HeaderAndPay
 	mustExecute(dc.reqSche, func() {
 		sending.SubscribeWith(dc.ctx, sub)
 	})
-
-	receivingProcessor.Next(req)
 
 	<-subscribed
 

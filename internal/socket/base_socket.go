@@ -62,11 +62,11 @@ func (p *BaseSocket) RequestStream(message payload.Payload) flux.Flux {
 }
 
 // RequestChannel sends RequestChannel request.
-func (p *BaseSocket) RequestChannel(messages flux.Flux) flux.Flux {
+func (p *BaseSocket) RequestChannel(initialRequest payload.Payload, messages flux.Flux) flux.Flux {
 	if err := p.reqLease.allow(); err != nil {
 		return flux.Error(err)
 	}
-	return p.socket.RequestChannel(messages)
+	return p.socket.RequestChannel(initialRequest, messages)
 }
 
 // OnClose registers handler when socket closed.

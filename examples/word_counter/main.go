@@ -31,7 +31,7 @@ func main() {
 
 func server(readyCh chan struct{}) {
 	// create a handler that will be called when the server receives the RequestChannel frame (FrameTypeRequestChannel - 0x07)
-	requestChannelHandler := rsocket.RequestChannel(func(requests flux.Flux) flux.Flux {
+	requestChannelHandler := rsocket.RequestChannel(func(initialRequest payload.Payload, requests flux.Flux) flux.Flux {
 		return flux.Create(func(ctx context.Context, s flux.Sink) {
 			requests.DoOnNext(func(elem payload.Payload) error {
 				// for each payload in a flux stream respond with a word count
@@ -70,6 +70,7 @@ func client() {
 	defer client.Close()
 
 	// strings to count the words
+	initialRequest := payload.NewString("", "")
 	sentences := []payload.Payload{
 		payload.NewString("", extension.TextPlain.String()),
 		payload.NewString("qux", extension.TextPlain.String()),
@@ -86,7 +87,7 @@ func client() {
 	counter := 0
 
 	// register handler for RequestChannel
-	client.RequestChannel(f).DoOnNext(func(input payload.Payload) error {
+	client.RequestChannel(initialRequest, f).DoOnNext(func(input payload.Payload) error {
 		// print word count
 		fmt.Println(sentences[counter].DataUTF8(), ":", input.DataUTF8())
 		counter = counter + 1

@@ -50,7 +50,7 @@ func TestBaseSocket(t *testing.T) {
 		s.FireAndForget(fakeRequest)
 		s.RequestResponse(fakeRequest)
 		s.RequestStream(fakeRequest)
-		s.RequestChannel(flux.Just(fakeRequest))
+		s.RequestChannel(fakeRequest, flux.Just(fakeRequest))
 	})
 
 	<-done

@@ -132,7 +132,7 @@ func responder() rsocket.RSocket {
 				emitter.Complete()
 			})
 		}),
-		rsocket.RequestChannel(func(payloads flux.Flux) flux.Flux {
+		rsocket.RequestChannel(func(initialRequest payload.Payload, payloads flux.Flux) flux.Flux {
 			//return payloads.(flux.Flux)
 			payloads.
 				//LimitRate(1).

@@ -6,7 +6,6 @@ import (
 	"github.com/jjeffcaii/reactor-go"
 	"github.com/rsocket/rsocket-go/core"
 	"github.com/rsocket/rsocket-go/core/framing"
-	"github.com/rsocket/rsocket-go/internal/fragmentation"
 	"github.com/rsocket/rsocket-go/payload"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
@@ -14,35 +13,13 @@ import (
 )
 
 type requestChannelSubscriber struct {
-	sid       uint32
-	n         uint32
-	dc        *DuplexConnection
-	requested atomic.Bool
-	rcv       flux.Processor
+	sid uint32
+	dc  *DuplexConnection
+	rcv flux.Processor
 }
 
 func (r *requestChannelSubscriber) OnNext(item payload.Payload) {
-	if !r.requested.CAS(false, true) {
-		r.dc.sendPayload(r.sid, item, core.FlagNext)
-		return
-	}
-	d := item.Data()
-	m, _ := item.Metadata()
-	size := framing.CalcPayloadFrameSize(d, m) + 4
-	if !r.dc.shouldSplit(size) {
-		metadata, _ := item.Metadata()
-		r.dc.sendFrame(framing.NewWriteableRequestChannelFrame(r.sid, r.n, item.Data(), metadata, core.FlagNext))
-		return
-	}
-	r.dc.doSplitSkip(4, d, m, func(index int, result fragmentation.SplitResult) {
-		var f core.WriteableFrame
-		if index == 0 {
-			f = framing.NewWriteableRequestChannelFrame(r.sid, r.n, result.Data, result.Metadata, result.Flag|core.FlagNext)
-		} else {
-			f = framing.NewWriteablePayloadFrame(r.sid, result.Data, result.Metadata, result.Flag|core.FlagNext)
-		}
-		r.dc.sendFrame(f)
-	})
+	r.dc.sendPayload(r.sid, item, core.FlagNext)
 }
 
 func (r *requestChannelSubscriber) OnError(err error) {

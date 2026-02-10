@@ -22,7 +22,7 @@ type AbstractRSocket struct {
 	MP func(payload.Payload)
 	RR func(payload.Payload) mono.Mono
 	RS func(payload.Payload) flux.Flux
-	RC func(flux.Flux) flux.Flux
+	RC func(payload.Payload, flux.Flux) flux.Flux
 }
 
 // MetadataPush starts a request of MetadataPush.
@@ -60,9 +60,9 @@ func (a AbstractRSocket) RequestStream(message payload.Payload) flux.Flux {
 }
 
 // RequestChannel starts a request of RequestChannel.
-func (a AbstractRSocket) RequestChannel(messages flux.Flux) flux.Flux {
+func (a AbstractRSocket) RequestChannel(initialRequest payload.Payload, messages flux.Flux) flux.Flux {
 	if a.RC == nil {
 		return flux.Error(errUnimplementedRequestChannel)
 	}
-	return a.RC(messages)
+	return a.RC(initialRequest, messages)
 }

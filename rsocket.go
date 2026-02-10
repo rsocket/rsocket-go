@@ -56,7 +56,7 @@ type (
 		// RequestStream request a completable stream.
 		RequestStream(message payload.Payload) flux.Flux
 		// RequestChannel request a completable stream in both directions.
-		RequestChannel(messages flux.Flux) flux.Flux
+		RequestChannel(initialMessage payload.Payload, messages flux.Flux) flux.Flux
 	}
 
 	// CloseableRSocket is RSocket which can be closed and handle close event.
@@ -115,7 +115,7 @@ func RequestStream(fn func(request payload.Payload) (responses flux.Flux)) OptAb
 }
 
 // RequestChannel register request handler for RequestChannel.
-func RequestChannel(fn func(requests flux.Flux) (responses flux.Flux)) OptAbstractSocket {
+func RequestChannel(fn func(initialRequest payload.Payload, requests flux.Flux) (responses flux.Flux)) OptAbstractSocket {
 	return func(opts *socket.AbstractRSocket) {
 		opts.RC = fn
 	}

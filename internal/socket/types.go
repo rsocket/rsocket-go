@@ -29,7 +29,7 @@ type Responder interface {
 	// RequestStream request a completable stream.
 	RequestStream(message payload.Payload) flux.Flux
 	// RequestChannel request a completable stream in both directions.
-	RequestChannel(messages flux.Flux) flux.Flux
+	RequestChannel(initialMessage payload.Payload, messages flux.Flux) flux.Flux
 }
 
 // ClientSocket represents a client-side socket.

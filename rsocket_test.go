@@ -354,7 +354,7 @@ func testAll(t *testing.T, proto string, clientTp transport.ClientTransporter, s
 							s.Complete()
 						})
 					}),
-					RequestChannel(func(inputs flux.Flux) flux.Flux {
+					RequestChannel(func(initialRequest payload.Payload, inputs flux.Flux) flux.Flux {
 						received := new(int32)
 						inputs.
 							DoOnNext(func(input payload.Payload) error {
@@ -471,6 +471,7 @@ func testRequestStreamOneByOne(ctx context.Context, cli Client, t *testing.T) {
 
 func testRequestChannel(ctx context.Context, cli Client, t *testing.T) {
 	// RequestChannel
+	initialPayload := payload.NewString("This is a RequestChannel initial message.", "")
 	send := flux.Create(func(ctx context.Context, s flux.Sink) {
 		for i := 0; i < int(channelElements); i++ {
 			s.Next(payload.NewString(fakeData, fmt.Sprintf("%d", i)))
@@ -480,7 +481,7 @@ func testRequestChannel(ctx context.Context, cli Client, t *testing.T) {
 
 	var seq int
 
-	_, err := cli.RequestChannel(send).
+	_, err := cli.RequestChannel(initialPayload, send).
 		DoOnNext(func(elem payload.Payload) error {
 			//fmt.Println(elem)
 			m, _ := elem.MetadataUTF8()
@@ -495,6 +496,7 @@ func testRequestChannel(ctx context.Context, cli Client, t *testing.T) {
 
 func testRequestChannelOneByOne(ctx context.Context, cli Client, t *testing.T) {
 	// RequestChannel
+	initialPayload := payload.NewString("This is a RequestChannel initial message.", "")
 	send := flux.Create(func(ctx context.Context, s flux.Sink) {
 		for i := 0; i < int(channelElements); i++ {
 			s.Next(payload.NewString(fakeData, fmt.Sprintf("%d", i)))
@@ -508,7 +510,7 @@ func testRequestChannelOneByOne(ctx context.Context, cli Client, t *testing.T) {
 
 	var su rx.Subscription
 
-	cli.RequestChannel(send).
+	cli.RequestChannel(initialPayload, send).
 		DoFinally(func(s rx.SignalType) {
 			assert.Equal(t, rx.SignalComplete, s, "bad signal type")
 			close(done)
@@ -599,7 +601,7 @@ func (d delayedRSocket) RequestStream(message payload.Payload) flux.Flux {
 	panic("implement me")
 }
 
-func (d delayedRSocket) RequestChannel(messages flux.Flux) flux.Flux {
+func (d delayedRSocket) RequestChannel(initialRequest payload.Payload, messages flux.Flux) flux.Flux {
 	panic("implement me")
 }
 

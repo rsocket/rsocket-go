@@ -134,6 +134,8 @@ func (r *Runner) runClientMode(ctx context.Context) (err error) {
 		_ = c.Close()
 	}()
 
+	initialRequest := payload.NewString("", "")
+
 	for i := 0; i < r.Ops; i++ {
 		if i > 0 {
 			logger.Infof("\n")
@@ -153,7 +155,7 @@ func (r *Runner) runClientMode(ctx context.Context) (err error) {
 		} else if r.Stream {
 			err = r.execRequestStream(ctx, c, first)
 		} else if r.Channel {
-			err = r.execRequestChannel(ctx, c, sendingPayloads)
+			err = r.execRequestChannel(ctx, c, initialRequest, sendingPayloads)
 		} else if r.MetadataPush {
 			err = r.execMetadataPush(ctx, c, first)
 		} else {
@@ -189,7 +191,7 @@ func (r *Runner) runServerMode(ctx context.Context) error {
 					r.showPayload(message)
 					return sendingPayloads
 				}))
-				options = append(options, rsocket.RequestChannel(func(messages flux.Flux) flux.Flux {
+				options = append(options, rsocket.RequestChannel(func(initialRequest payload.Payload, messages flux.Flux) flux.Flux {
 					messages.Subscribe(ctx, rx.OnNext(func(input payload.Payload) error {
 						r.showPayload(input)
 						return nil
@@ -245,12 +247,12 @@ func (r *Runner) execRequestResponse(ctx context.Context, c rsocket.Client, send
 	return
 }
 
-func (r *Runner) execRequestChannel(ctx context.Context, c rsocket.Client, send flux.Flux) error {
+func (r *Runner) execRequestChannel(ctx context.Context, c rsocket.Client, initialRequest payload.Payload, send flux.Flux) error {
 	var f flux.Flux
 	if r.N < rx.RequestMax {
-		f = c.RequestChannel(send).Take(r.N)
+		f = c.RequestChannel(initialRequest, send).Take(r.N)
 	} else {
-		f = c.RequestChannel(send)
+		f = c.RequestChannel(initialRequest, send)
 	}
 	return r.printFlux(ctx, f)
 }

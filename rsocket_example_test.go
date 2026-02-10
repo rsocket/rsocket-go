@@ -85,7 +85,7 @@ func ExampleReceive() {
 						s.Complete()
 					})
 				}),
-				rsocket.RequestChannel(func(requests flux.Flux) flux.Flux {
+				rsocket.RequestChannel(func(initialRequest payload.Payload, requests flux.Flux) flux.Flux {
 					return requests
 				}),
 			), nil
@@ -137,13 +137,14 @@ func ExampleConnect() {
 			s.Request(1)
 		}))
 	// Simple RequestChannel.
+	initialPayload := payload.NewString("This is a RequestChannel initial message.", "")
 	sendFlux := flux.Create(func(ctx context.Context, s flux.Sink) {
 		for i := 0; i < 3; i++ {
 			s.Next(payload.NewString(fmt.Sprintf("This is a RequestChannel message #%d.", i), ""))
 		}
 		s.Complete()
 	})
-	cli.RequestChannel(sendFlux).
+	cli.RequestChannel(initialPayload, sendFlux).
 		DoOnNext(func(elem payload.Payload) error {
 			log.Println("next element in channel:", elem)
 			return nil
