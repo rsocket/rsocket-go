@@ -4,7 +4,6 @@ import (
 	"io"
 
 	"github.com/jjeffcaii/reactor-go"
-	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/rx"
 	"github.com/rsocket/rsocket-go/rx/flux"
 	"github.com/rsocket/rsocket-go/rx/mono"
@@ -26,13 +25,11 @@ func (s requestStreamCallback) stopWithError(err error) {
 }
 
 type requestResponseCallback struct {
-	sink  mono.Sink
-	cache interface{}
+	sink mono.Sink
 }
 
 func (s requestResponseCallback) stopWithError(err error) {
 	s.sink.Error(err)
-	common.TryRelease(s.cache)
 }
 
 type requestChannelCallback struct {
