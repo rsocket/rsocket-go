@@ -1092,10 +1092,20 @@ func (dc *DuplexConnection) sendPayload(
 	}
 	dc.doSplit(d, m, func(index int, result fragmentation.SplitResult) {
 		flag := result.Flag
+		isLastFragment := !result.Flag.Check(core.FlagFollow)
+
 		if index == 0 {
 			flag |= frameFlag
+			// Remove (C)omplete flag, unless this is the last fragment.
+			if !isLastFragment {
+				flag &^= core.FlagComplete
+			}
 		} else {
 			flag |= core.FlagNext
+			// Set (C)omplete flag, if the original frame had it and this is the last fragment.
+			if isLastFragment && frameFlag.Check(core.FlagComplete) {
+				flag |= core.FlagComplete
+			}
 		}
 
 		// lazy release at last frame
