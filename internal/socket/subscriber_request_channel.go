@@ -12,6 +12,26 @@ import (
 	"go.uber.org/atomic"
 )
 
+// FinalPayload is a marker interface for payloads that should be sent with FlagNext|FlagComplete.
+type FinalPayload interface {
+	payload.Payload
+	IsFinal() bool
+}
+
+// finalPayloadWrapper wraps a payload and marks it as final.
+type finalPayloadWrapper struct {
+	payload.Payload
+}
+
+func (f finalPayloadWrapper) IsFinal() bool {
+	return true
+}
+
+// NewFinalPayload creates a final payload that will be sent with FlagNext|FlagComplete.
+func NewFinalPayload(p payload.Payload) payload.Payload {
+	return finalPayloadWrapper{Payload: p}
+}
+
 type requestChannelSubscriber struct {
 	sid uint32
 	dc  *DuplexConnection
@@ -52,15 +72,22 @@ func (r *requestChannelSubscriber) OnSubscribe(ctx context.Context, s rx.Subscri
 }
 
 type respondChannelSubscriber struct {
-	sid        uint32
-	n          uint32
-	dc         *DuplexConnection
-	rcv        flux.Processor
-	subscribed chan<- struct{}
-	calls      *atomic.Int32
+	sid           uint32
+	n             uint32
+	dc            *DuplexConnection
+	rcv           flux.Processor
+	subscribed    chan<- struct{}
+	calls         *atomic.Int32
+	sentFinalNext atomic.Bool
 }
 
 func (r *respondChannelSubscriber) OnNext(next payload.Payload) {
+	if _, ok := next.(FinalPayload); ok {
+		r.sentFinalNext.Store(true)
+		r.OnComplete()
+		r.dc.sendPayload(r.sid, next, core.FlagNext|core.FlagComplete)
+		return
+	}
 	r.dc.sendPayload(r.sid, next, core.FlagNext)
 }
 
@@ -74,6 +101,9 @@ func (r *respondChannelSubscriber) OnError(err error) {
 func (r *respondChannelSubscriber) OnComplete() {
 	if r.calls.Inc() == 2 {
 		r.dc.unregister(r.sid)
+	}
+	if r.sentFinalNext.Load() {
+		return
 	}
 	complete := framing.NewWriteablePayloadFrame(r.sid, nil, nil, core.FlagComplete)
 	done := make(chan struct{})
