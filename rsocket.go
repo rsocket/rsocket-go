@@ -86,6 +86,11 @@ func NewAbstractSocket(opts ...OptAbstractSocket) RSocket {
 	return sk
 }
 
+// NewFinalPayload is a wrapper/marker that allows a payload to be sent with both Next and Complete flags.
+func NewFinalPayload(p payload.Payload) payload.Payload {
+	return socket.NewFinalPayload(p)
+}
+
 // MetadataPush register request handler for MetadataPush.
 func MetadataPush(fn func(request payload.Payload)) OptAbstractSocket {
 	return func(socket *socket.AbstractRSocket) {
