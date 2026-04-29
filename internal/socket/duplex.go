@@ -888,6 +888,8 @@ func (dc *DuplexConnection) onFrameError(input core.BufferedFrame) error {
 		vv.pc.Error(err)
 	case requestChannelCallback:
 		vv.rcv.Error(err)
+	case respondChannelCallback:
+		vv.rcv.Error(err)
 	default:
 		return errors.Errorf("illegal value for error: %v", vv)
 	}

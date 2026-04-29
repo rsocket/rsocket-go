@@ -321,7 +321,7 @@ func (p *Transport) DispatchFrame(_ context.Context, frame core.BufferedFrame) (
 	// trigger handler
 	err = handler(frame)
 	if err != nil {
-		err = errors.Wrap(err, fmt.Sprintf("handle frame %s failed:", frame.Header().Type()))
+		err = errors.Wrap(err, fmt.Sprintf("handle frame %s failed:", t))
 	}
 	return
 }
