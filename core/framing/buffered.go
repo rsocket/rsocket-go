@@ -12,6 +12,8 @@ import (
 	uberatomic "go.uber.org/atomic"
 )
 
+const metadataLengthFieldSize = 3 // Size of u24 metadata length field in bytes
+
 // bufferedFrame is basic frame implementation.
 type bufferedFrame struct {
 	innerPtr unsafe.Pointer
@@ -115,14 +117,16 @@ func (f *bufferedFrame) WriteTo(w io.Writer) (n int64, err error) {
 
 func (f *bufferedFrame) trySeekMetadataLen(offset int) (n int, hasMetadata bool) {
 	raw := f.Body()
-	if offset > 0 {
-		raw = raw[offset:]
+	// Validate offset before accessing frame to avoid panic on released frames
+	if offset < 0 || offset >= len(raw) {
+		return -1, false
 	}
+	raw = raw[offset:]
 	hasMetadata = f.HasFlag(core.FlagMetadata)
 	if !hasMetadata {
 		return
 	}
-	if len(raw) < 3 {
+	if len(raw) < metadataLengthFieldSize {
 		n = -1
 	} else {
 		n = u24.NewUint24Bytes(raw).AsInt()
@@ -135,18 +139,34 @@ func (f *bufferedFrame) trySliceMetadata(offset int) ([]byte, bool) {
 	if !ok || n < 0 {
 		return nil, false
 	}
-	return f.Body()[offset+3 : offset+3+n], true
+	body := f.Body()
+	// Overflow-safe bounds check
+	metadataOffset := offset + metadataLengthFieldSize
+	if n > len(body)-metadataOffset {
+		return nil, false
+	}
+	return body[metadataOffset : metadataOffset+n], true
 }
 
 func (f *bufferedFrame) trySliceData(offset int) []byte {
+	body := f.Body()
 	n, ok := f.trySeekMetadataLen(offset)
 	if !ok {
-		return f.Body()[offset:]
+		if offset < 0 || offset > len(body) {
+			return nil
+		}
+		return body[offset:]
 	}
 	if n < 0 {
 		return nil
 	}
-	return f.Body()[offset+n+3:]
+	// Overflow-safe bounds check
+	metadataOffset := offset + metadataLengthFieldSize
+	if n > len(body)-metadataOffset {
+		return nil
+	}
+	dataOffset := metadataOffset + n
+	return body[dataOffset:]
 }
 
 func (f *bufferedFrame) bodyLen() int {
